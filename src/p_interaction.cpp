@@ -392,6 +392,10 @@ void ClientObituary (AActor *self, AActor *inflictor, AActor *attacker, int dmgf
 		message = GStrings("OB_DEFAULT");
 	}
 
+	// [CK] Don't display empty strings
+	if (message == NULL || strlen(message) <= 0)
+		return;
+		
 	SexMessage (message, gendermessage, gender,
 		self->player->userinfo.GetName(), attacker->player->userinfo.GetName());
 
