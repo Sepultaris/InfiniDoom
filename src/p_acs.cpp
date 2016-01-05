@@ -6449,7 +6449,7 @@ int DLevelScript::CallFunction(int argCount, int funcIndex, SDWORD *args, struct
 				if (args[0] == 0)
 				{
 					AActor *puff = P_LineAttack(activator, angle, range, pitch, damage, damagetype, pufftype, fhflags);
-					if (pufftid != 0)
+					if (puff != NULL && pufftid != 0)
 					{
 						puff->tid = pufftid;
 						puff->AddToHash();
@@ -6463,7 +6463,7 @@ int DLevelScript::CallFunction(int argCount, int funcIndex, SDWORD *args, struct
 					while ((source = it.Next()) != NULL)
 					{
 						AActor *puff = P_LineAttack(source, angle, range, pitch, damage, damagetype, pufftype, fhflags);
-						if (pufftid != 0)
+						if (puff != NULL && pufftid != 0)
 						{
 							puff->tid = pufftid;
 							puff->AddToHash();
