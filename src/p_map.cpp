@@ -53,6 +53,7 @@
 #include "p_conversation.h"
 #include "r_data/r_translate.h"
 #include "g_level.h"
+#include "r_sky.h"
 // [BB] New #includes.
 #include "deathmatch.h"
 #include "team.h"
@@ -4986,6 +4987,8 @@ void P_RailAttack(AActor *source, int damage, int offset_xy, fixed_t offset_z, i
 		if (puffclass != NULL && puffDefaults->flags3 & MF3_ALWAYSPUFF)
 		{
 			puff = P_SpawnPuff(source, puffclass, trace.X, trace.Y, trace.Z, (source->angle + angleoffset) - ANG90, 1, 0);
+			if (puff && (trace.Line->special == Line_Horizon) && !(puff->flags3 & MF3_SKYEXPLODE))
+				puff->Destroy();
 		}
 		if (puff != NULL && puffDefaults->flags7 & MF7_FORCEDECAL && puff->DecalGenerator)
 			SpawnShootDecal(puff, trace);
@@ -4999,6 +5002,12 @@ void P_RailAttack(AActor *source, int damage, int offset_xy, fixed_t offset_z, i
 		if (puffclass != NULL && puffDefaults->flags3 & MF3_ALWAYSPUFF)
 		{
 			puff = P_SpawnPuff(source, puffclass, trace.X, trace.Y, trace.Z, (source->angle + angleoffset) - ANG90, 1, 0);
+			if (puff && !(puff->flags3 & MF3_SKYEXPLODE) &&
+				(((trace.HitType == TRACE_HitFloor) && (puff->floorpic == skyflatnum)) ||
+				((trace.HitType == TRACE_HitCeiling) && (puff->ceilingpic == skyflatnum))))
+			{
+				puff->Destroy();
+			}
 		}
 	}
 	if (thepuff != NULL)
