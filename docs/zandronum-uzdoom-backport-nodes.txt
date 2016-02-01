@@ -526,3 +526,53 @@ file that the node from the latter can be pasted into.
  	native int frags[MAXPLAYERS];
  	native int fragcount;
  	native int lastkilltime;
+
+===============================================================================================================
+Git hash: 2f4dc1795496ba25217bc0a28325a993039675b0
+Mercurial hash: e5ff8134f0bdb68b207b9714fe52791676bb4274
+Add support for face sprite Y flipping
+
+Reason for documentation: Some nodes weren't transplanted and left out because they are based on changes added
+in 6ab480e89424b624c2b65cc3607f9c14dd6305ff (from gzdoom-hg-mirror) that Zandronum didn't backport yet.
+===============================================================================================================
+
+--- src/r_things.cpp
++++ src/r_things.cpp
+@@ -759,16 +781,16 @@
+ 	if (spritescaleX < 0)
+ 	{
+ 		spritescaleX = -spritescaleX;
+-		flip = !flip;
++		renderflags ^= RF_XFLIP;
+ 	}
+ 	if (voxel == NULL && (tex == NULL || tex->UseType == FTexture::TEX_Null))
+ 	{
+ 		return;
+ 	}
+ 
+-	if ((thing->renderflags & RF_SPRITETYPEMASK) == RF_WALLSPRITE)
++	if ((renderflags & RF_SPRITETYPEMASK) == RF_WALLSPRITE)
+ 	{
+-		R_ProjectWallSprite(thing, fx, fy, fz, picnum, spritescaleX, spritescaleY, flip);
++		R_ProjectWallSprite(thing, fx, fy, fz, picnum, spritescaleX, spritescaleY, renderflags);
+ 		return;
+ 	}
+ 
+@@ -1035,7 +1054,7 @@
+ 	}
+ }
+ 
+-static void R_ProjectWallSprite(AActor *thing, fixed_t fx, fixed_t fy, fixed_t fz, FTextureID picnum, fixed_t xscale, fixed_t yscale, INTBOOL flip)
++static void R_ProjectWallSprite(AActor *thing, fixed_t fx, fixed_t fy, fixed_t fz, FTextureID picnum, fixed_t xscale, fixed_t yscale, int renderflags)
+ {
+ 	FWallCoords wallc;
+ 	int x1, x2;
+@@ -1089,7 +1108,7 @@
+ 	vis->gzt = gzt;
+ 	vis->deltax = fx - viewx;
+ 	vis->deltay = fy - viewy;
+-	vis->renderflags = thing->renderflags;
++	vis->renderflags = renderflags;
+ 	if(thing->flags5 & MF5_BRIGHT) vis->renderflags |= RF_FULLBRIGHT; // kg3D
+ 	vis->Style.RenderStyle = thing->RenderStyle;
+ 	vis->FillColor = thing->fillcolor;
