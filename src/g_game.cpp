@@ -2119,7 +2119,7 @@ void G_PlayerReborn (int player, bool bGiveInventory)
 	int 		itemcount;
 	int 		secretcount;
 	int			chasecam;
-	BYTE		currclass;
+	int			currclass;
 	userinfo_t  userinfo;	// [RH] Save userinfo
 	// [BB]
 	//botskill_t  b_skill;	//Added by MC:

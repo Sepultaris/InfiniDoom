@@ -603,7 +603,7 @@ public:
 										// is used during levels
 
 	int			inventorytics;
-	BYTE		CurrentPlayerClass;		// class # for this player instance
+	int			CurrentPlayerClass;		// class # for this player instance
 	bool		backpack;
 	
 	int			fragcount;				// [RH] Cumulative frags for this player
