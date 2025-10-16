@@ -413,3 +413,52 @@ second node had to be pasted into "src/sdl/sdlvideo.cpp" manually instead.
  	{ 5120, 2880 }
  };
  
+
+===============================================================================================================
+Git hash: 3ca5a550fa380e463907c067607c37ab0f337d90
+Mercurial hash: 829fe5e38c8cfa23ac3eb7ad79d06393a4258459
+Add support for the "BUSY" script flag.
+This flag allows the script to skip the runaway limit.
+
+Reason for documentation: "src/playsim/p_acs.cpp" and "src/playsim/p_acs.h" don't exist in Zandronum yet, so the
+nodes were manually pasted into "src/p_acs.cpp" and "src/p_acs.h" respectively.
+===============================================================================================================
+
+--- src/playsim/p_acs.cpp
++++ src/playsim/p_acs.cpp
+@@ -6961,13 +6961,14 @@
+ 	ACSLocalArrays noarrays;
+ 	ACSLocalArrays *localarrays = &noarrays;
+ 	ScriptFunction *activeFunction = NULL;
++	ScriptPtr *ptr;
+ 	FRemapTable *translation = 0;
+ 	int resultValue = 1;
+ 	int transi = -1;
+ 
+ 	if (InModuleScriptNumber >= 0)
+ 	{
+-		ScriptPtr *ptr = activeBehavior->GetScriptPtr(InModuleScriptNumber);
++		ptr = activeBehavior->GetScriptPtr(InModuleScriptNumber);
+ 		assert(ptr != NULL);
+ 		if (ptr != NULL)
+ 		{
+@@ -7048,7 +7049,7 @@
+ 
+ 	while (state == SCRIPT_Running)
+ 	{
+-		if (++runaway > 2000000)
++		if ( (++runaway > 2000000) && ptr && !(ptr->Flags & SCRIPTF_Busy) )
+ 		{
+ 			Printf ("Runaway %s terminated\n", ScriptPresentation(script).GetChars());
+ 			state = SCRIPT_PleaseRemove;
+
+--- src/playsim/p_acs.h
++++ src/playsim/p_acs.h
+@@ -341,6 +341,7 @@
+ {
+ 	SCRIPTF_Net = 0x0001,		 // Safe to "puke" in multiplayer
+ 	SCRIPTF_ClientSide = 0x0002, // Executed locally for clients but not across them
++	SCRIPTF_Busy = 0x0004,		 // [TDRR] Not affected by the runaway script limit
+ };
+ 
+ enum ACSFormat { ACS_Old, ACS_Enhanced, ACS_LittleEnhanced, ACS_Unknown };
