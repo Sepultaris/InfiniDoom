@@ -184,17 +184,17 @@ void CLIENTSTATISTICS_AddToMissingPacketsRequested( unsigned int Num )
 
 ADD_STAT( nettraffic )
 {
-	FString	Out;
+	FString out;
 
-	Out.Format( "In: %5d/%5d/%5d        Out: %5d/%5d/%5d        Loss: %5d/%5d", 
-		static_cast<int> (g_bytesReceivedStatTracker.getValueThisTick()),
-		static_cast<int> (g_bytesReceivedStatTracker.getValueLastSecond()),
-		static_cast<int> (g_bytesReceivedStatTracker.getMaxValuePerSecond()),
-		static_cast<int> (g_bytesSentStatTracker.getValueThisTick()),
-		static_cast<int> (g_bytesSentStatTracker.getValueLastSecond()),
-		static_cast<int> (g_bytesSentStatTracker.getMaxValuePerSecond()),
-		static_cast<int> (g_missingPacketsRequestedStatTracker.getValueLastSecond()),
-		static_cast<int> (g_missingPacketsRequestedStatTracker.getMaxValuePerSecond()) );
+	out.Format( "In: %5u/%5u/%5u        Out: %5u/%5u/%5u        Loss: %5u/%5u",
+		g_bytesReceivedStatTracker.getValueThisTick( ),
+		g_bytesReceivedStatTracker.getValueLastSecond( ),
+		g_bytesReceivedStatTracker.getMaxValuePerSecond( ),
+		g_bytesSentStatTracker.getValueThisTick( ),
+		g_bytesSentStatTracker.getValueLastSecond( ),
+		g_bytesSentStatTracker.getMaxValuePerSecond( ),
+		g_missingPacketsRequestedStatTracker.getValueLastSecond( ),
+		g_missingPacketsRequestedStatTracker.getMaxValuePerSecond( ));
 
-	return ( Out );
+	return out;
 }
