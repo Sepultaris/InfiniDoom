@@ -337,7 +337,7 @@ void			NETWORK_Destruct( void );
 int				NETWORK_GetPackets( void );
 int				NETWORK_GetLANPackets( void );
 NETADDRESS_s	NETWORK_GetFromAddress( void );
-void			NETWORK_LaunchPacket( NETBUFFER_s *pBuffer, NETADDRESS_s Address );
+void			NETWORK_LaunchPacket( NETBUFFER_s *buffer, NETADDRESS_s address );
 NETADDRESS_s	NETWORK_GetLocalAddress( void );
 NETADDRESS_s	NETWORK_GetCachedLocalAddress( void );
 NETBUFFER_s		*NETWORK_GetNetworkMessageBuffer( void );

@@ -775,83 +775,82 @@ NETADDRESS_s NETWORK_GetFromAddress( void )
 
 //*****************************************************************************
 //
-void NETWORK_LaunchPacket( NETBUFFER_s *pBuffer, NETADDRESS_s Address )
+void NETWORK_LaunchPacket( NETBUFFER_s *buffer, NETADDRESS_s address )
 {
-	LONG				lNumBytes;
-	INT					iNumBytesOut = sizeof(g_ucHuffmanBuffer);
+	int numBytesOut = sizeof( g_ucHuffmanBuffer );
+	int numBytes = 0;
 
-	pBuffer->ulCurrentSize = pBuffer->CalcSize();
+	buffer->ulCurrentSize = buffer->CalcSize( );
 
 	// Nothing to do.
-	if ( pBuffer->ulCurrentSize == 0 )
+	if ( buffer->ulCurrentSize == 0 )
 		return;
 
 	// Convert the IP address to a socket address.
-	struct sockaddr_in SocketAddress;
-	Address.ToSocketAddress( reinterpret_cast<sockaddr&>(SocketAddress) );
+	struct sockaddr_in socketAddress;
+	address.ToSocketAddress( reinterpret_cast<sockaddr &>( socketAddress ));
 
 	// [BB] Communication with the auth server is not Huffman-encoded.
-	if ( Address.Compare( NETWORK_AUTH_GetCachedServerAddress() ) == false )
-		HUFFMAN_Encode( (unsigned char *)pBuffer->pbData, g_ucHuffmanBuffer, pBuffer->ulCurrentSize, &iNumBytesOut );
+	if ( address.Compare( NETWORK_AUTH_GetCachedServerAddress( )) == false )
+	{
+		HUFFMAN_Encode( static_cast<unsigned char *>( buffer->pbData ), g_ucHuffmanBuffer, buffer->ulCurrentSize, &numBytesOut );
+	}
 	else
 	{
 		// [BB] We don't need to encode, so we just copy the data.
 		// Not very efficient, but this keeps the changes at a minimum for now.
-		memcpy ( g_ucHuffmanBuffer, pBuffer->pbData, pBuffer->ulCurrentSize );
-		iNumBytesOut = pBuffer->ulCurrentSize;
+		memcpy( g_ucHuffmanBuffer, buffer->pbData, buffer->ulCurrentSize );
+		numBytesOut = buffer->ulCurrentSize;
 	}
 
-	lNumBytes = sendto( g_NetworkSocket, (const char*)g_ucHuffmanBuffer, iNumBytesOut, 0, reinterpret_cast<sockaddr*>(&SocketAddress), sizeof( SocketAddress ));
+	numBytes = sendto( g_NetworkSocket, reinterpret_cast<const char *>( g_ucHuffmanBuffer ), numBytesOut, 0, reinterpret_cast<sockaddr *>( &socketAddress ), sizeof( socketAddress ));
 
 	// If sendto returns -1, there was an error.
-	if ( lNumBytes == -1 )
+	if ( numBytes == -1 )
 	{
 #ifdef __WIN32__
-		INT	iError = WSAGetLastError( );
+		int error = WSAGetLastError( );
 
 		// Wouldblock is silent.
-		if ( iError == WSAEWOULDBLOCK )
-			return;
-
-		switch ( iError )
+		if ( error != WSAEWOULDBLOCK )
 		{
-		case WSAEACCES:
+			switch ( error )
+			{
+				case WSAEACCES:
+					Printf( "NETWORK_LaunchPacket: Error #%d, WSAEACCES: Permission denied for address: %s\n", error, address.ToString( ));
+					return;
 
-			Printf( "NETWORK_LaunchPacket: Error #%d, WSAEACCES: Permission denied for address: %s\n", iError, Address.ToString() );
-			return;
-		case WSAEAFNOSUPPORT:
+				case WSAEAFNOSUPPORT:
+					Printf( "NETWORK_LaunchPacket: Error #%d, WSAEAFNOSUPPORT: Address %s incompatible with the requested protocol\n", error, address.ToString( ));
+					return;
 
-			Printf( "NETWORK_LaunchPacket: Error #%d, WSAEAFNOSUPPORT: Address %s incompatible with the requested protocol\n", iError, Address.ToString() );
-			return;
-		case WSAEADDRNOTAVAIL:
+				case WSAEADDRNOTAVAIL:
+					Printf( "NETWORK_LaunchPacket: Error #%d, WSAEADDRENOTAVAIL: Address %s not available\n", error, address.ToString( ));
+					return;
 
-			Printf( "NETWORK_LaunchPacket: Error #%d, WSAEADDRENOTAVAIL: Address %s not available\n", iError, Address.ToString() );
-			return;
-		case WSAEHOSTUNREACH:
+				case WSAEHOSTUNREACH:
+					Printf( "NETWORK_LaunchPacket: Error #%d, WSAEHOSTUNREACH: Address %s unreachable\n", error, address.ToString( ));
+					return;
 
-			Printf( "NETWORK_LaunchPacket: Error #%d, WSAEHOSTUNREACH: Address %s unreachable\n", iError, Address.ToString() );
-			return;				
-		default:
-
-			Printf( "NETWORK_LaunchPacket: Error #%d\n", iError );
-			return;
+				default:
+					Printf( "NETWORK_LaunchPacket: Error #%d\n", error );
+					return;
+			}
 		}
 #else
-	if ( errno == EWOULDBLOCK )
-return;
-
-          if ( errno == ECONNREFUSED )
-              return;
-
-		Printf( "NETWORK_LaunchPacket: %s\n", strerror( errno ));
-		Printf( "NETWORK_LaunchPacket: Address %s\n", Address.ToString() );
-
+		// [AK] Don't print an error message when the connection is blocked or refused.
+		if (( errno != EWOULDBLOCK ) && ( errno != ECONNREFUSED ))
+		{
+			Printf( "NETWORK_LaunchPacket: %s\n", strerror( errno ));
+			Printf( "NETWORK_LaunchPacket: Address %s\n", address.ToString( ));
+		}
 #endif
+		return;
 	}
 
 	// Record this for our statistics window.
 	if ( NETWORK_GetState( ) == NETSTATE_SERVER )
-		SERVER_STATISTIC_AddToOutboundDataTransfer( lNumBytes );
+		SERVER_STATISTIC_AddToOutboundDataTransfer( numBytes );
 }
 
 //*****************************************************************************
