@@ -246,6 +246,7 @@ static const std::vector<std::string> g_FreedoomDehackedHashes = {
 static	void			network_InitPWADList( void );
 static	void			network_Error( const char *pszError );
 static	SOCKET			network_AllocateSocket( void );
+static	int				network_ReadPacketsFromSocket( SOCKET &socket );
 static	bool			network_BindSocketToPort( SOCKET Socket, ULONG ulInAddr, USHORT usPort, bool bReUse );
 static	bool			network_GenerateLumpMD5HashAndWarnIfNeeded( const int LumpNum, const char *LumpName, FString &MD5Hash );
 static	void			network_CheckIfDuplicateLump( const int LumpNum ); // [AK]
@@ -747,150 +748,22 @@ void NETWORK_Destruct( void )
 //
 int NETWORK_GetPackets( void )
 {
-	sockaddr socketFrom;
-	int socketFromLength = sizeof( socketFrom );
-	int numDecodedBytes = g_NetworkMessage.ulMaxSize;
-	int numBytes = 0;
-
 	// [BB] If the socket is invalid, there is no point in trying to use it.
 	if ( g_NetworkSocket == INVALID_SOCKET )
 		return 0;
 
-#ifdef WIN32
-	numBytes = recvfrom( g_NetworkSocket, reinterpret_cast<char *>( g_ucHuffmanBuffer ), sizeof( g_ucHuffmanBuffer ), 0, &socketFrom, &socketFromLength );
-#else
-	numBytes = recvfrom( g_NetworkSocket, reinterpret_cast<char *>( g_ucHuffmanBuffer ), sizeof( g_ucHuffmanBuffer ), 0, &socketFrom, reinterpret_cast<socklen_t *>( &socketFromLength ));
-#endif
-
-	// If the number of bytes returned is -1, an error has occured.
-	if ( numBytes == -1 )
-	{
-#ifdef __WIN32__
-		errno = WSAGetLastError( );
-
-		if ( errno == WSAEMSGSIZE )
-			Printf( "NETWORK_GetPackets: WARNING! Oversized packet from %s\n", g_AddressFrom.ToString( ));
-		// [AK] Don't print an error message when the connection is blocked or reset.
-		else if (( errno != WSAEWOULDBLOCK ) && ( errno != WSAECONNRESET ))
-			Printf( "NETWORK_GetPackets: WARNING!: Error #%d: %s\n", errno, strerror( errno ));
-#else
-		// [AK] Don't print an error message when the connection is blocked or refused.
-		if (( errno != EWOULDBLOCK ) && ( errno != ECONNREFUSED ))
-			Printf( "NETWORK_GetPackets: WARNING!: Error #%d: %s\n", errno, strerror( errno ));
-#endif
-		return 0;
-	}
-
-	// No packets or an error, so don't process anything.
-	if ( numBytes <= 0 )
-		return 0;
-
-	// Record this for our statistics window.
-	if ( NETWORK_GetState( ) == NETSTATE_SERVER )
-		SERVER_STATISTIC_AddToInboundDataTransfer( numBytes );
-
-	// If the number of bytes we're receiving exceeds our buffer size, ignore the packet.
-	if ( numBytes >= static_cast<int>( g_NetworkMessage.ulMaxSize ))
-		return 0;
-
-	// Store the IP address of the sender.
-	g_AddressFrom.LoadFromSocketAddress( socketFrom );
-
-	// Decode the huffman-encoded message we received.
-	// [BB] Communication with the auth server is not Huffman-encoded.
-	if ( g_AddressFrom.Compare( NETWORK_AUTH_GetCachedServerAddress( )) == false )
-	{
-		HUFFMAN_Decode( g_ucHuffmanBuffer, static_cast<unsigned char *>( g_NetworkMessage.pbData ), numBytes, &numDecodedBytes );
-		g_NetworkMessage.ulCurrentSize = numDecodedBytes;
-	}
-	else
-	{
-		// [BB] We don't need to decode, so we just copy the data.
-		// Not very efficient, but this keeps the changes at a minimum for now.
-		memcpy( g_NetworkMessage.pbData, g_ucHuffmanBuffer, numBytes );
-		g_NetworkMessage.ulCurrentSize = numBytes;
-	}
-
-	g_NetworkMessage.ByteStream.pbStream = g_NetworkMessage.pbData;
-	g_NetworkMessage.ByteStream.pbStreamEnd = g_NetworkMessage.ByteStream.pbStream + g_NetworkMessage.ulCurrentSize;
-	g_NetworkMessage.ByteStream.bitBuffer = nullptr;
-	g_NetworkMessage.ByteStream.bitShift = -1;
-
-	return g_NetworkMessage.ulCurrentSize;
+	return network_ReadPacketsFromSocket( g_NetworkSocket );
 }
 
 //*****************************************************************************
 //
 int NETWORK_GetLANPackets( void )
 {
-	sockaddr socketFrom;
-	int socketFromLength = sizeof( socketFrom );
-	int numDecodedBytes = g_NetworkMessage.ulMaxSize;
-	int numBytes = 0;
-
 	// [BB] If we know that there is a problem with the socket don't try to use it.
 	if ( g_bLANSocketInvalid )
 		return 0;
 
-#ifdef WIN32
-	numBytes = recvfrom( g_LANSocket, reinterpret_cast<char *>( g_ucHuffmanBuffer ), sizeof( g_ucHuffmanBuffer ), 0, &socketFrom, &socketFromLength );
-#else
-	numBytes = recvfrom( g_LANSocket, reinterpret_cast<char *>( g_ucHuffmanBuffer ), sizeof( g_ucHuffmanBuffer ), 0, &socketFrom, reinterpret_cast<socklen_t *>( &socketFromLength ));
-#endif
-
-	// If the number of bytes returned is -1, an error has occured.
-	if ( numBytes == -1 )
-	{
-#ifdef __WIN32__
-		errno = WSAGetLastError( );
-
-		if ( errno == WSAEMSGSIZE )
-			Printf( "NETWORK_GetPackets: WARNING! Oversized packet from %s\n", g_AddressFrom.ToString( ));
-		// [AK] Don't print an error message when the connection is blocked or reset.
-		else if (( errno != WSAEWOULDBLOCK ) && ( errno != WSAECONNRESET ))
-			Printf( "NETWORK_GetPackets: WARNING!: Error #%d: %s\n", errno, strerror( errno ));
-#else
-		// [AK] Don't print an error message when the connection is blocked or refused.
-		if (( errno != EWOULDBLOCK ) && ( errno != ECONNREFUSED ))
-			Printf( "NETWORK_GetPackets: WARNING!: Error #%d: %s\n", errno, strerror( errno ));
-#endif
-		return 0;
-	}
-
-	// No packets or an error, dont process anything.
-	if ( numBytes <= 0 )
-		return 0;
-
-	// Record this for our statistics window.
-	if ( NETWORK_GetState( ) == NETSTATE_SERVER )
-		SERVER_STATISTIC_AddToInboundDataTransfer( numBytes );
-
-	// If the number of bytes we're receiving exceeds our buffer size, ignore the packet.
-	if ( numBytes >= static_cast<int>( g_NetworkMessage.ulMaxSize ))
-		return 0;
-
-	// Store the IP address of the sender.
-	g_AddressFrom.LoadFromSocketAddress( socketFrom );
-
-	// Decode the huffman-encoded message we received.
-	// [BB] Communication with the auth server is not Huffman-encoded.
-	if ( g_AddressFrom.Compare( NETWORK_AUTH_GetCachedServerAddress( )) == false )
-	{
-		HUFFMAN_Decode( g_ucHuffmanBuffer, static_cast<unsigned char *>( g_NetworkMessage.pbData ), numBytes, &numDecodedBytes );
-		g_NetworkMessage.ulCurrentSize = numDecodedBytes;
-	}
-	else
-	{
-		// [BB] We don't need to decode, so we just copy the data.
-		// Not very efficient, but this keeps the changes at a minimum for now.
-		memcpy( g_NetworkMessage.pbData, g_ucHuffmanBuffer, numBytes );
-		g_NetworkMessage.ulCurrentSize = numBytes;
-	}
-
-	g_NetworkMessage.ByteStream.pbStream = g_NetworkMessage.pbData;
-	g_NetworkMessage.ByteStream.pbStreamEnd = g_NetworkMessage.ByteStream.pbStream + g_NetworkMessage.ulCurrentSize;
-
-	return g_NetworkMessage.ulCurrentSize;
+	return network_ReadPacketsFromSocket( g_LANSocket );
 }
 
 //*****************************************************************************
@@ -1802,6 +1675,78 @@ static SOCKET network_AllocateSocket( void )
 	}
 
 	return ( Socket );
+}
+
+//*****************************************************************************
+//
+static int network_ReadPacketsFromSocket( SOCKET &socket )
+{
+	sockaddr socketFrom;
+	int socketFromLength = sizeof( socketFrom );
+	int numDecodedBytes = g_NetworkMessage.ulMaxSize;
+	int numBytes = 0;
+
+#ifdef WIN32
+	numBytes = recvfrom( socket, reinterpret_cast<char *>( g_ucHuffmanBuffer ), sizeof( g_ucHuffmanBuffer ), 0, &socketFrom, &socketFromLength );
+#else
+	numBytes = recvfrom( socket, reinterpret_cast<char *>( g_ucHuffmanBuffer ), sizeof( g_ucHuffmanBuffer ), 0, &socketFrom, reinterpret_cast<socklen_t *>( &socketFromLength ));
+#endif
+
+	// If the number of bytes returned is -1, an error has occured.
+	if ( numBytes == -1 )
+	{
+#ifdef __WIN32__
+		errno = WSAGetLastError( );
+
+		if ( errno == WSAEMSGSIZE )
+			Printf( "NETWORK_GetPackets: WARNING! Oversized packet from %s\n", g_AddressFrom.ToString( ));
+		// [AK] Don't print an error message when the connection is blocked or reset.
+		else if (( errno != WSAEWOULDBLOCK ) && ( errno != WSAECONNRESET ))
+			Printf( "NETWORK_GetPackets: WARNING!: Error #%d: %s\n", errno, strerror( errno ));
+#else
+		// [AK] Don't print an error message when the connection is blocked or refused.
+		if (( errno != EWOULDBLOCK ) && ( errno != ECONNREFUSED ))
+			Printf( "NETWORK_GetPackets: WARNING!: Error #%d: %s\n", errno, strerror( errno ));
+#endif
+		return 0;
+	}
+
+	// No packets or an error, so don't process anything.
+	if ( numBytes <= 0 )
+		return 0;
+
+	// Record this for our statistics window.
+	if ( NETWORK_GetState( ) == NETSTATE_SERVER )
+		SERVER_STATISTIC_AddToInboundDataTransfer( numBytes );
+
+	// If the number of bytes we're receiving exceeds our buffer size, ignore the packet.
+	if ( numBytes >= static_cast<int>( g_NetworkMessage.ulMaxSize ))
+		return 0;
+
+	// Store the IP address of the sender.
+	g_AddressFrom.LoadFromSocketAddress( socketFrom );
+
+	// Decode the huffman-encoded message we received.
+	// [BB] Communication with the auth server is not Huffman-encoded.
+	if ( g_AddressFrom.Compare( NETWORK_AUTH_GetCachedServerAddress( )) == false )
+	{
+		HUFFMAN_Decode( g_ucHuffmanBuffer, static_cast<unsigned char *>( g_NetworkMessage.pbData ), numBytes, &numDecodedBytes );
+		g_NetworkMessage.ulCurrentSize = numDecodedBytes;
+	}
+	else
+	{
+		// [BB] We don't need to decode, so we just copy the data.
+		// Not very efficient, but this keeps the changes at a minimum for now.
+		memcpy( g_NetworkMessage.pbData, g_ucHuffmanBuffer, numBytes );
+		g_NetworkMessage.ulCurrentSize = numBytes;
+	}
+
+	g_NetworkMessage.ByteStream.pbStream = g_NetworkMessage.pbData;
+	g_NetworkMessage.ByteStream.pbStreamEnd = g_NetworkMessage.ByteStream.pbStream + g_NetworkMessage.ulCurrentSize;
+	g_NetworkMessage.ByteStream.bitBuffer = nullptr;
+	g_NetworkMessage.ByteStream.bitShift = -1;
+
+	return g_NetworkMessage.ulCurrentSize;
 }
 
 //*****************************************************************************
