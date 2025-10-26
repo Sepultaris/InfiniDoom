@@ -75,6 +75,7 @@
 #include "c_dispatch.h"
 #include "cl_demo.h"
 #include "cl_main.h"
+#include "cl_statistics.h"
 #include "doomtype.h"
 #include "huffman.h"
 #include "i_system.h"
@@ -851,6 +852,9 @@ void NETWORK_LaunchPacket( NETBUFFER_s *buffer, NETADDRESS_s address )
 	// Record this for our statistics window.
 	if ( NETWORK_GetState( ) == NETSTATE_SERVER )
 		SERVER_STATISTIC_AddToOutboundDataTransfer( numBytes );
+	// [AK] Clients add the size of this packet to the number of bytes sent.
+	else if (( NETWORK_GetState( ) == NETSTATE_CLIENT ) && ( address.Compare( CLIENT_GetServerAddress( ))))
+		CLIENTSTATISTICS_AddToBytesSent( buffer->ulCurrentSize, numBytes );
 }
 
 //*****************************************************************************
@@ -1744,6 +1748,10 @@ static int network_ReadPacketsFromSocket( SOCKET &socket )
 	g_NetworkMessage.ByteStream.pbStreamEnd = g_NetworkMessage.ByteStream.pbStream + g_NetworkMessage.ulCurrentSize;
 	g_NetworkMessage.ByteStream.bitBuffer = nullptr;
 	g_NetworkMessage.ByteStream.bitShift = -1;
+
+	// [AK] Clients add the size of the packet to the number of bytes received.
+	if (( NETWORK_GetState( ) == NETSTATE_CLIENT ) && ( g_AddressFrom.Compare( CLIENT_GetServerAddress( ))))
+		CLIENTSTATISTICS_AddToBytesReceived( g_NetworkMessage.ulCurrentSize, numBytes );
 
 	return g_NetworkMessage.ulCurrentSize;
 }

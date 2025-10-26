@@ -59,8 +59,8 @@
 void	CLIENTSTATISTICS_Construct( void );
 void	CLIENTSTATISTICS_Tick( void );
 
-void	CLIENTSTATISTICS_AddToBytesSent( ULONG ulBytes );
-void	CLIENTSTATISTICS_AddToBytesReceived( ULONG ulBytes );
+void	CLIENTSTATISTICS_AddToBytesSent( unsigned int uncompressedBytes, unsigned int compressedBytes );
+void	CLIENTSTATISTICS_AddToBytesReceived( unsigned int uncompressedBytes, unsigned int compressedBytes );
 void	CLIENTSTATISTICS_AddToMissingPacketsRequested( unsigned int Num );
 
 #endif // __CL_STATISTICS_H__

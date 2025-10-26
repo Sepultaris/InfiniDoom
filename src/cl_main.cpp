@@ -857,9 +857,6 @@ const FString &CLIENT_GetPlayerAccountName( int player )
 //
 void CLIENT_SendServerPacket( void )
 {
-	// Add the size of the packet to the number of bytes sent.
-	CLIENTSTATISTICS_AddToBytesSent( g_LocalBuffer.CalcSize());
-
 	// Launch the packet, and clear out the buffer.
 	NETWORK_LaunchPacket( &g_LocalBuffer, g_AddressServer );
 	g_LocalBuffer.Clear();
@@ -1014,9 +1011,6 @@ void CLIENT_GetPackets( void )
 		if ( NETWORK_GetState() == NETSTATE_CLIENT
 			&& NETWORK_GetFromAddress().Compare( CLIENT_GetServerAddress() ))
 		{
-			// Statistics.
-			CLIENTSTATISTICS_AddToBytesReceived( lSize );
-
 #ifdef	_DEBUG
 			// Emulate packet loss for debugging.
 			if (( cl_emulatepacketloss ) && gamestate == GS_LEVEL )

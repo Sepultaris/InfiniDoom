@@ -66,6 +66,12 @@ class StatTracker
 	unsigned int _valueThisSecond;
 	unsigned int _valueLastSecond;
 	unsigned int _maxValuePerSecond;
+
+	// [AK] Values for compressed stats.
+	unsigned int _compressedValueThisTick;
+	unsigned int _compressedValueThisSecond;
+	unsigned int _compressedValueLastSecond;
+
 public:
 	StatTracker ( )
 	{
@@ -79,11 +85,17 @@ public:
 		_valueThisSecond = 0;
 		_valueLastSecond = 0;
 		_maxValuePerSecond = 0;
+		_compressedValueThisTick = 0;
+		_compressedValueThisSecond = 0;
+		_compressedValueLastSecond = 0;
 	}
 
-	void AddToTic ( const int Value )
+	void AddToTic ( const int Value, const int CompressedValue = 0 )
 	{
 		_valueThisTick += Value;
+
+		// [AK] Add to the compressed value for this tick.
+		_compressedValueThisTick += CompressedValue;
 	}
 
 	void TicPassed ( )
@@ -91,6 +103,10 @@ public:
 		_value += _valueThisTick;
 		_valueThisSecond += _valueThisTick;
 		_valueThisTick = 0;
+
+		// [AK] Add the compressed value from this tick to this second too.
+		_compressedValueThisSecond += _compressedValueThisTick;
+		_compressedValueThisTick = 0;
 	}
 
 	void SecondPassed ( )
@@ -99,6 +115,10 @@ public:
 		_valueThisSecond = 0;
 		if ( _maxValuePerSecond < _valueLastSecond )
 			_maxValuePerSecond = _valueLastSecond;
+
+		// [AK] Save the compressed value from this second too.
+		_compressedValueLastSecond = _compressedValueThisSecond;
+		_compressedValueThisSecond = 0;
 	}
 
 	unsigned int getTotalValue ( ) const
@@ -119,6 +139,17 @@ public:
 	unsigned int getMaxValuePerSecond ( ) const
 	{
 		return _maxValuePerSecond;
+	}
+
+	// [AK] Returns a percentage of compressed to uncompressed stats.
+	float getCompressionFactorLastSecond ( ) const
+	{
+		float percentage = 100.0f;
+
+		if ( _compressedValueLastSecond != _valueLastSecond )
+			percentage *= static_cast<float>( _compressedValueLastSecond ) / static_cast<float>( _valueLastSecond );
+
+		return percentage;
 	}
 };
 
@@ -160,16 +191,16 @@ void CLIENTSTATISTICS_Tick( void )
 
 //*****************************************************************************
 //
-void CLIENTSTATISTICS_AddToBytesSent( ULONG ulBytes )
+void CLIENTSTATISTICS_AddToBytesSent( unsigned int uncompressedBytes, unsigned int compressedBytes )
 {
-	g_bytesSentStatTracker.AddToTic ( ulBytes );
+	g_bytesSentStatTracker.AddToTic ( uncompressedBytes, compressedBytes );
 }
 
 //*****************************************************************************
 //
-void CLIENTSTATISTICS_AddToBytesReceived( ULONG ulBytes )
+void CLIENTSTATISTICS_AddToBytesReceived( unsigned int uncompressedBytes, unsigned int compressedBytes )
 {
-	g_bytesReceivedStatTracker.AddToTic ( ulBytes );
+	g_bytesReceivedStatTracker.AddToTic ( uncompressedBytes, compressedBytes );
 }
 
 //*****************************************************************************
@@ -186,13 +217,15 @@ ADD_STAT( nettraffic )
 {
 	FString out;
 
-	out.Format( "In: %5u/%5u/%5u        Out: %5u/%5u/%5u        Loss: %5u/%5u",
+	out.Format( "In: %5u/%5u/%5u (%.1f%%)        Out: %5u/%5u/%5u (%.1f%%)        Loss: %5u/%5u",
 		g_bytesReceivedStatTracker.getValueThisTick( ),
 		g_bytesReceivedStatTracker.getValueLastSecond( ),
 		g_bytesReceivedStatTracker.getMaxValuePerSecond( ),
+		g_bytesReceivedStatTracker.getCompressionFactorLastSecond( ),
 		g_bytesSentStatTracker.getValueThisTick( ),
 		g_bytesSentStatTracker.getValueLastSecond( ),
 		g_bytesSentStatTracker.getMaxValuePerSecond( ),
+		g_bytesSentStatTracker.getCompressionFactorLastSecond( ),
 		g_missingPacketsRequestedStatTracker.getValueLastSecond( ),
 		g_missingPacketsRequestedStatTracker.getMaxValuePerSecond( ));
 
