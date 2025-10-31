@@ -750,8 +750,18 @@ void SERVER_Tick( void )
 				// recently joined the game and it's still taking time for the
 				// commands to arrive (i.e. their last move tick is still zero),
 				// don't treat it as a missing packet.
-				if (( g_aClients[i].lLastMoveTick != 0 ) && ( g_aClients[i].lLastMoveTick != gametic ))
-					g_aClients[i].numMissingPackets++;
+				if ( g_aClients[i].lLastMoveTick != 0 )
+				{
+					if ( g_aClients[i].lLastMoveTick != gametic )
+					{
+						g_aClients[i].numMissingPackets++;
+						g_aClients[i].numConsistentMoveCmdArrivals = 0;
+					}
+					else
+					{
+						g_aClients[i].numConsistentMoveCmdArrivals++;
+					}
+				}
 			}
 		}
 
@@ -2137,6 +2147,7 @@ void SERVER_SetupNewConnection( BYTESTREAM_s *pByteStream, bool bNewPlayer )
 	g_aClients[lClient].bSuspicious = false;
 	g_aClients[lClient].ulNumConsistencyWarnings = 0;
 	g_aClients[lClient].numMissingPackets = 0;
+	g_aClients[lClient].numConsistentMoveCmdArrivals = 0;
 	g_aClients[lClient].skinName = "";
 	g_aClients[lClient].commRules.clear( );
 	g_aClients[lClient].ScreenWidth = 0;
@@ -6663,6 +6674,7 @@ static bool server_ChangeTeam( BYTESTREAM_s *pByteStream )
 		// doesn't immediately assume they're missing packets because it doesn't
 		// receive their movement commands right away, depending on their ping.
 		g_aClients[g_lCurrentClient].lLastMoveTick = 0;
+		g_aClients[g_lCurrentClient].numConsistentMoveCmdArrivals = 0;
 	}
 	else
 	{
