@@ -738,7 +738,8 @@ void SERVER_Tick( void )
 
 		// [AK] After receiving packets, check if we didn't receive a movement
 		// command from an in-game players during this gametic. If that's the
-		// case, increment the number of missing packets for the player.
+		// case, and it's been more than one tick since the last command was
+		// received, increment the number of missing packets for the player.
 		if ( gamestate == GS_LEVEL )
 		{
 			for ( unsigned int i = 0; i < MAXPLAYERS; i++ )
@@ -754,7 +755,9 @@ void SERVER_Tick( void )
 				{
 					if ( g_aClients[i].lLastMoveTick != gametic )
 					{
-						g_aClients[i].numMissingPackets++;
+						if ( abs( gametic - g_aClients[i].lLastMoveTick ) > 1 )
+							g_aClients[i].numMissingPackets++;
+
 						g_aClients[i].numConsistentMoveCmdArrivals = 0;
 					}
 					else
