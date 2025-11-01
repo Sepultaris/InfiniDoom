@@ -47,6 +47,7 @@
 -	- Fixed: the angles of level-spawned actors weren't properly restored to their original values on map reset (addresses 4572). [AKMDM]
 -	- Fixed: clientside prediction sometimes made the "centerview" CCMD not work in online games (addresses 4565). [AKMDM]
 -	- Fixed: clients didn't tell the server when their userinfo CVars were changed in clientsided ACS scripts. [AKMDM]
+-	- Removed ping unlagged, which has long since been obsoleted by the superior gametic unlagged. [AKMDM]
 !	- Spectators now travel at full speed while underwater, and those using the unrestricted spectator mode now only pass through teleporters if they can see into the sector where the teleporter is. [AKMDM]
 !	- Player classes that are forbidden are no longer selectable in the player setup menu. [AKMDM]
 !	- "stat nettraffic" now shows the compression factor of packets sent or received in the last second. [AKMDM]
