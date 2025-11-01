@@ -3992,10 +3992,15 @@ void AActor::Tick ()
 
 	// This is necessary to properly interpolate movement outside this function
 	// like from an ActorMover
-	PrevX = x;
-	PrevY = y;
-	PrevZ = z;
-	PrevAngle = angle;
+	// [AK] Don't do this for players when using the client's movement buffers.
+	// It's already handled when the buffers are emptied in CLIENT_Tick.
+	if (NETWORK_InClientMode() == false || player == nullptr || cl_usemovebuffer == false)
+	{
+		PrevX = x;
+		PrevY = y;
+		PrevZ = z;
+		PrevAngle = angle;
+	}
 
 	// [BC] There are times when we don't want to tick this actor if it's a player.
 	// [BB] Voodoo dolls are an exemption.

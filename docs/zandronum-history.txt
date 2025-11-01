@@ -50,6 +50,7 @@
 !	- Spectators now travel at full speed while underwater, and those using the unrestricted spectator mode now only pass through teleporters if they can see into the sector where the teleporter is. [AKMDM]
 !	- Player classes that are forbidden are no longer selectable in the player setup menu. [AKMDM]
 !	- "stat nettraffic" now shows the compression factor of packets sent or received in the last second. [AKMDM]
+!	- Commands from the server that update the players' movements are now buffered on the client's end so that players move more smoothly. [AKMDM]
 
 
 3.2.1
