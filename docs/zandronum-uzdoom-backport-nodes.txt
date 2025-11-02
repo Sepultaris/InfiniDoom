@@ -1,9 +1,9 @@
-This document contains a list of any out-of-orders commits backported from GZDoom whose nodes failed to merge
+This document contains a list of any out-of-orders commits backported from UZDoom whose nodes failed to merge
 into Zandronum's code base, either because a file is missing or doesn't exist yet, or because the nodes were
 moved into another file that exists in Zandronum by hand. This is simply a way to keep track of changes that
-will need to be re-added once Zandronum's GZDoom base is upgraded.
+will need to be re-added once Zandronum's UZDoom base is upgraded.
 
-New entries should contain the Git hash of the commit from https://github.com/ZDoom/gzdoom, the Mercurial hash
+New entries should contain the Git hash of the commit from https://github.com/UZDoom/UZDoom, the Mercurial hash
 of the commit from https://foss.heptapod.net/zandronum/gzdoom-hg-mirror, the original commit's message, and a
 reason for why the node failed to merge. All missing nodes must be copied and pasted as-is underneath.
 ===============================================================================================================
