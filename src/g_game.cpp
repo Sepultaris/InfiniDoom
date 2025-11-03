@@ -3922,7 +3922,7 @@ void GAME_ResetMap( bool bRunEnterScripts )
 				pNewActor->SpawnAngle = pActor->SpawnAngle;
 				pNewActor->SpawnFlags = pActor->SpawnFlags;
 				P_FindFloorCeiling ( pNewActor, FFCF_SAMESECTOR | FFCF_ONLY3DFLOORS | FFCF_3DRESTRICT );
-				pNewActor->angle = ANG45 * ( pActor->SpawnAngle / 45 );
+				pNewActor->PrevAngle = pNewActor->angle = static_cast<angle_t>(( pNewActor->SpawnAngle * CONST64( 0x100000000 )) / 360 );
 				pNewActor->tid = pActor->SavedTID;
 				pNewActor->SavedTID = pActor->SavedTID;
 				pNewActor->special = pActor->SavedSpecial;
@@ -4082,7 +4082,7 @@ void GAME_ResetMap( bool bRunEnterScripts )
 			pNewActor->SpawnAngle = pActor->SpawnAngle;
 			pNewActor->SpawnFlags = pActor->SpawnFlags;
 			P_FindFloorCeiling ( pNewActor, FFCF_SAMESECTOR | FFCF_ONLY3DFLOORS | FFCF_3DRESTRICT );
-			pNewActor->angle = ANG45 * ( pActor->SpawnAngle / 45 );
+			pNewActor->PrevAngle = pNewActor->angle = static_cast<angle_t>(( pNewActor->SpawnAngle * CONST64( 0x100000000 )) / 360 );
 			pNewActor->tid = pActor->SavedTID;
 			pNewActor->SavedTID = pActor->SavedTID;
 			pNewActor->special = pActor->SavedSpecial;
