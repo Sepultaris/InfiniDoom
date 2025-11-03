@@ -5403,7 +5403,7 @@ APlayerPawn *P_SpawnPlayer (FPlayerStart *mthing, int playernum, int flags)
 
 	// [BB] We may not filter coop inventory if the player changed the player class.
 	// Thus we need to keep track of the old class.
-	const BYTE oldPlayerClass = p->CurrentPlayerClass;
+	const int oldPlayerClass = p->CurrentPlayerClass;
 	const bool bAllowChangingClass = (( p->userinfo.GetPlayerClassNum( ) != p->CurrentPlayerClass ) && ( p->playerstate != PST_LIVE ));
 
 	// [BB] The (p->userinfo.GetPlayerClassNum() != p->CurrentPlayerClass) check allows the player to change its class when respawning.

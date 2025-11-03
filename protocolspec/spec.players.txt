@@ -11,7 +11,8 @@ Command SpawnPlayer
 	Fixed x
 	Fixed y
 	Fixed z
-	Byte playerClass
+	# [AK] It's possible that a class's index is larger than what a byte can hold, so use an unsigned short.
+	UShort playerClass
 
 	If (isMorphed)
 		Short morphStyle

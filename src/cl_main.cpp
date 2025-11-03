@@ -3569,7 +3569,7 @@ void ServerCommands::SpawnPlayer::Execute()
 
 	// [BB] We may not filter coop inventory if the player changed the player class.
 	// Thus we need to keep track of the old class.
-	const BYTE oldPlayerClass = pPlayer->CurrentPlayerClass;
+	const int oldPlayerClass = pPlayer->CurrentPlayerClass;
 
 	// Set up the player class.
 	pPlayer->CurrentPlayerClass = clamp<int>( playerClass, 0, PlayerClasses.Size() -1 );
