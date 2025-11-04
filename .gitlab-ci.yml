@@ -63,6 +63,8 @@ appimage:
     - cp appimage/AppRun AppDir
     - cp appimage/zandronum.desktop AppDir
     - cp appimage/zandronum.png AppDir
+    # Ensure the AppRun is executable
+    - chmod +x AppDir/AppRun
     # Explicitly bundle SDL2, since SDL1.2-compat dynamically loads it,
     # and so linuxdeploy can't find it automatically
     - linuxdeploy --appimage-extract-and-run
