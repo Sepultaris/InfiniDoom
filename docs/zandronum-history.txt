@@ -44,6 +44,7 @@
 -	- Fixed: the scale of a skin was applied to the player's body when the skin's sprites weren't visible. [AKMDM]
 -	- Fixed: cl_noswitchonfire prevented players from switching to a new weapon if they were pressing the fire button(s) while not having a weapon selected. [AKMDM]
 -	- Fixed: the angles of level-spawned actors weren't properly restored to their original values on map reset (addresses 4572). [AKMDM]
+-	- Fixed: clientside prediction sometimes made the "centerview" CCMD not work in online games (addresses 4565). [AKMDM]
 !	- Spectators now travel at full speed while underwater, and those using the unrestricted spectator mode now only pass through teleporters if they can see into the sector where the teleporter is. [AKMDM]
 !	- Player classes that are forbidden are no longer selectable in the player setup menu. [AKMDM]
 

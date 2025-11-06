@@ -3991,7 +3991,8 @@ void P_PlayerThink (player_t *player)
 				}
 			}
 		}
-		if (player->centering)
+		// [AK] Don't try centering the view while predicting.
+		if (player->centering && CLIENT_PREDICT_IsPredicting() == false)
 		{
 			if (abs(player->mo->pitch) > 2*ANGLE_1)
 			{
