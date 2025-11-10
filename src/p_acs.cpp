@@ -11698,8 +11698,11 @@ scriptwait:
 					}
 					// [BB] If the activator is a player, tell the clients about the changed capacity.
 					// [BB] Only bother the clients if MaxAmount has actually changed.
-					if ( activator->player && NETWORK_GetState() == NETSTATE_SERVER && ( oldMaxAmount != item->MaxAmount ) )
-						SERVERCOMMANDS_SetPlayerAmmoCapacity( activator->player - players, item );
+					if (activator->player && NETWORK_GetState() == NETSTATE_SERVER)
+					{
+						if (item != nullptr && oldMaxAmount != item->MaxAmount)
+							SERVERCOMMANDS_SetPlayerAmmoCapacity (activator->player - players, item);
+					}
 				}
 			}
 			sp -= 2;
