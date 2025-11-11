@@ -87,7 +87,6 @@
 #include "sv_commands.h"
 #include "network/nettraffic.h"
 #include "za_database.h"
-#include "cl_commands.h"
 #include "cl_main.h"
 #include "chat.h"
 #include "maprotation.h"
@@ -3615,6 +3614,19 @@ void DACSThinker::Tick ()
 		ACS_StringBuilderStack.Clear();
 		I_Error("Error: %d garbage entries on ACS string builder stack.", size);
 	}
+
+	// [AK] If a client's userinfo CVars were changed from any scripts,
+	// check if it's safe to send a command to the server. It's important
+	// that this command isn't sent out too frequently, or else mods can
+	// get clients kicked for flooding the server.
+	if (NETWORK_GetState() == NETSTATE_CLIENT && userInfoChanges.size() > 0)
+	{
+		if (SERVER_CheckTimeInstancesBufferForFlood(userInfoBroadcastInstances, false) == false)
+		{
+			CLIENTCOMMANDS_UserInfo(userInfoChanges);
+			userInfoChanges.clear();
+		}
+	}
 }
 
 //=====================================================================
@@ -5761,6 +5773,10 @@ static int SetUserCVar(int playernum, const char *cvarname, int value, bool is_s
 		if (cvar != NULL)
 		{
 			DoSetCVar(cvar, value, is_string, true);
+
+			// [AK] If we're a client, save this change so it can be sent out to the server later.
+			if (NETWORK_GetState() == NETSTATE_CLIENT && DACSThinker::ActiveThinker != nullptr)
+				DACSThinker::ActiveThinker->userInfoChanges.insert(FName(cvar->GetName()));
 		}
 	}
 
