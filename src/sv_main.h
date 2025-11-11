@@ -65,14 +65,8 @@
 //*****************************************************************************
 //	DEFINES
 
-// Interval of time that clients' chat instances are reset at.
-#define	CHATINSTANCE_RESET_INTERVAL	( TICRATE * 2 )
-
-// Maximum amount of chat instance times we store.
-#define	MAX_CHATINSTANCE_STORAGE	4
-
-// Maximum amount of user info change instance times we store.
-#define	MAX_USERINFOINSTANCE_STORAGE	4
+// Maximum amount of instances stored for chatting and userinfo changes, per client.
+#define	MAX_TIME_INSTANCES_STORAGE	3
 
 // Number of seconds before a client times out.
 #define CLIENT_TIMEOUT				40
@@ -158,6 +152,9 @@
 #define SQF2_ALL					( SQF2_PWAD_HASHES|SQF2_COUNTRY|SQF2_GAMEMODE_NAME|SQF2_GAMEMODE_SHORTNAME|SQF2_VOICECHAT )
 
 #define	MAX_STORED_QUERY_IPS		512
+
+// [AK] A ring buffer for the game ticks a client chatted or sent userinfo changes.
+typedef RingBuffer<int, MAX_TIME_INSTANCES_STORAGE> TimeInstancesBuffer;
 
 //*****************************************************************************
 enum CLIENTSTATE_e
@@ -401,15 +398,11 @@ struct CLIENT_s
 	// [AK] A list of (non-zero) gametics of the last few weapon select commands the client sent us.
 	RingBuffer<ULONG, MAX_RECENT_COMMANDS>	recentSelectCMDs;
 
-	// A record of the gametic the client spoke at. We store the last MAX_CHATINSTANCE_STORAGE
-	// times the client chatted. This is used to chat spam protection.
-	LONG			lChatInstances[MAX_CHATINSTANCE_STORAGE];
-	ULONG			ulLastChatInstance;
+	// A record of the last several game ticks the client spoke at, used for spam protection.
+	TimeInstancesBuffer		chatInstances;
 
-	// A record of the gametic the client spoke at. We store the last MAX_CHATINSTANCE_STORAGE
-	// times the client chatted. This is used to chat spam protection.
-	LONG			lUserInfoInstances[MAX_USERINFOINSTANCE_STORAGE];
-	ULONG			ulLastUserInfoInstance;
+	// A record of the last several game ticks the client sent userinfo changes, used for spam protection.
+	TimeInstancesBuffer		userinfoInstances;
 
 	// Record the last time this player changed teams, so we can potentially forbid him from
 	// doing it again.
@@ -631,6 +624,7 @@ void STACK_ARGS SERVER_PrintWarning( const char* format, ... ) GCCPRINTF( 1, 2 )
 void		SERVER_FlagsetChanged( FIntCVar& flagset, int maxflags = 2 );
 void		SERVER_SettingChanged( FBaseCVar &cvar, bool bUpdateConsole, int maxDecimals = 0 );
 void		SERVER_DestroyActorIfClientsidedOnly( AActor *actor );
+bool		SERVER_CheckTimeInstancesBufferForFlood( TimeInstancesBuffer &instances, bool saveIfFloodDetected );
 
 // From sv_master.cpp
 void		SERVER_MASTER_Construct( void );
