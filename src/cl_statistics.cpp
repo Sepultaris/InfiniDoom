@@ -54,6 +54,8 @@
 #include "stats.h"
 #include "doomdef.h"
 #include "doomstat.h"
+#include "v_palette.h"
+#include "v_video.h"
 
 //*****************************************************************************
 //	CLASSES
@@ -72,6 +74,10 @@ class StatTracker
 	unsigned int _compressedValueThisSecond;
 	unsigned int _compressedValueLastSecond;
 
+	// [AK] Used for drawing the net graph.
+	unsigned int _maxValueLastMinute;
+	RingBuffer<unsigned int, MINUTE> _valuesLastMinute;
+
 public:
 	StatTracker ( )
 	{
@@ -88,6 +94,8 @@ public:
 		_compressedValueThisTick = 0;
 		_compressedValueThisSecond = 0;
 		_compressedValueLastSecond = 0;
+		_maxValueLastMinute = 0;
+		_valuesLastMinute.clear( );
 	}
 
 	void AddToTic ( const int Value, const int CompressedValue = 0 )
@@ -113,12 +121,21 @@ public:
 	{
 		_valueLastSecond = _valueThisSecond;
 		_valueThisSecond = 0;
+
 		if ( _maxValuePerSecond < _valueLastSecond )
 			_maxValuePerSecond = _valueLastSecond;
 
 		// [AK] Save the compressed value from this second too.
 		_compressedValueLastSecond = _compressedValueThisSecond;
 		_compressedValueThisSecond = 0;
+
+		// [AK] Add the uncompressed value from this last second to the buffer of
+		// values in the last minute, then determine the new maximum value.
+		_valuesLastMinute.put( _valueLastSecond );
+		_maxValueLastMinute = 0;
+
+		for ( unsigned int i = 0; i < MINUTE; i++ )
+			_maxValueLastMinute = MAX<unsigned>( _maxValueLastMinute, _valuesLastMinute.getOldestEntry( i ));
 	}
 
 	unsigned int getTotalValue ( ) const
@@ -151,6 +168,192 @@ public:
 
 		return percentage;
 	}
+
+	// [AK] Returns the largest uncompressed value in the last minute.
+	unsigned int getMaxValueLastMinute ( ) const
+	{
+		return _maxValueLastMinute;
+	}
+
+	// [AK] Returns any uncompressed value in the last minute, from 0-59 seconds.
+	unsigned int getValueLastMinute ( unsigned int second ) const
+	{
+		return ( second < MINUTE ? _valuesLastMinute.getOldestEntry( second ) : 0 );
+	}
+};
+
+//*****************************************************************************
+// [AK]
+class NetGraph
+{
+public:
+	NetGraph( const char *label, const char *scaleLabel, unsigned int scaleDivider, unsigned int defaultScaleMax, unsigned int scaleBonus ) :
+		label( label ),
+		scaleLabel( scaleLabel ),
+		scaleDivider( scaleDivider > 0 ? scaleDivider : 1 ),
+		defaultScaleMax( defaultScaleMax ),
+		scaleBonus( scaleBonus ) { }
+
+	void AddLine( const StatTracker &tracker, const char *name, PalEntry color )
+	{
+		lines.Push( { tracker, name, color } );
+	}
+
+	void Draw( const int leftX, const int topY ) const
+	{
+		const int rightX = leftX + WIDTH;
+		const int bottomY = topY + HEIGHT;
+		const int gridColor = MAKERGB( 48, 48, 48 );
+		const int borderColor = MAKERGB( 64, 64, 64 );
+		unsigned int scaleMax = defaultScaleMax;
+		int textXPos = 0;
+		int textYPos = 0;
+		int textYOffset = 0;
+		FString scaleText = '0';
+
+		// [AK] Determine the maximum value to be used on the scale.
+		for ( unsigned int i = 0; i < lines.Size( ); i++ )
+			scaleMax = MAX<unsigned>( scaleMax, lines[i].tracker.getMaxValueLastMinute( ) + scaleBonus );
+
+		// [AK] Draw the background of the net graph first.
+		screen->Dim( MAKERGB( 16, 16, 16 ), 0.65f, leftX, topY, WIDTH, HEIGHT );
+
+		// [AK] Next, draw the gridlines. The vertical lines move left as time goes.
+		const int secondsBetweenVerticalGridLines = MINUTE / 6;
+		int verticalGridLineX = leftX - (( gametic / TICRATE ) % ( secondsBetweenVerticalGridLines )) * TICK_WIDTH;
+		int horizontalGridLineY = topY;
+
+		do
+		{
+			verticalGridLineX += TICK_WIDTH * secondsBetweenVerticalGridLines;
+
+			if ( verticalGridLineX >= rightX )
+				break;
+
+			screen->DrawLine( verticalGridLineX, topY, verticalGridLineX, bottomY, -1, gridColor );
+
+		} while ( true );
+
+		do
+		{
+			horizontalGridLineY += HEIGHT / 4;
+
+			if ( horizontalGridLineY >= bottomY )
+				break;
+
+			screen->DrawLine( leftX, horizontalGridLineY, rightX, horizontalGridLineY, -1, gridColor );
+
+		} while ( true );
+
+		// [AK] Draw each line to be plotted on the graph.
+		for ( unsigned int i = 0; i < lines.Size( ); i++ )
+		{
+			int lineXPos1 = 0;
+			int lineYPos1 = 0;
+
+			for ( unsigned int j = 0; j < MINUTE; j++ )
+			{
+				int lineXPos2 = leftX + TICK_WIDTH * j;
+				int lineYPos2 = bottomY - static_cast<int>(( lines[i].tracker.getValueLastMinute( j ) * HEIGHT ) / scaleMax );
+
+				if ( j > 0 )
+					screen->DrawLine( lineXPos1, lineYPos1, lineXPos2, lineYPos2, -1, lines[i].color );
+
+				lineXPos1 = lineXPos2;
+				lineYPos1 = lineYPos2;
+			}
+		}
+
+		// [AK] If this net graph has more than one line to draw, add a legend.
+		if ( lines.Size( ) > 1 )
+		{
+			int legendXPos = leftX + LEGEND_SPACING;
+			int legendYPos = topY + LEGEND_SPACING;
+
+			for ( unsigned int i = 0; i < lines.Size( ); i++ )
+			{
+				if ( lines[i].name.IsEmpty( ))
+					continue;
+
+				const int legendTextWidth = ConFont->StringWidth( lines[i].name.GetChars( ));
+				const int totalLegendWidth = legendTextWidth + LEGEND_LINE_WIDTH + LEGEND_SPACING;
+
+				// [AK] Check if there's enough room to draw this line's legend.
+				if ( legendXPos + totalLegendWidth > rightX - LEGEND_SPACING )
+				{
+					// [AK] If the legend is somehow too big to fit in the net graph,
+					// just continue to the next line instead.
+					if ( totalLegendWidth + 2 * LEGEND_SPACING > WIDTH )
+						continue;
+
+					legendXPos = leftX + LEGEND_SPACING;
+					legendYPos += ConFont->GetHeight( ) + 2;
+
+					// [AK] Stop if there's no vertical space left to fit more legends.
+					if ( legendYPos > bottomY - LEGEND_SPACING )
+						break;
+				}
+
+				screen->DrawLine( legendXPos, legendYPos, legendXPos + LEGEND_LINE_WIDTH, legendYPos, -1, lines[i].color );
+				legendXPos += LEGEND_LINE_WIDTH + LEGEND_SPACING;
+
+				int newYPos = legendYPos - ConFont->StringHeight( lines[i].name.GetChars( ), &textYOffset ) / 2;
+
+				screen->DrawText( ConFont, CR_GREY, legendXPos, newYPos - textYOffset, lines[i].name.GetChars( ), TAG_DONE );
+				legendXPos += ConFont->StringWidth( lines[i].name.GetChars( )) + LEGEND_SPACING;
+			}
+		}
+
+		// [AK] Draw the borders around the graph after drawing the lines.
+		screen->DrawLine( leftX, topY, rightX, topY, -1, borderColor );
+		screen->DrawLine( leftX, bottomY, rightX, bottomY, -1, borderColor );
+		screen->DrawLine( leftX, topY, leftX, bottomY, -1, borderColor );
+		screen->DrawLine( rightX, topY, rightX, bottomY, -1, borderColor );
+
+		// [AK] Draw the graph's label in the top-center, if applicable.
+		if ( label.IsNotEmpty( ))
+		{
+			textXPos = leftX + ( WIDTH - ConFont->StringWidth( label.GetChars( ))) / 2;
+			textYPos = topY - ConFont->StringHeight( label.GetChars( ), &textYOffset ) - 2;
+
+			screen->DrawText( ConFont, CR_WHITE, textXPos, textYPos - textYOffset, label.GetChars( ), TAG_DONE );
+		}
+
+		// [AK] Draw the min and max scale values on the right, and the label if there is one.
+		textXPos = rightX + 2;
+		textYPos = bottomY - ConFont->StringHeight( scaleText.GetChars( ), &textYOffset );
+		screen->DrawText( ConFont, CR_WHITE, textXPos, textYPos - textYOffset, scaleText.GetChars( ), TAG_DONE );
+
+		scaleText.Format( "%u", scaleDivider > 1 ? scaleMax / scaleDivider : scaleMax );
+
+		if ( scaleLabel.IsNotEmpty( ))
+			scaleText.AppendFormat( " %s", scaleLabel.GetChars( ));
+
+		screen->DrawText( ConFont, CR_WHITE, textXPos, topY, scaleText.GetChars( ), TAG_DONE );
+	}
+
+	// [AK] Static constants for the net graph.
+	static const int TICK_WIDTH = 8;
+	static const int WIDTH = TICK_WIDTH * ( MINUTE - 1 );
+	static const int HEIGHT = 120;
+
+	static const int LEGEND_LINE_WIDTH = 16;
+	static const int LEGEND_SPACING = 10;
+
+private:
+	struct Line
+	{
+		const StatTracker &tracker;
+		FString name;
+		PalEntry color;
+	};
+
+	TArray<Line> lines;
+	const FString label;
+	const FString scaleLabel;
+	const unsigned int scaleDivider;
+	const unsigned int defaultScaleMax;
+	const unsigned int scaleBonus;
 };
 
 //*****************************************************************************
@@ -160,6 +363,15 @@ static	StatTracker			g_bytesSentStatTracker;
 static	StatTracker			g_bytesReceivedStatTracker;
 static	StatTracker			g_missingPacketsRequestedStatTracker;
 
+static	NetGraph			g_NetTrafficGraph( "Network Traffic", "KB/s", 1000, 6000, 2000 );
+static	NetGraph			g_MissingPacketsGraph( "Missing Packets", nullptr, 1, 10, 2 );
+
+//*****************************************************************************
+//	CONSOLE VARIABLES
+
+// [AK] If enabled, shows the net graph when the "nettraffic" stat is active.
+CVAR( Bool, cl_netgraph, false, CVAR_ARCHIVE | CVAR_NOSETBYACS )
+
 //*****************************************************************************
 //	FUNCTIONS
 
@@ -168,6 +380,11 @@ void CLIENTSTATISTICS_Construct( void )
 	g_bytesSentStatTracker.Clear();
 	g_bytesReceivedStatTracker.Clear();
 	g_missingPacketsRequestedStatTracker.Clear();
+
+	// [AK] Add each of the lines to their respective net graphs.
+	g_NetTrafficGraph.AddLine( g_bytesReceivedStatTracker, "In", MAKERGB( 255, 20, 35 ));
+	g_NetTrafficGraph.AddLine( g_bytesSentStatTracker, "Out", MAKERGB( 100, 255, 55 ));
+	g_MissingPacketsGraph.AddLine( g_missingPacketsRequestedStatTracker, "Missing", MAKERGB( 255, 20, 35 ));
 }
 
 //*****************************************************************************
@@ -208,6 +425,23 @@ void CLIENTSTATISTICS_AddToBytesReceived( unsigned int uncompressedBytes, unsign
 void CLIENTSTATISTICS_AddToMissingPacketsRequested( unsigned int Num )
 {
 	g_missingPacketsRequestedStatTracker.AddToTic ( Num );
+}
+
+//*****************************************************************************
+//
+void CLIENTSTATISTICS_DrawNetGraph( int xPos, int yPos )
+{
+	// [AK] Move the top of the first net graph by an extra four pixels.
+	int newYPos = yPos - ( NetGraph::HEIGHT + 4 );
+
+	if ( cl_netgraph )
+	{
+		g_NetTrafficGraph.Draw( xPos, newYPos );
+
+		// [AK] Separate both net graphs by an extra eight pixels.
+		newYPos -= ( NetGraph::HEIGHT + 8 + ConFont->GetHeight( ));
+		g_MissingPacketsGraph.Draw( xPos, newYPos );
+	}
 }
 
 //*****************************************************************************

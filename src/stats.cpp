@@ -45,6 +45,8 @@
 #include "c_dispatch.h"
 #include "m_swap.h"
 #include "sbar.h"
+// [AK] New #includes.
+#include "cl_statistics.h"
 
 
 #if defined (__APPLE__)
@@ -110,6 +112,7 @@ void FStat::PrintStat ()
 	int fontheight = ConFont->GetHeight() + 1;
 	int y = SCREENHEIGHT;
 	int count = 0;
+	bool drawnetgraph = false; // [AK]
 
 	for (FStat *stat = FirstStat; stat != NULL; stat = stat->m_Next)
 	{
@@ -132,12 +135,21 @@ void FStat::PrintStat ()
 					}
 					screen->DrawText(ConFont, CR_GREEN, 5, y, stattext, TAG_DONE);
 					count++;
+
+					// [AK] The net graph is only drawn when the "nettraffic" stat is active.
+					// This isn't the most efficient way to check for this stat.
+					if (drawnetgraph == false && stricmp(stat->m_Name, "nettraffic") == 0)
+						drawnetgraph = true;
 				}
 			}
 		}
 	}
 	if (count)
 	{
+		// [AK] Draw the net graph, if applicable.
+		if (drawnetgraph)
+			CLIENTSTATISTICS_DrawNetGraph(5, y);
+
 		ST_SetNeedRefresh();
 	}
 }
