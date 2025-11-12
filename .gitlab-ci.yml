@@ -116,6 +116,8 @@ appimage:
         -DFMOD_LIBRARY="$env:ZA_FMOD_ROOT\api\lib\fmodex${fmodArch}_vc.lib"
         -DOPUS_INCLUDE_DIR="$env:ZA_OPUS_ROOT\include"
         -DOPUS_LIBRARIES="$env:ZA_OPUS_ROOT\win32\VS2015\${env:ARCH}\Release\opus.lib"
+        -DZSTD_INCLUDE_DIR="$env:ZA_ZSTD_ROOT\include"
+        -DZSTD_LIBRARY="$env:ZA_ZSTD_ROOT\lib\${env:ARCH}\zstd_static.lib"
         -DRELEASE_WITH_DEBUG_FILE=ON
         .. &&
       & 'C:\Program Files (x86)\MSBuild\14.0\Bin\amd64\MSBuild.exe'

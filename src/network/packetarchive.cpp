@@ -229,7 +229,11 @@ bool OutgoingPacketBuffer::SendPacket( unsigned int packetNumber, const NETADDRE
 	TempBuffer.ByteStream.WriteLong( packetNumber );
 	if ( packetSize > 0 )
 		TempBuffer.ByteStream.WriteBuffer( packetData, packetSize );
-	NETWORK_LaunchPacket( &TempBuffer, Address );
+
+	// [AK] For the sake of reverse-compatibility with clients running older
+	// versions that don't support ZStd compression, always use Huffman encoding
+	// when sending out packets to clients who aren't connected.
+	NETWORK_LaunchPacket( &TempBuffer, Address, SERVER_GetClient( _clientIdx )->State >= CLS_CONNECTED );
 	TempBuffer.Free();
 	return true;
 }

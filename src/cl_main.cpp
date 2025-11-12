@@ -968,7 +968,10 @@ const FString &CLIENT_GetPlayerAccountName( int player )
 void CLIENT_SendServerPacket( void )
 {
 	// Launch the packet, and clear out the buffer.
-	NETWORK_LaunchPacket( &g_LocalBuffer, g_AddressServer );
+	// [AK] For the sake of reverse-compatibility with servers running older
+	// versions that don't support ZStd compression, always use Huffman encoding
+	// when sending out packets upon connecting to a server.
+	NETWORK_LaunchPacket( &g_LocalBuffer, g_AddressServer, CLIENT_GetConnectionState( ) != CTS_ATTEMPTINGCONNECTION );
 	g_LocalBuffer.Clear();
 }
 

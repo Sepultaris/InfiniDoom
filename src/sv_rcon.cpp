@@ -220,7 +220,7 @@ void SERVER_RCON_ParseMessage( NETADDRESS_s Address, LONG lMessage, BYTESTREAM_s
 				g_MessageBuffer.ByteStream.WriteShort( list.Size() );
 			}
 
-			NETWORK_LaunchPacket( &g_MessageBuffer, g_AuthedClients[iIndex].Address );
+			NETWORK_LaunchPacket( &g_MessageBuffer, g_AuthedClients[iIndex].Address, false );
 		}
 		break;
 	}
@@ -241,7 +241,7 @@ void SERVER_RCON_Print( const char *pszString )
 		g_MessageBuffer.Clear();
 		g_MessageBuffer.ByteStream.WriteByte( SVRC_MESSAGE );
 		g_MessageBuffer.ByteStream.WriteString( pszString );
-		NETWORK_LaunchPacket( &g_MessageBuffer, g_AuthedClients[i].Address );
+		NETWORK_LaunchPacket( &g_MessageBuffer, g_AuthedClients[i].Address, false );
 	}
 
 	//==========================================
@@ -280,7 +280,7 @@ void SERVER_RCON_UpdateInfo( int iUpdateType )
 		g_MessageBuffer.Clear();
 		g_MessageBuffer.ByteStream.WriteByte( SVRC_UPDATE );		
 		server_WriteUpdateInfo( &g_MessageBuffer.ByteStream, iUpdateType );
-		NETWORK_LaunchPacket( &g_MessageBuffer, g_AuthedClients[i].Address );
+		NETWORK_LaunchPacket( &g_MessageBuffer, g_AuthedClients[i].Address, false );
 	}
 }
 
@@ -341,7 +341,7 @@ static void server_rcon_HandleNewConnection( NETADDRESS_s Address,  int iProtoco
 	if ( SERVERBAN_IsIPBanned( Address ))
 	{
 		g_MessageBuffer.ByteStream.WriteByte( SVRC_BANNED );
-		NETWORK_LaunchPacket( &g_MessageBuffer, Address );
+		NETWORK_LaunchPacket( &g_MessageBuffer, Address, false );
 		g_BadRequestFloodQueue.addAddress( Address, gametic / 1000 );
 		return;
 	}
@@ -352,7 +352,7 @@ static void server_rcon_HandleNewConnection( NETADDRESS_s Address,  int iProtoco
 		g_MessageBuffer.ByteStream.WriteByte( SVRC_OLDPROTOCOL );
 		g_MessageBuffer.ByteStream.WriteByte( PROTOCOL_VERSION );
 		g_MessageBuffer.ByteStream.WriteString( DOTVERSIONSTR );
-		NETWORK_LaunchPacket( &g_MessageBuffer, Address );
+		NETWORK_LaunchPacket( &g_MessageBuffer, Address, false );
 		g_BadRequestFloodQueue.addAddress( Address, gametic / 1000 );
 		return;
 	}
@@ -376,7 +376,7 @@ static void server_rcon_HandleNewConnection( NETADDRESS_s Address,  int iProtoco
 	g_MessageBuffer.Clear();
 	g_MessageBuffer.ByteStream.WriteByte( SVRC_SALT );
 	g_MessageBuffer.ByteStream.WriteString( Candidate.szSalt );
-	NETWORK_LaunchPacket( &g_MessageBuffer, Address );
+	NETWORK_LaunchPacket( &g_MessageBuffer, Address, false );
 }
 
 //==========================================================================
@@ -405,8 +405,10 @@ static void server_rcon_HandleLogin( int iCandidateIndex, const char *pszHash )
 	if ( fsCorrectHash.Compare( pszHash ) || ( strlen( sv_rconpassword.GetGenericRep(CVAR_String).String ) == 0 ) )
 	{
 		// Wrong password.
+		// [RC] Note: Be sure to finish any packets before calling Printf().
+		// Otherwise SERVER_RCON_Print will clear your buffer.
 		g_MessageBuffer.ByteStream.WriteByte( SVRC_INVALIDPASSWORD );
-		NETWORK_LaunchPacket( &g_MessageBuffer, g_Candidates[iCandidateIndex].Address ); // [RC] Note: Be sure to finish any packets before calling Printf(). Otherwise SERVER_RCON_Print will clear your buffer.
+		NETWORK_LaunchPacket( &g_MessageBuffer, g_Candidates[iCandidateIndex].Address, false );
 
 		// To prevent mass password flooding, ignore the IP for a few seconds.
 		g_BadRequestFloodQueue.addAddress( g_Candidates[iCandidateIndex].Address, gametic / 1000 );
@@ -448,7 +450,7 @@ static void server_rcon_HandleLogin( int iCandidateIndex, const char *pszHash )
 		for( std::list<FString>::iterator i = g_RecentConsoleLines.begin(); i != g_RecentConsoleLines.end(); ++i )
 			g_MessageBuffer.ByteStream.WriteString( *i );
 
-		NETWORK_LaunchPacket( &g_MessageBuffer, g_Candidates[iCandidateIndex].Address );
+		NETWORK_LaunchPacket( &g_MessageBuffer, g_Candidates[iCandidateIndex].Address, false );
 		SERVER_RCON_UpdateInfo( SVRCU_ADMINCOUNT );
 	}
 

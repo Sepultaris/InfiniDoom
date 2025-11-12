@@ -632,8 +632,7 @@ void SERVER_MASTER_Tick( void )
 	g_MasterServerBuffer.ByteStream.WriteLong( GetRevisionNumber() );
 
 	// Send the master server our packet.
-//	NETWORK_LaunchPacket( &g_MasterServerBuffer, g_AddressMasterServer, true );
-	NETWORK_LaunchPacket( &g_MasterServerBuffer, g_AddressMasterServer );
+	NETWORK_LaunchPacket( &g_MasterServerBuffer, g_AddressMasterServer, false );
 }
 
 //*****************************************************************************
@@ -691,8 +690,6 @@ void SERVER_MASTER_Broadcast( void )
 
 	// Broadcast our packet.
 	SERVER_MASTER_SendServerInfo( AddressBroadcast, SQF_ALL, 0, SQF2_ALL, true, false );
-//	NETWORK_WriteLong( &g_MasterServerBuffer, MASTER_CHALLENGE );
-//	NETWORK_LaunchPacket( g_MasterServerBuffer, AddressBroadcast, true );
 }
 
 //*****************************************************************************
@@ -726,8 +723,7 @@ void SERVER_MASTER_SendServerInfo( NETADDRESS_s Address, ULONG ulFlags, ULONG ul
 					g_MasterServerBuffer.ByteStream.WriteLong( ulTime );
 
 					// Send the packet.
-	//				NETWORK_LaunchPacket( &g_MasterServerBuffer, Address, true );
-					NETWORK_LaunchPacket( &g_MasterServerBuffer, Address );
+					NETWORK_LaunchPacket( &g_MasterServerBuffer, Address, false );
 
 					if ( sv_showlauncherqueries )
 						Printf( "Ignored IP launcher challenge.\n" );
@@ -752,7 +748,7 @@ void SERVER_MASTER_SendServerInfo( NETADDRESS_s Address, ULONG ulFlags, ULONG ul
 			g_MasterServerBuffer.ByteStream.WriteLong( ulTime );
 
 			// Send the packet.
-			NETWORK_LaunchPacket( &g_MasterServerBuffer, Address );
+			NETWORK_LaunchPacket( &g_MasterServerBuffer, Address, false );
 
 			if ( sv_showlauncherqueries )
 				Printf( "Denied BANNED IP launcher challenge.\n" );
@@ -907,13 +903,13 @@ void SERVER_MASTER_SendServerInfo( NETADDRESS_s Address, ULONG ulFlags, ULONG ul
 			offset += readSize;
 			g_SegmentBuffer.ByteStream.pbStream += readSize;
 
-			NETWORK_LaunchPacket( &g_SegmentBuffer, Address );
+			NETWORK_LaunchPacket( &g_SegmentBuffer, Address, false );
 			segmentNumber++;
 		}
 	}
 	else
 	{
-		NETWORK_LaunchPacket( &g_MasterServerBuffer, Address );
+		NETWORK_LaunchPacket( &g_MasterServerBuffer, Address, false );
 	}
 }
 
@@ -964,7 +960,7 @@ void SERVER_MASTER_HandleVerificationRequest( BYTESTREAM_s *pByteStream  )
 	g_MasterServerBuffer.ByteStream.WriteLong( lVerificationNumber );
 
 	// [BB] Send the master server our packet.
-	NETWORK_LaunchPacket( &g_MasterServerBuffer, SERVER_MASTER_GetMasterAddress () );
+	NETWORK_LaunchPacket( &g_MasterServerBuffer, SERVER_MASTER_GetMasterAddress (), false );
 }
 
 //*****************************************************************************
@@ -976,7 +972,7 @@ void SERVER_MASTER_SendBanlistReceipt ( void )
 	g_MasterServerBuffer.ByteStream.WriteString( SERVER_GetMasterBanlistVerificationString().GetChars() );
 
 	// [BB] Send the master server our packet.
-	NETWORK_LaunchPacket( &g_MasterServerBuffer, SERVER_MASTER_GetMasterAddress () );
+	NETWORK_LaunchPacket( &g_MasterServerBuffer, SERVER_MASTER_GetMasterAddress (), false );
 }
 
 //--------------------------------------------------------------------------------------------------------------------------------------------------

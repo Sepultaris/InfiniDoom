@@ -623,7 +623,7 @@ void SERVER_Destruct( void )
 		if ( SERVER_IsValidClient( ulIdx ))
 		{
 			SERVER_KickPlayer( ulIdx, "Server is shutting down" );
-			NETWORK_LaunchPacket( &SERVER_GetClient( ulIdx )->PacketBuffer, SERVER_GetClient( ulIdx )->Address );
+			NETWORK_LaunchPacket( &SERVER_GetClient( ulIdx )->PacketBuffer, SERVER_GetClient( ulIdx )->Address, true );
 		}
 
 		g_aClients[ulIdx].PacketBuffer.Free();
@@ -990,7 +990,10 @@ void SERVER_SendClientPacket( ULONG ulClient, bool bReliable )
 	pClient->UnreliablePacketBuffer.WriteTo ( TempBuffer.ByteStream );
 
 	// Finally, send the packet, and clear the buffer.
-	NETWORK_LaunchPacket( &TempBuffer, pClient->Address );
+	// [AK] For the sake of reverse-compatibility with clients running older
+	// versions that don't support ZStd compression, always use Huffman encoding
+	// when sending out packets to clients who aren't connected.
+	NETWORK_LaunchPacket( &TempBuffer, pClient->Address, pClient->State >= CLS_CONNECTED );
 	pClient->UnreliablePacketBuffer.Clear();
 }
 
@@ -2414,8 +2417,10 @@ void SERVER_ConnectionError( NETADDRESS_s Address, const char *pszMessage, ULONG
 	TempBuffer.ByteStream.WriteByte( SVCC_ERROR );
 	TempBuffer.ByteStream.WriteByte( ulErrorCode );
 
-//	NETWORK_LaunchPacket( TempBuffer, Address, true );
-	NETWORK_LaunchPacket( &TempBuffer, Address );
+	// [AK] For the sake of reverse-compatibility with clients running older
+	// versions that don't support ZStd compression, always use Huffman encoding
+	// when sending out this packet.
+	NETWORK_LaunchPacket( &TempBuffer, Address, false );
 	TempBuffer.Free();
 }
 

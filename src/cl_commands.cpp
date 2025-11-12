@@ -457,7 +457,7 @@ void CLIENTCOMMANDS_Pong( unsigned int time )
 	TempBuffer.Init( MAX_UDP_PACKET, BUFFERTYPE_WRITE );
 	TempBuffer.ByteStream.WriteByte( CLC_PONG );
 	TempBuffer.ByteStream.WriteLong( time );
-	NETWORK_LaunchPacket( &TempBuffer, NETWORK_GetFromAddress( ) );
+	NETWORK_LaunchPacket( &TempBuffer, NETWORK_GetFromAddress( ), true );
 	TempBuffer.Free();
 }
 

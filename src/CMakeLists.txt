@@ -696,6 +696,11 @@ if ( NOT NO_SOUND )
 	set( ZDOOM_LIBS ${ZDOOM_LIBS} ${OPUS_LIBRARIES} rnnoise )
 endif ( NOT NO_SOUND )
 
+# [AK] We also need ZStd for encoding/decoding network packets.
+find_package( ZStd REQUIRED )
+include_directories( ${ZSTD_INCLUDE_DIR} )
+set( ZDOOM_LIBS ${ZDOOM_LIBS} ${ZSTD_LIBRARY} )
+
 if( NOT DYN_FLUIDSYNTH)
 	if( FLUIDSYNTH_FOUND )
 		set( ZDOOM_LIBS ${ZDOOM_LIBS} "${FLUIDSYNTH_LIBRARIES}" )

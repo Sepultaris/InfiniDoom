@@ -78,6 +78,7 @@
 #include "cl_statistics.h"
 #include "doomtype.h"
 #include "huffman.h"
+#include "zstd.h"
 #include "i_system.h"
 #include "sv_main.h"
 #include "m_random.h"
@@ -175,6 +176,9 @@ static	LONG			g_lNetworkState = NETSTATE_SINGLE;
 
 // Buffer that holds the data from the most recently received packet.
 static	NETBUFFER_s		g_NetworkMessage;
+
+// [AK] Was the most recently received packet compressed using ZStd?
+static	bool			g_LatestPacketUsedZStd = false;
 
 // Network address that the most recently received packet came from.
 static	NETADDRESS_s	g_AddressFrom;
@@ -776,7 +780,7 @@ NETADDRESS_s NETWORK_GetFromAddress( void )
 
 //*****************************************************************************
 //
-void NETWORK_LaunchPacket( NETBUFFER_s *buffer, NETADDRESS_s address )
+void NETWORK_LaunchPacket( NETBUFFER_s *buffer, NETADDRESS_s address, bool useZStd )
 {
 	int numBytesOut = sizeof( g_ucHuffmanBuffer );
 	int numBytes = 0;
@@ -794,7 +798,11 @@ void NETWORK_LaunchPacket( NETBUFFER_s *buffer, NETADDRESS_s address )
 	// [BB] Communication with the auth server is not Huffman-encoded.
 	if ( address.Compare( NETWORK_AUTH_GetCachedServerAddress( )) == false )
 	{
-		HUFFMAN_Encode( static_cast<unsigned char *>( buffer->pbData ), g_ucHuffmanBuffer, buffer->ulCurrentSize, &numBytesOut );
+		// [AK] Choose between compressing the packet using ZStd or Huffman.
+		if ( useZStd )
+			numBytesOut = ZSTD_compress( g_ucHuffmanBuffer, sizeof( g_ucHuffmanBuffer ), buffer->pbData, buffer->ulCurrentSize, 12 );
+		else
+			HUFFMAN_Encode( static_cast<unsigned char *>( buffer->pbData ), g_ucHuffmanBuffer, buffer->ulCurrentSize, &numBytesOut );
 	}
 	else
 	{
@@ -997,6 +1005,13 @@ NETADDRESS_s	NETWORK_GetCachedLocalAddress( void )
 NETBUFFER_s *NETWORK_GetNetworkMessageBuffer( void )
 {
 	return ( &g_NetworkMessage );
+}
+
+//*****************************************************************************
+//
+bool NETWORK_LatestPacketCompressedUsingZStd( void )
+{
+	return g_LatestPacketUsedZStd;
 }
 
 //*****************************************************************************
@@ -1733,7 +1748,21 @@ static int network_ReadPacketsFromSocket( SOCKET &socket )
 	// [BB] Communication with the auth server is not Huffman-encoded.
 	if ( g_AddressFrom.Compare( NETWORK_AUTH_GetCachedServerAddress( )) == false )
 	{
-		HUFFMAN_Decode( g_ucHuffmanBuffer, static_cast<unsigned char *>( g_NetworkMessage.pbData ), numBytes, &numDecodedBytes );
+		// [AK] First, try decompressing the packet using ZStd.
+		numDecodedBytes = ZSTD_decompress( g_NetworkMessage.pbData, g_NetworkMessage.ulMaxSize, g_ucHuffmanBuffer, numBytes );
+
+		// [AK] If it failed, then the packet wasn't compressed using ZStd.
+		// Try decompressing it using Huffman then.
+		if ( ZSTD_isError( numDecodedBytes ))
+		{
+			HUFFMAN_Decode( g_ucHuffmanBuffer, static_cast<unsigned char *>( g_NetworkMessage.pbData ), numBytes, &numDecodedBytes );
+			g_LatestPacketUsedZStd = false;
+		}
+		else
+		{
+			g_LatestPacketUsedZStd = true;
+		}
+
 		g_NetworkMessage.ulCurrentSize = numDecodedBytes;
 	}
 	else

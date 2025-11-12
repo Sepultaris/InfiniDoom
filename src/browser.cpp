@@ -814,8 +814,7 @@ void BROWSER_QueryMasterServer( void )
 	g_MasterServerBuffer.ByteStream.WriteShort( MASTER_SERVER_VERSION );
 
 	// Send the master server our packet.
-//	NETWORK_LaunchPacket( &g_MasterServerBuffer, g_AddressMasterServer, true );
-	NETWORK_LaunchPacket( &g_MasterServerBuffer, g_AddressMasterServer );
+	NETWORK_LaunchPacket( &g_MasterServerBuffer, g_AddressMasterServer, false );
 }
 
 //*****************************************************************************
@@ -906,7 +905,7 @@ static void browser_QueryServer( ULONG ulServer )
 	g_ServerBuffer.ByteStream.WriteLong( SQF2_GAMEMODE_NAME|SQF2_GAMEMODE_SHORTNAME );
 
 	// Send the server our packet.
-	NETWORK_LaunchPacket( &g_ServerBuffer, g_BrowserServerList[ulServer].Address );
+	NETWORK_LaunchPacket( &g_ServerBuffer, g_BrowserServerList[ulServer].Address, false );
 
 	// Keep track of the time we queried this server at.
 	g_BrowserServerList[ulServer].lMSTime = I_MSTime( );
