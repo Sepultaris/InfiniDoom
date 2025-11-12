@@ -197,70 +197,54 @@ void NETWORK_Construct( USHORT usPort, const char *pszIPAddress )
 //
 int NETWORK_GetPackets( void )
 {
-	LONG				lNumBytes;
-	INT					iDecodedNumBytes = g_NetworkMessage.ulMaxSize;
-	sockaddr			SocketFrom;
-	INT					iSocketFromLength;
+	sockaddr socketFrom;
+	int socketFromLength = sizeof( socketFrom );
+	int numDecodedBytes = g_NetworkMessage.ulMaxSize;
+	int numBytes = 0;
 
-    iSocketFromLength = sizeof( SocketFrom );
-
-#ifdef	WIN32
-	lNumBytes = recvfrom( g_NetworkSocket, (char *)g_ucHuffmanBuffer, sizeof( g_ucHuffmanBuffer ), 0, &SocketFrom, &iSocketFromLength );
+#ifdef WIN32
+	numBytes = recvfrom( g_NetworkSocket, reinterpret_cast<char *>( g_ucHuffmanBuffer ), sizeof( g_ucHuffmanBuffer ), 0, &socketFrom, &socketFromLength );
 #else
-	lNumBytes = recvfrom( g_NetworkSocket, (char *)g_ucHuffmanBuffer, sizeof( g_ucHuffmanBuffer ), 0, &SocketFrom, (socklen_t *)&iSocketFromLength );
+	numBytes = recvfrom( g_NetworkSocket, reinterpret_cast<char *>( g_ucHuffmanBuffer ), sizeof( g_ucHuffmanBuffer ), 0, &socketFrom, reinterpret_cast<socklen_t *>( &socketFromLength ));
 #endif
 
 	// If the number of bytes returned is -1, an error has occured.
-    if ( lNumBytes == -1 ) 
-    { 
+	if ( numBytes == -1 )
+	{
 #ifdef __WIN32__
-        errno = WSAGetLastError( );
+		errno = WSAGetLastError( );
 
-        if ( errno == WSAEWOULDBLOCK )
-            return ( false );
-
-		// Connection reset by peer. Doesn't mean anything to the server.
-		if ( errno == WSAECONNRESET )
-			return ( false );
-
-        if ( errno == WSAEMSGSIZE )
-		{
-             printf( "NETWORK_GetPackets:  WARNING! Oversize packet from %s\n", g_AddressFrom.ToString() );
-             return ( false );
-        }
-
-        printf( "NETWORK_GetPackets: WARNING!: Error #%d: %s\n", errno, strerror( errno ));
-		return ( false );
+		if ( errno == WSAEMSGSIZE )
+			printf( "NETWORK_GetPackets: WARNING! Oversized packet from %s\n", g_AddressFrom.ToString( ));
+		// [AK] Don't print an error message when the connection is blocked or reset.
+		else if (( errno != WSAEWOULDBLOCK ) && ( errno != WSAECONNRESET ))
+			printf( "NETWORK_GetPackets: WARNING!: Error #%d: %s\n", errno, strerror( errno ));
 #else
-        if ( errno == EWOULDBLOCK )
-            return ( false );
-
-        if ( errno == ECONNREFUSED )
-            return ( false );
-
-        printf( "NETWORK_GetPackets: WARNING!: Error #%d: %s\n", errno, strerror( errno ));
-        return ( false );
+		// [AK] Don't print an error message when the connection is blocked or refused.
+		if (( errno != EWOULDBLOCK ) && ( errno != ECONNREFUSED ))
+			printf( "NETWORK_GetPackets: WARNING!: Error #%d: %s\n", errno, strerror( errno ));
 #endif
-    }
+		return 0;
+	}
 
 	// No packets or an error, so don't process anything.
-	if ( lNumBytes <= 0 )
-		return ( 0 );
+	if ( numBytes <= 0 )
+		return 0;
 
 	// If the number of bytes we're receiving exceeds our buffer size, ignore the packet.
-	if ( lNumBytes >= static_cast<LONG>(g_NetworkMessage.ulMaxSize) )
-		return ( 0 );
+	if ( numBytes >= static_cast<int>( g_NetworkMessage.ulMaxSize ))
+		return 0;
 
 	// Decode the huffman-encoded message we received.
-	HUFFMAN_Decode( g_ucHuffmanBuffer, (unsigned char *)g_NetworkMessage.pbData, lNumBytes, &iDecodedNumBytes );
-	g_NetworkMessage.ulCurrentSize = iDecodedNumBytes;
+	HUFFMAN_Decode( g_ucHuffmanBuffer, static_cast<unsigned char *>( g_NetworkMessage.pbData ), numBytes, &numDecodedBytes );
+	g_NetworkMessage.ulCurrentSize = numDecodedBytes;
 	g_NetworkMessage.ByteStream.pbStream = g_NetworkMessage.pbData;
 	g_NetworkMessage.ByteStream.pbStreamEnd = g_NetworkMessage.ByteStream.pbStream + g_NetworkMessage.ulCurrentSize;
 
 	// Store the IP address of the sender.
-	g_AddressFrom.LoadFromSocketAddress( SocketFrom );
+	g_AddressFrom.LoadFromSocketAddress( socketFrom );
 
-	return ( g_NetworkMessage.ulCurrentSize );
+	return g_NetworkMessage.ulCurrentSize;
 }
 
 //*****************************************************************************
@@ -272,64 +256,59 @@ NETADDRESS_s NETWORK_GetFromAddress( void )
 
 //*****************************************************************************
 //
-void NETWORK_LaunchPacket( NETBUFFER_s *pBuffer, NETADDRESS_s Address )
+void NETWORK_LaunchPacket( NETBUFFER_s *buffer, NETADDRESS_s address )
 {
-	LONG				lNumBytes;
-	INT					iNumBytesOut = sizeof(g_ucHuffmanBuffer);
+	int numBytesOut = sizeof( g_ucHuffmanBuffer );
+	int numBytes = 0;
 
-	pBuffer->ulCurrentSize = pBuffer->CalcSize();
+	buffer->ulCurrentSize = buffer->CalcSize( );
 
 	// Nothing to do.
-	if ( pBuffer->ulCurrentSize == 0 )
+	if ( buffer->ulCurrentSize == 0 )
 		return;
 
 	// Convert the IP address to a socket address.
-	struct sockaddr_in SocketAddress;
-	Address.ToSocketAddress( reinterpret_cast<sockaddr&>(SocketAddress) );
+	struct sockaddr_in socketAddress;
+	address.ToSocketAddress( reinterpret_cast<sockaddr &>( socketAddress ));
 
-	HUFFMAN_Encode( (unsigned char *)pBuffer->pbData, g_ucHuffmanBuffer, pBuffer->ulCurrentSize, &iNumBytesOut );
-
-	lNumBytes = sendto( g_NetworkSocket, (const char*)g_ucHuffmanBuffer, iNumBytesOut, 0, reinterpret_cast<sockaddr*>(&SocketAddress), sizeof( SocketAddress ));
+	HUFFMAN_Encode( static_cast<unsigned char *>( buffer->pbData ), g_ucHuffmanBuffer, buffer->ulCurrentSize, &numBytesOut );
+	numBytes = sendto( g_NetworkSocket, reinterpret_cast<const char *>( g_ucHuffmanBuffer ), numBytesOut, 0, reinterpret_cast<sockaddr *>( &socketAddress ), sizeof( socketAddress ));
 
 	// If sendto returns -1, there was an error.
-	if ( lNumBytes == -1 )
+	if ( numBytes == -1 )
 	{
 #ifdef __WIN32__
-		INT	iError = WSAGetLastError( );
+		int error = WSAGetLastError( );
 
 		// Wouldblock is silent.
-		if ( iError == WSAEWOULDBLOCK )
-			return;
-
-		switch ( iError )
+		if ( error != WSAEWOULDBLOCK )
 		{
-		case WSAEACCES:
+			switch ( error )
+			{
+				case WSAEACCES:
+					printf( "NETWORK_LaunchPacket: Error #%d, WSAEACCES: Permission denied for address: %s\n", error, address.ToString( ));
+					return;
 
-			printf( "NETWORK_LaunchPacket: Error #%d, WSAEACCES: Permission denied for address: %s\n", iError, Address.ToString() );
-			return;
-		case WSAEADDRNOTAVAIL:
+				case WSAEADDRNOTAVAIL:
+					printf( "NETWORK_LaunchPacket: Error #%d, WSAEADDRENOTAVAIL: Address %s not available\n", error, address.ToString( ));
+					return;
 
-			printf( "NETWORK_LaunchPacket: Error #%d, WSAEADDRENOTAVAIL: Address %s not available\n", iError, Address.ToString() );
-			return;
-		case WSAEHOSTUNREACH:
+				case WSAEHOSTUNREACH:
+					printf( "NETWORK_LaunchPacket: Error #%d, WSAEHOSTUNREACH: Address %s unreachable\n", error, address.ToString( ));
+					return;
 
-			printf( "NETWORK_LaunchPacket: Error #%d, WSAEHOSTUNREACH: Address %s unreachable\n", iError, Address.ToString() );
-			return;				
-		default:
-
-			printf( "NETWORK_LaunchPacket: Error #%d\n", iError );
-			return;
+				default:
+					printf( "NETWORK_LaunchPacket: Error #%d\n", error );
+					return;
+			}
 		}
 #else
-	if ( errno == EWOULDBLOCK )
-return;
-
-          if ( errno == ECONNREFUSED )
-              return;
-
-		printf( "NETWORK_LaunchPacket: %s\n", strerror( errno ));
-		printf( "NETWORK_LaunchPacket: Address %s\n", Address.ToString() );
-
+		// [AK] Don't print an error message when the connection is blocked or refused.
+		if (( errno != EWOULDBLOCK ) && ( errno != ECONNREFUSED ))
+		{
+			printf( "NETWORK_LaunchPacket: %s\n", strerror( errno ));
+			printf( "NETWORK_LaunchPacket: Address %s\n", address.ToString( ));
+		}
 #endif
 	}
 }
