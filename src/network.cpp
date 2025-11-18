@@ -69,6 +69,7 @@
 #include <set>
 #include <vector>
 #include <string>
+#include <zstd.h>
 #include "../GeoIP/GeoIP.h"
 
 #include "c_console.h"
@@ -78,7 +79,6 @@
 #include "cl_statistics.h"
 #include "doomtype.h"
 #include "huffman.h"
-#include "zstd.h"
 #include "i_system.h"
 #include "sv_main.h"
 #include "m_random.h"
@@ -217,6 +217,10 @@ static bool g_bDuplicateLumpAuthenticated = false;
 // already be off. So we create a special index of script names here.
 static TArray<FName> g_ACSNameIndex;
 
+// [SB] Zstandard (de)compression contexts
+static ZSTD_CCtx *g_zstdCctx = nullptr;
+static ZSTD_DCtx *g_zstdDctx = nullptr;
+
 // [SB] Hashes for Freedoom lumps that must be detected for Doom network compatibility.
 static const std::vector<std::string> g_FreedoomPlayPalHashes = {
 	"2e01ae6258f2a0fdad32125537efe1af", // Freedoom PLAYPAL hash
@@ -270,6 +274,10 @@ void NETWORK_Construct( USHORT usPort, bool bAllocateLANSocket )
 
 	// Initialize the Huffman buffer.
 	HUFFMAN_Construct( );
+
+	// [SB] Initialise the Zstandard contexts.
+	g_zstdCctx = ZSTD_createCCtx( );
+	g_zstdDctx = ZSTD_createDCtx( );
 
 	if ( !restart )
 	{
@@ -747,6 +755,10 @@ void NETWORK_Destruct( void )
 
 	// [BB] This needs to be cleared since we assume it to be empty during a restart.
 	g_LumpNumsToAuthenticate.Clear();
+
+	// [SB] Destroy the Zstandard contexts.
+	ZSTD_freeDCtx( g_zstdDctx );
+	ZSTD_freeCCtx( g_zstdCctx );
 }
 
 //*****************************************************************************
@@ -800,7 +812,7 @@ void NETWORK_LaunchPacket( NETBUFFER_s *buffer, NETADDRESS_s address, bool useZS
 	{
 		// [AK] Choose between compressing the packet using ZStd or Huffman.
 		if ( useZStd )
-			numBytesOut = ZSTD_compress( g_ucHuffmanBuffer, sizeof( g_ucHuffmanBuffer ), buffer->pbData, buffer->ulCurrentSize, 12 );
+			numBytesOut = ZSTD_compressCCtx( g_zstdCctx, g_ucHuffmanBuffer, sizeof( g_ucHuffmanBuffer ), buffer->pbData, buffer->ulCurrentSize, 12 );
 		else
 			HUFFMAN_Encode( static_cast<unsigned char *>( buffer->pbData ), g_ucHuffmanBuffer, buffer->ulCurrentSize, &numBytesOut );
 	}
@@ -1749,7 +1761,7 @@ static int network_ReadPacketsFromSocket( SOCKET &socket )
 	if ( g_AddressFrom.Compare( NETWORK_AUTH_GetCachedServerAddress( )) == false )
 	{
 		// [AK] First, try decompressing the packet using ZStd.
-		numDecodedBytes = ZSTD_decompress( g_NetworkMessage.pbData, g_NetworkMessage.ulMaxSize, g_ucHuffmanBuffer, numBytes );
+		numDecodedBytes = ZSTD_decompressDCtx( g_zstdDctx, g_NetworkMessage.pbData, g_NetworkMessage.ulMaxSize, g_ucHuffmanBuffer, numBytes );
 
 		// [AK] If it failed, then the packet wasn't compressed using ZStd.
 		// Try decompressing it using Huffman then.
