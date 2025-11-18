@@ -12,7 +12,8 @@ ENDIF ( ZSTD_INCLUDE_DIR AND ZSTD_LIBRARY )
 
 FIND_PATH( ZSTD_INCLUDE_DIR NAMES zstd.h )
 
-FIND_LIBRARY( ZSTD_LIBRARY NAMES libzstd_static )
+# [SB] zstd is the normal library name on linux
+FIND_LIBRARY( ZSTD_LIBRARY NAMES libzstd_static zstd )
 MARK_AS_ADVANCED( CLEAR ZSTD_LIBRARY ZSTD_INCLUDE_DIR )
 
 # Handle the QUIETLY and REQUIRED arguments and set ZSTD_FOUND to TRUE if 
