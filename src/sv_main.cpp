@@ -291,6 +291,9 @@ CVAR( Int, sv_showcommands, 0, CVAR_ARCHIVE|CVAR_DEBUGONLY )
 CVAR( Bool, sv_noplayertimeout, false, CVAR_NOSETBYACS|CVAR_DEBUGONLY ) // [SB]
 CVAR( Bool, sv_printconnectionmessages, true, CVAR_ARCHIVE|CVAR_NOSETBYACS ) // [SB]
 
+CVAR( Bool, sv_dumppackets, false, CVAR_NOSETBYACS );
+CVAR( String, sv_dumppackets_dir, "", CVAR_NOSETBYACS );
+
 //*****************************************************************************
 //
 CUSTOM_CVAR( String, sv_adminlistfile, "adminlist.txt", CVAR_ARCHIVE|CVAR_SENSITIVESERVERSETTING|CVAR_NOSETBYACS )
@@ -4856,6 +4859,7 @@ void SERVER_ParsePacket( BYTESTREAM_s *pByteStream )
 
 	while ( 1 )	 
 	{  
+		const auto *commandStart = pByteStream->pbStream;
 		lCommand = pByteStream->ReadByte();
 
 		// End of message.
@@ -4917,6 +4921,12 @@ void SERVER_ParsePacket( BYTESTREAM_s *pByteStream )
 			// This returns true if the player was kicked as a result.
 			if ( SERVER_ProcessCommand( lCommand, pByteStream ))
 				return;
+
+			// [SB] Possibly dump the packet for collecting Zstandard dictionary data.
+			if ( SERVER_ShouldDumpClientCommand( static_cast<CLC>( lCommand ) ) )
+			{
+				SERVER_DumpPacket( commandStart, pByteStream->pbStream - commandStart, true );
+			}
 
 			break;
 		}
@@ -7610,6 +7620,103 @@ static void server_ForceRenamePlayer( ULONG playerIndex )
 
 	// Update clients using the RCON utility.
 	SERVER_RCON_UpdateInfo( SVRCU_PLAYERDATA );
+}
+
+//*****************************************************************************
+// [SB]
+void SERVER_DumpPacket( const BYTE *buffer, const size_t length, const bool fromClient )
+{
+	if ( !sv_dumppackets || buffer == nullptr || length == 0 )
+	{
+		return;
+	}
+
+	if ( SERVER_CalcNumConnectedClients() == 0 )
+	{
+		return;
+	}
+
+	static FString lastTimestamp = "";
+	static unsigned int counter = 0U;
+
+	const time_t now = time( nullptr );
+	const tm *t = localtime( &now);
+
+	char timebuf[128];
+	strftime( timebuf, countof(timebuf), "%Y-%m-%d_%H-%M-%S", t );
+
+	if ( lastTimestamp.Compare( timebuf ) == 0 )
+	{
+		counter++;
+	}
+	else
+	{
+		lastTimestamp = timebuf;
+		counter = 0;
+	}
+
+	FString path;
+	path.Format( "%s/packet_%s_%s_%u.bin", sv_dumppackets_dir.GetGenericRep( CVAR_String ).String, ( fromClient ? "cl" : "sv" ), timebuf, counter );
+	FILE *f = fopen( path.GetChars(), "wb" );
+	if ( f != nullptr )
+	{
+		fwrite( buffer, 1, length, f );
+		fclose( f );
+	}
+}
+
+//*****************************************************************************
+// [SB]
+bool SERVER_ShouldDumpServerCommand( const SVC command, const SVC2 extcommand )
+{
+	const std::set<SVC> ignoredCommands
+	{
+		SVC_SETPLAYERUSERINFO,
+		SVC_PLAYERSAY,
+		SVC_PLAYERVOIPAUDIOPACKET,
+		SVC_PRINT,
+		SVC_PRINTMID,
+		SVC_PRINTMOTD,
+		SVC_PRINTHUDMESSAGE,
+	};
+
+	const std::set<SVC2> ignoredExtCommands
+	{
+		SVC2_SETPLAYERACCOUNTNAME,
+		SVC2_ACSSENDSTRING,
+
+		SVC2_SRP_USER_START_AUTHENTICATION,
+		SVC2_SRP_USER_PROCESS_CHALLENGE,
+		SVC2_SRP_USER_VERIFY_SESSION,
+		SVC2_RCONACCESS,
+	};
+
+	if ( command == SVC_EXTENDEDCOMMAND )
+	{
+		return !ignoredExtCommands.count( extcommand );
+	}
+
+	return !ignoredCommands.count( command );
+}
+
+//*****************************************************************************
+// [SB]
+bool SERVER_ShouldDumpClientCommand( const CLC command )
+{
+	if ( command < static_cast<CLC>( NUM_CLIENTCONNECT_COMMANDS ) || command >= NUM_CLIENT_COMMANDS )
+		return false;
+
+	const std::set<CLC> ignoredCommands
+	{
+		CLC_SAY,
+		CLC_CHANGERCONSTATUS,
+		CLC_RCONCOMMAND,
+		CLC_ACSSENDSTRING,
+		CLC_RCONSETCVAR,
+		CLC_VOIPAUDIOPACKET,
+	};
+
+	return !ignoredCommands.count( command );
 }
 
 //*****************************************************************************

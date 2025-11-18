@@ -58,6 +58,7 @@
 #include "s_sndseq.h"
 #include "r_data/sprites.h"
 #include "network/packetarchive.h"
+#include "network_enums.h"
 #include <list>
 #include <queue>
 #include <memory>
@@ -625,6 +626,9 @@ void		SERVER_FlagsetChanged( FIntCVar& flagset, int maxflags = 2 );
 void		SERVER_SettingChanged( FBaseCVar &cvar, bool bUpdateConsole, int maxDecimals = 0 );
 void		SERVER_DestroyActorIfClientsidedOnly( AActor *actor );
 bool		SERVER_CheckTimeInstancesBufferForFlood( TimeInstancesBuffer &instances, bool saveIfFloodDetected );
+void		SERVER_DumpPacket( const BYTE *buffer, const size_t length, const bool fromClient );
+bool		SERVER_ShouldDumpServerCommand( const SVC command, const SVC2 extcommand );
+bool		SERVER_ShouldDumpClientCommand( const CLC command );
 
 // From sv_master.cpp
 void		SERVER_MASTER_Construct( void );
