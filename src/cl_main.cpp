@@ -1022,6 +1022,7 @@ void CLIENT_AttemptConnection( void )
 	g_LocalBuffer.ByteStream.WriteByte( cl_hideaccount );
 	g_LocalBuffer.ByteStream.WriteByte( NETGAMEVERSION );
 	g_LocalBuffer.ByteStream.WriteString( g_lumpsAuthenticationChecksum.GetChars() );
+	g_LocalBuffer.ByteStream.WriteLong( static_cast<int>( NETWORK_GetZstdDictId() ) );
 }
 
 //*****************************************************************************

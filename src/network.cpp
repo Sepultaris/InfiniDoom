@@ -220,6 +220,9 @@ static TArray<FName> g_ACSNameIndex;
 // [SB] Zstandard (de)compression contexts
 static ZSTD_CCtx *g_zstdCctx = nullptr;
 static ZSTD_DCtx *g_zstdDctx = nullptr;
+static unsigned g_zstdDictId = 0;
+static ZSTD_CDict *g_zstdCdict = nullptr;
+static ZSTD_DDict *g_zstdDdict = nullptr;
 
 // [SB] Hashes for Freedoom lumps that must be detected for Doom network compatibility.
 static const std::vector<std::string> g_FreedoomPlayPalHashes = {
@@ -252,6 +255,8 @@ static const std::vector<std::string> g_FreedoomDehackedHashes = {
 //*****************************************************************************
 //	PROTOTYPES
 
+static	void			network_InitZstd( void );
+static	void			network_DestructZstd( void );
 static	void			network_InitPWADList( void );
 static	void			network_Error( const char *pszError );
 static	SOCKET			network_AllocateSocket( void );
@@ -276,8 +281,7 @@ void NETWORK_Construct( USHORT usPort, bool bAllocateLANSocket )
 	HUFFMAN_Construct( );
 
 	// [SB] Initialise the Zstandard contexts.
-	g_zstdCctx = ZSTD_createCCtx( );
-	g_zstdDctx = ZSTD_createDCtx( );
+	network_InitZstd( );
 
 	if ( !restart )
 	{
@@ -757,8 +761,50 @@ void NETWORK_Destruct( void )
 	g_LumpNumsToAuthenticate.Clear();
 
 	// [SB] Destroy the Zstandard contexts.
+	network_DestructZstd();
+}
+
+//*****************************************************************************
+// [SB]
+void network_InitZstd( void )
+{
+	g_zstdCctx = ZSTD_createCCtx( );
+	g_zstdDctx = ZSTD_createDCtx( );
+
+	int lumpnum = Wads.CheckNumForName( "zstddict" );
+	if ( lumpnum != -1 )
+	{
+		auto lump = Wads.ReadLump( lumpnum );
+		g_zstdDictId = ZSTD_getDictID_fromDict( lump.GetMem(), lump.GetSize() );
+		if ( g_zstdDictId == 0 )
+		{
+			Printf( TEXTCOLOR_YELLOW "The Zstandard dictionary is invalid!\n" );
+			return;
+		}
+
+		g_zstdCdict = ZSTD_createCDict( lump.GetMem(), lump.GetSize(), 12 );
+		g_zstdDdict = ZSTD_createDDict( lump.GetMem(), lump.GetSize() );
+
+		DPrintf( "Using Zstandard dictionary with ID %08x\n", g_zstdDictId );
+	}
+	else
+	{
+		Printf( TEXTCOLOR_YELLOW "No Zstandard dictionary could be loaded!\n" );
+	}
+}
+
+//*****************************************************************************
+// [SB]
+void network_DestructZstd( void )
+{
+	ZSTD_freeDDict( g_zstdDdict );
+	g_zstdDdict = nullptr;
+	ZSTD_freeCDict( g_zstdCdict );
+	g_zstdCdict = nullptr;
 	ZSTD_freeDCtx( g_zstdDctx );
+	g_zstdDctx = nullptr;
 	ZSTD_freeCCtx( g_zstdCctx );
+	g_zstdCctx = nullptr;
 }
 
 //*****************************************************************************
@@ -812,7 +858,10 @@ void NETWORK_LaunchPacket( NETBUFFER_s *buffer, NETADDRESS_s address, bool useZS
 	{
 		// [AK] Choose between compressing the packet using ZStd or Huffman.
 		if ( useZStd )
-			numBytesOut = ZSTD_compressCCtx( g_zstdCctx, g_ucHuffmanBuffer, sizeof( g_ucHuffmanBuffer ), buffer->pbData, buffer->ulCurrentSize, 12 );
+			if ( g_zstdCdict != nullptr )
+				numBytesOut = ZSTD_compress_usingCDict( g_zstdCctx, g_ucHuffmanBuffer, sizeof( g_ucHuffmanBuffer ), buffer->pbData, buffer->ulCurrentSize, g_zstdCdict );
+			else
+				numBytesOut = ZSTD_compressCCtx( g_zstdCctx, g_ucHuffmanBuffer, sizeof( g_ucHuffmanBuffer ), buffer->pbData, buffer->ulCurrentSize, 12 );
 		else
 			HUFFMAN_Encode( static_cast<unsigned char *>( buffer->pbData ), g_ucHuffmanBuffer, buffer->ulCurrentSize, &numBytesOut );
 	}
@@ -1624,6 +1673,13 @@ void NETWORK_SetState( LONG lState )
 }
 
 //*****************************************************************************
+// [SB]
+unsigned NETWORK_GetZstdDictId( void )
+{
+	return g_zstdDictId;
+}
+
+//*****************************************************************************
 //*****************************************************************************
 //
 //*****************************************************************************
@@ -1761,7 +1817,11 @@ static int network_ReadPacketsFromSocket( SOCKET &socket )
 	if ( g_AddressFrom.Compare( NETWORK_AUTH_GetCachedServerAddress( )) == false )
 	{
 		// [AK] First, try decompressing the packet using ZStd.
-		numDecodedBytes = ZSTD_decompressDCtx( g_zstdDctx, g_NetworkMessage.pbData, g_NetworkMessage.ulMaxSize, g_ucHuffmanBuffer, numBytes );
+		if ( g_zstdDdict != nullptr )
+			numDecodedBytes = ZSTD_decompress_usingDDict( g_zstdDctx, g_NetworkMessage.pbData, g_NetworkMessage.ulMaxSize, g_ucHuffmanBuffer, numBytes, g_zstdDdict );
+		else
+			numDecodedBytes = ZSTD_decompressDCtx( g_zstdDctx, g_NetworkMessage.pbData, g_NetworkMessage.ulMaxSize, g_ucHuffmanBuffer, numBytes );
+
 
 		// [AK] If it failed, then the packet wasn't compressed using ZStd.
 		// Try decompressing it using Huffman then.

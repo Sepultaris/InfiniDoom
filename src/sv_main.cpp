@@ -2123,6 +2123,16 @@ void SERVER_SetupNewConnection( BYTESTREAM_s *pByteStream, bool bNewPlayer )
 		return;
 	}
 
+	const auto zstdDictId = static_cast<unsigned>( pByteStream->ReadLong() );
+
+	// [SB] Should we failsafe here (allow using zstd without a dictionary?)
+	// If not, needs its own error code.
+	if ( zstdDictId != NETWORK_GetZstdDictId() )
+	{
+		SERVER_ClientError( lClient, NETWORK_ERRORCODE_WRONGPROTOCOLVERSION );
+		return;
+	}
+
 	// Client is now connected to the server.
 	g_aClients[lClient].State = CLS_CONNECTED;
 
