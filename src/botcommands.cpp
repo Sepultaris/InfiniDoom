@@ -204,6 +204,7 @@ static  void	botcmd_StopMoveUp( CSkullBot *pBot );
 static  void	botcmd_BeginMoveDown( CSkullBot *pBot );
 static  void	botcmd_StopMoveDown( CSkullBot *pBot );
 static  void	botcmd_QuitJoinQueue( CSkullBot *pBot );
+static  void	botcmd_SetGoalTID( CSkullBot * pBot );
 
 //*****************************************************************************
 //	VARIABLES
@@ -334,6 +335,7 @@ static	BOTCMD_s	g_BotCommands[NUM_BOTCMDS] =
 	{ "BeginMoveDown", botcmd_BeginMoveDown, 0, 0, RETURNVAL_VOID },
 	{ "StopMoveDown", botcmd_StopMoveDown, 0, 0, RETURNVAL_VOID },
 	{ "QuitJoinQueue", botcmd_QuitJoinQueue, 0, 0, RETURNVAL_VOID },
+	{ "SetGoalTID", botcmd_SetGoalTID, 1, 0, RETURNVAL_VOID },
 };
 
 static	int			g_iReturnInt = -1;
@@ -2957,4 +2959,26 @@ static void botcmd_QuitJoinQueue( CSkullBot *pBot )
 	const unsigned int playerIndex = static_cast<unsigned>( pBot->GetPlayer( ) - players );
 
 	JOINQUEUE_RemovePlayerFromQueue ( playerIndex );
+}
+
+//*****************************************************************************
+//
+static void botcmd_SetGoalTID( CSkullBot *pBot )
+{
+	int tid = pBot->m_ScriptData.alStack[pBot->m_ScriptData.lStackPosition - 1];
+	pBot->PopStack( );
+
+	if ( tid )
+	{
+		FActorIterator iterator (tid);
+		AActor *actor = iterator.Next();
+		if ( actor )
+		{
+			pBot->m_pGoalActor = actor;
+			pBot->m_ulPathType = BOTPATHTYPE_NONE;
+			return;
+		}
+	}
+
+	Printf( "botcmd_SetGoalTID: WARNING! Tried to set goal to bad TID, %i!\n", tid );
 }
