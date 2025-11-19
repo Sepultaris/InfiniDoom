@@ -1423,6 +1423,9 @@ int FWadCollection::GetParentWad( int wadnum ) const
 
 bool FWadCollection::IsWadOptional( int wadnum ) const
 {
+	if ( static_cast<unsigned>( wadnum ) >= Files.Size( ))
+		return false;
+
 	// A wad is mandatory if its top level parent is mandatory.
 	return Files[GetParentWad( wadnum )]->IsOptional;
 }
@@ -1472,6 +1475,9 @@ void FWadCollection::LumpIsMandatory( int lumpnum )
 
 bool FWadCollection::WadContainsAuthenticatedLumps( int wadnum ) const
 {
+	if ( static_cast<unsigned>( wadnum ) >= Files.Size( ))
+		return false;
+
 	return Files[wadnum]->ContainsAuthenticatedLumps;
 }
 
