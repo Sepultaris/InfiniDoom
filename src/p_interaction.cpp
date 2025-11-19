@@ -2369,10 +2369,13 @@ void PLAYER_SetTeam( player_t *pPlayer, ULONG ulTeam, bool bNoBroadcast )
 	}
 	// [RK] Reset the player's camera if they switched teams and their camera is an enemy.
 	// Security cameras and alike are excluded because they are not valid players.
-	else if (( oldTeam != ulTeam ) && ( pPlayer->mo ) && ( pPlayer->camera->player ) && !( pPlayer->mo->IsTeammate( pPlayer->camera->player->mo )))
+	else if (( oldTeam != ulTeam ) && ( pPlayer->mo != nullptr ) && ( pPlayer->camera != nullptr ))
 	{
-		if (( pPlayer->bDeadSpectator == false ) || (( lmsspectatorsettings & LMS_SPF_VIEW ) == false ))
-			pPlayer->camera = pPlayer->mo;
+		if (( pPlayer->camera->player != nullptr ) && ( pPlayer->mo->IsTeammate( pPlayer->camera ) == false ))
+		{
+			if (( pPlayer->bDeadSpectator == false ) || (( lmsspectatorsettings & LMS_SPF_VIEW ) == false ))
+				pPlayer->camera = pPlayer->mo;
+		}
 	}
 
 	// Finally, update the player's color.
