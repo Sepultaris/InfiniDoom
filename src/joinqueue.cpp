@@ -322,7 +322,8 @@ void JOINQUEUE_PopQueue( int slotCount )
 			break;
 
 		// Found a player waiting in line. They will now join the game!
-		if ( playeringame[g_JoinQueue[i].player] )
+		// [AK] Only if the result of GAMEEVENT_PLAYERJOINS isn't zero.
+		if (( playeringame[g_JoinQueue[i].player] ) && ( GAMEMODE_HandlePlayerJoinsEvent( g_JoinQueue[i].player, g_JoinQueue[i].team )))
 		{
 			JOINQUEUE_PlayerJoinsAtPosition( i );
 

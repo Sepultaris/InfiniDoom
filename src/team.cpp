@@ -2049,7 +2049,8 @@ CCMD( changeteam )
 	}
 
 	// [BB] If players aren't allowed to join at the moment, just put the consoleplayer in line.
-	if ( GAMEMODE_PreventPlayersFromJoining( consoleplayer ) )
+	// [AK] Also put them in line if the result of GAMEEVENT_PLAYERJOINS is zero.
+	if (( GAMEMODE_PreventPlayersFromJoining( consoleplayer )) || ( GAMEMODE_HandlePlayerJoinsEvent( consoleplayer, lDesiredTeam ) == false ))
 	{
 		JOINQUEUE_AddConsolePlayer ( lDesiredTeam );
 		return;

@@ -1349,6 +1349,23 @@ bool GAMEMODE_HandleDamageEvent ( AActor *target, AActor *inflictor, AActor *sou
 
 //*****************************************************************************
 //
+bool GAMEMODE_HandlePlayerJoinsEvent( unsigned int player, unsigned int team )
+{
+	// [AK] The second argument of GAMEEVENT_PLAYERJOINS is the team that the
+	// player is trying to join. If they're not joining a specific team, either
+	// because they want to join a random one or because the current game mode
+	// doesn't support teams, change the argument's value to something that can
+	// be recognized as "none" in ACS.
+	const unsigned int desiredTeam = TEAM_CheckIfValid( team ) ? team : TEAM_None;
+
+	if (( PLAYER_IsValidPlayer( player )) && ( GAMEMODE_HandleEvent( GAMEEVENT_PLAYERJOINS, nullptr, player, desiredTeam, true ) != 0 ))
+		return true;
+
+	return false;
+}
+
+//*****************************************************************************
+//
 LONG GAMEMODE_GetEventResult( )
 {
 	return g_lEventResult;

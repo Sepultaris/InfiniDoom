@@ -125,6 +125,7 @@ typedef enum
 	GAMEEVENT_JOINQUEUECHANGED,
 	GAMEEVENT_DOMINATION_PRECONTROL,
 	GAMEEVENT_DOMINATION_CONTEST,
+	GAMEEVENT_PLAYERJOINS,
 } GAMEEVENT_e;
 
 //*****************************************************************************
@@ -244,6 +245,7 @@ void		GAMEMODE_SetState ( GAMESTATE_e GameState );
 LONG		GAMEMODE_HandleEvent ( const GAMEEVENT_e Event, AActor *pActivator = NULL, const int DataOne = 0, const int DataTwo = 0, const bool bRunNow = false, const int OverrideResult = 1 );
 void		GAMEMODE_HandleSpawnEvent( AActor *actor );
 bool		GAMEMODE_HandleDamageEvent ( AActor *target, AActor *inflictor, AActor *source, int &damage, FName mod, bool bBeforeArmor = false );
+bool		GAMEMODE_HandlePlayerJoinsEvent( unsigned int player, unsigned int team );
 LONG		GAMEMODE_GetEventResult ( void );
 void		GAMEMODE_SetEventResult ( LONG lResult );
 GAMEMODE_e	GAMEMODE_GetCurrentMode( void );
