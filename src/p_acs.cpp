@@ -8501,7 +8501,12 @@ doplaysound:			if (funcIndex == ACSF_PlayActorSound)
 						return Wads.LumpLength( lumpNum );
 
 					case LUMP_INFO_NAME:
-						return GlobalACSStrings.AddString( Wads.GetLumpFullName( lumpNum ));
+					{
+						if ( lumpNum < static_cast<unsigned>( Wads.GetNumLumps( )))
+							return GlobalACSStrings.AddString( Wads.GetLumpFullName( lumpNum ));
+						else
+							return GlobalACSStrings.AddString( "" );
+					}
 
 					case LUMP_INFO_NAMESPACE:
 						return Wads.GetLumpNamespace( lumpNum );
