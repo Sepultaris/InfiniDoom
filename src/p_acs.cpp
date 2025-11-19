@@ -5547,6 +5547,7 @@ enum EACSFunctions
 	ASCF_SetControlPointInfo,
 	ASCF_GetSkinProperty, // [TRSR]
 	ACSF_IsPlayerContestingControlPoint,
+	ACSF_GetWadInfo,
 
 	// ZDaemon
 	ACSF_GetTeamScore = 19620,	// (int team)
@@ -8486,20 +8487,31 @@ doplaysound:			if (funcIndex == ACSF_PlayActorSound)
 				enum
 				{
 					LUMP_INFO_SIZE,
-					LUMP_INFO_NAME
+					LUMP_INFO_NAME,
+					LUMP_INFO_NAMESPACE,
+					LUMP_INFO_WAD,
 				};
 
-				switch(args[1])
+				const unsigned int lumpNum = args[0];
+				const unsigned int type = args[1];
+
+				switch ( type )
 				{
 					case LUMP_INFO_SIZE:
-						return Wads.LumpLength(args[0]);
+						return Wads.LumpLength( lumpNum );
 
 					case LUMP_INFO_NAME:
-						return GlobalACSStrings.AddString(Wads.GetLumpFullName(args[0]));
+						return GlobalACSStrings.AddString( Wads.GetLumpFullName( lumpNum ));
+
+					case LUMP_INFO_NAMESPACE:
+						return Wads.GetLumpNamespace( lumpNum );
+
+					case LUMP_INFO_WAD:
+						return Wads.GetWadnumFromLumpnum( lumpNum );
 
 					default:
-						Printf("LumpGetInfo: unknown info type %i\n", args[1]);
-					return 0;
+						Printf( "LumpGetInfo: unknown info type %u\n", type );
+						return 0;
 				}
 			}
 
@@ -8886,6 +8898,59 @@ doplaysound:			if (funcIndex == ACSF_PlayActorSound)
 			}
 
 			return 0;
+		}
+
+		case ACSF_GetWadInfo:
+		{
+			enum
+			{
+				WAD_INFO_NAME,
+				WAD_INFO_FIRSTLUMP,
+				WAD_INFO_LASTLUMP,
+				WAD_INFO_PARENTWAD,
+				WAD_INFO_LOADEDAUTOMATICALLY,
+				WAD_INFO_OPTIONAL,
+				WAD_INFO_HASAUTHENTICATEDLUMPS,
+			};
+
+			const unsigned int wadNum = args[0];
+			const unsigned int type = args[1];
+
+			switch( type )
+			{
+				case WAD_INFO_NAME:
+				{
+					if ( wadNum < static_cast<unsigned>( Wads.GetNumWads( )))
+						return GlobalACSStrings.AddString( Wads.GetWadName( wadNum ));
+					else
+						return GlobalACSStrings.AddString( "" );
+				}
+
+				case WAD_INFO_FIRSTLUMP:
+					return Wads.GetFirstLump( wadNum );
+
+				case WAD_INFO_LASTLUMP:
+					return Wads.GetLastLump( wadNum );
+
+				case WAD_INFO_PARENTWAD:
+				{
+					const unsigned int parentWadNum = Wads.GetParentWad( wadNum );
+					return parentWadNum != wadNum ? parentWadNum : -1;
+				}
+
+				case WAD_INFO_LOADEDAUTOMATICALLY:
+					return Wads.GetLoadedAutomatically( wadNum );
+
+				case WAD_INFO_OPTIONAL:
+					return Wads.IsWadOptional( wadNum );
+
+				case WAD_INFO_HASAUTHENTICATEDLUMPS:
+					return Wads.WadContainsAuthenticatedLumps( wadNum );
+
+				default:
+					Printf( "GetWadInfo: unknown info type %u\n", type );
+					return 0;
+			}
 		}
 
 		case ACSF_GetActorFloorTexture:
