@@ -5382,6 +5382,20 @@ void SERVERCOMMANDS_SetNextMapPosition( unsigned int playerExtra, ServerCommandF
 
 //*****************************************************************************
 // [AK]
+void SERVERCOMMANDS_SetMapUsedStatus( unsigned int position, unsigned int playerExtra, ServerCommandFlags flags )
+{
+	if ( position >= MAPROTATION_GetNumEntries( ))
+		return;
+
+	NetCommand command( SVC2_UPDATEMAPROTATION );
+	command.addByte( UPDATE_MAPROTATION_SETUSEDSTATUS );
+	command.addShort( position );
+	command.addBit( MAPROTATION_IsUsed( position ));
+	command.sendCommandToClients( playerExtra, flags );
+}
+
+//*****************************************************************************
+// [AK]
 void SERVERCOMMANDS_SetCustomPlayerValue( PlayerData &Data, ULONG ulPlayer, ULONG ulPlayerExtra, ServerCommandFlags flags )
 {
 	if ( PLAYER_IsValidPlayer( ulPlayer ) == false )

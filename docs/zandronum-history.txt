@@ -25,6 +25,7 @@
 +	- Added a net graph, enabled with the new CVar "cl_netgraph", that shows changes in network traffic over the last minute, which appears while "stat nettraffic" is active. [AKMDM]
 +	- Added the constants LUMP_INFO_NAMESPACE and LUMP_INFO_WAD to the "LumpGetInfo" ACS function, to return a lump's namespace and the index of the WAD it belongs to respectively. [AKMDM]
 +	- Added ACS function: "GetWadInfo", to return information about a WAD file using its index. [AKMDM]
++	- Added ACS function: "SetMapUsedStatus", allowing mods to change the used status of an entry in the map rotation. [AKMDM]
 -	- Fixed: A_SpawnItemEx didn't sync the TID or stencil color of spawned actors to clients in online games. [AKMDM]
 -	- Fixed: an actor's stencil color wasn't synced to newly connected clients in online games. [AKMDM]
 -	- Fixed: clients that gained RCON access erroneously told the server to change the values of compatflags and compatflags2. [AKMDM]

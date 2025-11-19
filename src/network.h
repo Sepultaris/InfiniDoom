@@ -234,6 +234,7 @@ enum UpdateMapRotationType
 	UPDATE_MAPROTATION_CLEAR,
 	UPDATE_MAPROTATION_RESET,
 	UPDATE_MAPROTATION_SETNEXTPOSITION,
+	UPDATE_MAPROTATION_SETUSEDSTATUS,
 };
 
 // [AK] What kind of team score are we sending to clients?
