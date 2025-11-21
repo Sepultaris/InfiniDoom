@@ -203,6 +203,7 @@ static  void	botcmd_StopMoveUp( CSkullBot *pBot );
 //110
 static  void	botcmd_BeginMoveDown( CSkullBot *pBot );
 static  void	botcmd_StopMoveDown( CSkullBot *pBot );
+static  void	botcmd_QuitJoinQueue( CSkullBot *pBot );
 
 //*****************************************************************************
 //	VARIABLES
@@ -332,6 +333,7 @@ static	BOTCMD_s	g_BotCommands[NUM_BOTCMDS] =
 	//110
 	{ "BeginMoveDown", botcmd_BeginMoveDown, 0, 0, RETURNVAL_VOID },
 	{ "StopMoveDown", botcmd_StopMoveDown, 0, 0, RETURNVAL_VOID },
+	{ "QuitJoinQueue", botcmd_QuitJoinQueue, 0, 0, RETURNVAL_VOID },
 };
 
 static	int			g_iReturnInt = -1;
@@ -2946,4 +2948,13 @@ static void botcmd_BeginMoveDown( CSkullBot *pBot )
 static void botcmd_StopMoveDown( CSkullBot *pBot )
 {
 	pBot->m_lButtons &= ~BT_MOVEDOWN;
+}
+
+//*****************************************************************************
+//
+static void botcmd_QuitJoinQueue( CSkullBot *pBot )
+{
+	const unsigned int playerIndex = static_cast<unsigned>( pBot->GetPlayer( ) - players );
+
+	JOINQUEUE_RemovePlayerFromQueue ( playerIndex );
 }
