@@ -790,7 +790,10 @@ static ASTARNODE_t *astar_GetNodeFromPoint( POS_t Point )
 //
 static LONG astar_GetCostToGoalEstimate( ASTARPATH_t *pPath, ASTARNODE_t *pNode )
 {
-	return ( P_AproxDistance( P_AproxDistance( pNode->Position.x - pPath->pGoalNode->Position.x, pNode->Position.y - pPath->pGoalNode->Position.y ), pNode->Position.z - pPath->pGoalNode->Position.z ) / FRACUNIT );
+	const fixed_t xyDistance = P_AproxDistance( pNode->Position.x - pPath->pGoalNode->Position.x,
+		pNode->Position.y - pPath->pGoalNode->Position.y);
+
+	return ( P_AproxDistance( xyDistance, pNode->Position.z - pPath->pGoalNode->Position.z ) / FRACUNIT );
 /*
 	POS_t	PosGoal;
 	POS_t	PosNode;
