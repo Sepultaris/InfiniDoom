@@ -461,7 +461,8 @@ ULONG BOTPATH_TryWalk( AActor *pActor, fixed_t StartX, fixed_t StartY, fixed_t S
 	OneStepDeltaY = YDistance / lNumSteps;
 
 	// [Dusk] Calculate the jump height the bot has instead of relying on a hardcoded 60.
-	fixed_t jumpheight = ( pActor->IsKindOf (RUNTIME_CLASS (APlayerPawn)) ) ? static_cast<APlayerPawn*>( pActor )->CalcJumpHeight( ) : 60;
+	fixed_t jumpheight = ( pActor->IsKindOf (RUNTIME_CLASS (APlayerPawn)) ) ? static_cast<APlayerPawn*>( pActor )->CalcJumpHeight( ) : (60 * FRACUNIT);
+	fixed_t stepheight = pActor->MaxStepHeight;
 
 	do
 	{
@@ -480,11 +481,11 @@ ULONG BOTPATH_TryWalk( AActor *pActor, fixed_t StartX, fixed_t StartY, fixed_t S
 
 			if ((( g_pBlockingActor->z + g_pBlockingActor->height ) - StartZ ) > 0 )
 			{
-				if ((( g_pBlockingActor->z + g_pBlockingActor->height ) - StartZ ) <= 0 /*gameinfo.StepHeight*/ )
+				if ((( g_pBlockingActor->z + g_pBlockingActor->height ) - StartZ ) <= stepheight /*gameinfo.StepHeight*/ )
 					ulFlags |= BOTPATH_STAIRS;
 				else if ((( g_pBlockingActor->z + g_pBlockingActor->height ) - StartZ ) <= 36 * FRACUNIT )
 					ulFlags |= BOTPATH_JUMPABLELEDGE;
-				else if (( g_pBlockingActor->player == NULL ) && ((( g_pBlockingActor->z + g_pBlockingActor->height ) - StartZ ) <= 60 * FRACUNIT ))
+				else if (( g_pBlockingActor->player == NULL ) && ((( g_pBlockingActor->z + g_pBlockingActor->height ) - StartZ ) <= jumpheight ))
 					ulFlags |= BOTPATH_JUMPABLELEDGE;
 				else
 				{
@@ -546,9 +547,9 @@ ULONG BOTPATH_TryWalk( AActor *pActor, fixed_t StartX, fixed_t StartY, fixed_t S
 		lHeightChange = g_PathSectorFloorZ - pActor->z;
 		if ( lHeightChange > 0 )
 		{
-			if ( lHeightChange <= 0 /*gameinfo.StepHeight*/ )
+			if ( lHeightChange <= stepheight /*gameinfo.StepHeight*/ )
 				ulFlags |= BOTPATH_STAIRS;
-			else if ( lHeightChange <= ( 60 * FRACUNIT ))
+			else if ( lHeightChange <= jumpheight )
 				ulFlags |= BOTPATH_JUMPABLELEDGE;
 			else
 			{
@@ -625,7 +626,7 @@ ULONG BOTPATH_TryWalk( AActor *pActor, fixed_t StartX, fixed_t StartY, fixed_t S
 				lHeightChange = pBackSector->floorplane.ZatPoint( pLine->v1 ) - pFrontSector->floorplane.ZatPoint( pLine->v1 );
 				if ( lHeightChange > 0 )
 				{
-					if ( lHeightChange <= 0 /*gameinfo.StepHeight*/ )
+					if ( lHeightChange <= stepheight /*gameinfo.StepHeight*/ )
 						ulFlags |= BOTPATH_STAIRS;
 					else if ( lHeightChange <= jumpheight )
 						ulFlags |= BOTPATH_JUMPABLELEDGE;
@@ -648,7 +649,7 @@ ULONG BOTPATH_TryWalk( AActor *pActor, fixed_t StartX, fixed_t StartY, fixed_t S
 					if ( P_GetMidTexturePosition( pLine, lLineSide, &mid3d_top, &mid3d_bot )) {
 						// If the 3d midtexture top is of appropriate height,
 						// it is a railing. Jump over it.
-						if ( mid3d_top > pActor->z + pActor->MaxStepHeight &&
+						if ( mid3d_top > pActor->z + stepheight &&
 							mid3d_top <= pActor->z + jumpheight )
 						{
 							// If the ceiling is too low, we can't jump there
@@ -658,7 +659,7 @@ ULONG BOTPATH_TryWalk( AActor *pActor, fixed_t StartX, fixed_t StartY, fixed_t S
 
 							ulFlags |= BOTPATH_JUMPABLELEDGE;
 						}
-						else if ( mid3d_top > pActor->z + pActor->MaxStepHeight &&
+						else if ( mid3d_top > pActor->z + stepheight &&
 							mid3d_bot < pActor->z + pActor->height )
 						{
 							// 3d midtex blocks the path and we can't jump over it.
