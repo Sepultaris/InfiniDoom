@@ -505,16 +505,7 @@ ASTARRETURNSTRUCT_t ASTAR_Path( ULONG ulPathIdx, POS_t GoalPoint, float fMaxSear
 //
 POS_t ASTAR_GetPosition( ASTARNODE_t *pNode )
 {
-	POS_t	Position;
-
-//	pNode->lXNodeIdx << ASTAR_NODE_SHIFT + (( g_lMapXMin >> ASTAR_NODE_SHIFT ) << ASTAR_NODE_SHIFT )
-//	Position.x = ( pNode->lXNodeIdx << ASTAR_NODE_SHIFT ) + (((( g_lMapXMin / FRACUNIT ) / 64 ) * 64 ) * FRACUNIT ) + ( 32 << FRACBITS );
-//	Position.y = ( pNode->lYNodeIdx << ASTAR_NODE_SHIFT ) + (((( g_lMapYMin / FRACUNIT ) / 64 ) * 64 ) * FRACUNIT ) + ( 32 << FRACBITS );
-	Position.x = ( pNode->lXNodeIdx << ASTAR_NODE_SHIFT ) + (( g_lMapXMin >> ASTAR_NODE_SHIFT ) << ASTAR_NODE_SHIFT ) + ( 32 << FRACBITS );
-	Position.y = ( pNode->lYNodeIdx << ASTAR_NODE_SHIFT ) + (( g_lMapYMin >> ASTAR_NODE_SHIFT ) << ASTAR_NODE_SHIFT ) + ( 32 << FRACBITS );
-	Position.z = 0;
-
-	return ( Position );
+	return ( ASTAR_GetPositionFromIndex( pNode->lXNodeIdx, pNode->lYNodeIdx ) );
 }
 
 //*****************************************************************************
@@ -525,7 +516,9 @@ POS_t ASTAR_GetPositionFromIndex( LONG lXIdx, LONG lYIdx )
 
 	Position.x = ( lXIdx << ASTAR_NODE_SHIFT ) + (( g_lMapXMin >> ASTAR_NODE_SHIFT ) << ASTAR_NODE_SHIFT ) + ( 32 << FRACBITS );
 	Position.y = ( lYIdx << ASTAR_NODE_SHIFT ) + (( g_lMapYMin >> ASTAR_NODE_SHIFT ) << ASTAR_NODE_SHIFT ) + ( 32 << FRACBITS );
-	Position.z = 0;
+
+	int secnum = int(P_PointInSector (Position.x, Position.y) - sectors);
+	Position.z = sectors[secnum].floorplane.ZatPoint (Position.x, Position.y);
 
 	return ( Position );
 }
@@ -797,7 +790,7 @@ static ASTARNODE_t *astar_GetNodeFromPoint( POS_t Point )
 //
 static LONG astar_GetCostToGoalEstimate( ASTARPATH_t *pPath, ASTARNODE_t *pNode )
 {
-	return ( P_AproxDistance( pNode->Position.x - pPath->pGoalNode->Position.x, pNode->Position.y - pPath->pGoalNode->Position.y ) / FRACUNIT );
+	return ( P_AproxDistance( P_AproxDistance( pNode->Position.x - pPath->pGoalNode->Position.x, pNode->Position.y - pPath->pGoalNode->Position.y ), pNode->Position.z - pPath->pGoalNode->Position.z ) / FRACUNIT );
 /*
 	POS_t	PosGoal;
 	POS_t	PosNode;
