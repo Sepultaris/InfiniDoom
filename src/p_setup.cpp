@@ -3190,18 +3190,6 @@ void P_LoadBlockMap (MapData * map)
 	blocklinks = new FBlockNode *[count];
 	memset (blocklinks, 0, count*sizeof(*blocklinks));
 	blockmap = blockmaplump+4;
-
-	// [BC] Also, build the node list for the bot pathing module.
-	// [K6/BB] This is handled in CSkullBot(), unless we already have bots in game (from the previous map).
-	if (( NETWORK_InClientMode() == false ) &&
-		(( level.flagsZA & LEVEL_ZA_NOBOTNODES ) == false ) &&
-		( BOTS_CountBots( ) > 0 ))
-	{
-		ASTAR_BuildNodes( );
-	}
-
-	if ( level.flagsZA & LEVEL_ZA_NOBOTNODES || level.flagsZA & LEVEL_ZA_ISLOBBY )
-		BOTS_RemoveAllBots( false );
 }
 
 
@@ -4369,6 +4357,19 @@ void P_SetupLevel (char *lumpname, int position)
 	if (hasglnodes)
 	{
 		P_SetRenderSector();
+	}
+
+	// [BC] Also, build the node list for the bot pathing module.
+	// [K6/BB] This is handled in CSkullBot(), unless we already have bots in game (from the previous map).
+	if (NETWORK_InClientMode() == false && (level.flagsZA & LEVEL_ZA_NOBOTNODES) == false && BOTS_CountBots() > 0)
+	{
+		ASTAR_BuildNodes();
+	}
+
+	// [BB/AK] Remove bots on levels that don't support them.
+	if (level.flagsZA & LEVEL_ZA_NOBOTNODES || level.flagsZA & LEVEL_ZA_ISLOBBY)
+	{
+		BOTS_RemoveAllBots(false);
 	}
 
 	bodyqueslot = 0;
