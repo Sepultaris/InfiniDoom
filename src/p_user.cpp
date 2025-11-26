@@ -1758,16 +1758,18 @@ void APlayerPawn::GiveDefaultInventory ()
 					static_cast<AWeapon*>(item)->AmmoGive2 = 0;
 				}
 				AActor *check;
+				// [AK] Moved the morph item check outside of this if-statement.
+				// This is consistent with later versions of GZDoom.
 				if (!item->CallTryPickup(this, &check))
 				{
-					if (check != this)
-					{
-						// Player was morphed. This is illegal at game start.
-						// This problem is only detectable when it's too late to do something about it...
-						I_Error("Cannot give morph items when starting a game");
-					}
 					item->Destroy ();
 					item = NULL;
+				}
+				else if (check != this)
+				{
+					// Player was morphed. This is illegal at game start.
+					// This problem is only detectable when it's too late to do something about it...
+					I_Error("Cannot give morph items when starting a game");
 				}
 			}
 			if (item != NULL && item->IsKindOf (RUNTIME_CLASS (AWeapon)) &&
