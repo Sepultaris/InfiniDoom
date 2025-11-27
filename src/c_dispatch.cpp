@@ -1217,8 +1217,11 @@ FString BuildString (int argc, FString *argv)
 				}
 				buf << argv[arg].Mid(substr_start) << "\" ";
 			}
-			else if (strchr(argv[arg], ' '))
+			else if (strchr(argv[arg], ' ') || strchr(argv[arg], ';'))
 			{ // If it contains a space, it needs to be quoted.
+			  // [AK] Do the same if it contains a semicolon, or else it will
+			  // be executed as separate commands. For example, this is supposed
+			  // to be a single command: +sv_banfile "banlist1.txt;banlist2.txt"
 				buf << '"' << argv[arg] << "\" ";
 			}
 			else
