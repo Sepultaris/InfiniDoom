@@ -6427,61 +6427,8 @@ AActor *P_SpawnPuff (AActor *source, const PClass *pufftype, fixed_t x, fixed_t 
 	}
 
 	// [BC] If we're the server, tell clients to spawn the thing.
-	if (( NETWORK_GetState( ) == NETSTATE_SERVER ) &&
-		( bTellClientToSpawn ))
-	{
-		// If it's translated, or spawning in a state other than its spawn state,
-		// treat it as a special case.
-		if ( ulState != STATE_SPAWN )
-		{
-			SERVERCOMMANDS_SpawnPuffNoNetID( puff, ulState, false );
-		}
-		// In certain other conditions, we need to spawn the puff with a network
-		// ID so that things like sounds work.
-		else if (( (flags & PF_HITTHING) && puff->SeeSound ) ||
-				 ( puff->AttackSound ) || ( ( puff->GetClass()->Meta.GetMetaString (AMETA_Obituary) != NULL ) && ( flags & PF_TEMPORARY ) ) )
-		{
-			if ( puff->NetID == 0 )
-			{
-				puff->NetID = g_ActorNetIDList.getNewID( );
-				g_ActorNetIDList.useID ( puff->NetID, puff );
-			}
-
-			SERVERCOMMANDS_SpawnPuff( puff );
-		}
-		else
-		{
-			// [CK] If a player is the source that is firing this, check and see
-			// if the attacker is predicting and exclude them (and only them)
-			// from getting the predicted puff if the bullet puff has +NONETID.
-			if ( source && source->player )
-			{
-				// [CK] Only spawn for players who are not predicting puffs.
-				ULONG activatorPlayerNumber = source->player - players;
-				for ( ULONG ulPlayer = 0; ulPlayer < MAXPLAYERS; ulPlayer++ )
-				{
-					// [CK] Don't send to invalid clients
-					if ( SERVER_IsValidClient( ulPlayer ) == false )
-						continue;
-
-					// [CK] If the player is the source, and the player fired a
-					// puff with +NONETID, and the player wants to predict puffs
-					// then we won't send them this command.
-					if ( ( activatorPlayerNumber == ulPlayer ) && ( puff->NetworkFlags & NETFL_NONETID ) && ( source->player->userinfo.GetClientFlags() & CLIENTFLAGS_CLIENTSIDEPUFFS ) )
-						continue;
-
-					// [BB] If the puff has a net ID, it must be spawned with one.
-					SERVERCOMMANDS_SpawnPuff( puff, ulPlayer, SVCF_ONLYTHISCLIENT );
-				}
-			}
-			else
-			{
-				// [CK] It is always sent when fired from a non-player.
-				// [BB] If the puff has a net ID, it must be spawned with one.
-				SERVERCOMMANDS_SpawnPuff( puff );
-			}
-		}
-	}
+	if ((NETWORK_GetState() == NETSTATE_SERVER) && (bTellClientToSpawn))
+		P_SpawnPuffForClients (puff, source, ulState, flags);
 
 	if (!(flags & PF_TEMPORARY))
 	{
@@ -6505,6 +6452,75 @@ AActor *P_SpawnPuff (AActor *source, const PClass *pufftype, fixed_t x, fixed_t 
 }
 
 
+
+//---------------------------------------------------------------------------
+//
+// [AK] P_SpawnPuffForClients
+//
+// Helper function to tell clients to spawn puffs.
+//
+//---------------------------------------------------------------------------
+
+void P_SpawnPuffForClients (AActor *puff, AActor *source, unsigned int state, int flags)
+{
+	// [AK] Added sanity checks to ensure both actors are valid.
+	if ((puff == nullptr) || (source == nullptr))
+		return;
+
+	// If it's translated, or spawning in a state other than its spawn state,
+	// treat it as a special case.
+	if (state != STATE_SPAWN)
+	{
+		SERVERCOMMANDS_SpawnPuffNoNetID (puff, state, false);
+	}
+	// In certain other conditions, we need to spawn the puff with a network
+	// ID so that things like sounds work.
+	else if (((flags & PF_HITTHING) && puff->SeeSound) ||
+			(puff->AttackSound) ||
+			((puff->GetClass()->Meta.GetMetaString (AMETA_Obituary) != nullptr) && (flags & PF_TEMPORARY)))
+	{
+		if (puff->NetID == 0)
+		{
+			puff->NetID = g_ActorNetIDList.getNewID();
+			g_ActorNetIDList.useID (puff->NetID, puff);
+		}
+
+		SERVERCOMMANDS_SpawnPuff (puff);
+	}
+	else
+	{
+		// [CK] If a player is the source that is firing this, check and see
+		// if the attacker is predicting and exclude them (and only them)
+		// from getting the predicted puff if the bullet puff has +NONETID.
+		if (source && source->player)
+		{
+			// [CK] Only spawn for players who are not predicting puffs.
+			const unsigned int activatorPlayerNumber = source->player - players;
+
+			for (unsigned int player = 0; player < MAXPLAYERS; player++)
+			{
+				// [CK] Don't send to invalid clients
+				if (SERVER_IsValidClient (player) == false)
+					continue;
+
+				// [CK] If the player is the source, and the player fired a
+				// puff with +NONETID, and the player wants to predict puffs
+				// then we won't send them this command.
+				if ((activatorPlayerNumber == player) && (puff->NetworkFlags & NETFL_NONETID) && (source->player->userinfo.GetClientFlags() & CLIENTFLAGS_CLIENTSIDEPUFFS))
+					continue;
+
+				// [BB] If the puff has a net ID, it must be spawned with one.
+				SERVERCOMMANDS_SpawnPuff (puff, player, SVCF_ONLYTHISCLIENT);
+			}
+		}
+		else
+		{
+			// [CK] It is always sent when fired from a non-player.
+			// [BB] If the puff has a net ID, it must be spawned with one.
+			SERVERCOMMANDS_SpawnPuff (puff);
+		}
+	}
+}
 
 //---------------------------------------------------------------------------
 //

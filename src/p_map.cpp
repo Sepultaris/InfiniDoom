@@ -4986,9 +4986,20 @@ void P_RailAttack(AActor *source, int damage, int offset_xy, fixed_t offset_z, i
 
 		if (puffclass != NULL && puffDefaults->flags3 & MF3_ALWAYSPUFF)
 		{
-			puff = P_SpawnPuff(source, puffclass, trace.X, trace.Y, trace.Z, (source->angle + angleoffset) - ANG90, 1, 0);
+			// [AK] Don't tell the clients to spawn the puff in P_SpawnPuff.
+			// It might get destroyed if it touched the sky, so they should
+			// only spawn it if it doesn't.
+			puff = P_SpawnPuff(source, puffclass, trace.X, trace.Y, trace.Z, (source->angle + angleoffset) - ANG90, 1, 0, nullptr, false);
 			if (puff && (trace.Line != NULL) && (trace.Line->special == Line_Horizon) && !(puff->flags3 & MF3_SKYEXPLODE))
 				puff->Destroy();
+			// [AK] The puff wasn't destroyed, tell the clients to spawn it now.
+			else if (NETWORK_GetState() == NETSTATE_SERVER)
+				P_SpawnPuffForClients(puff, source, puff->FindState(NAME_Crash) != nullptr ? STATE_CRASH : STATE_SPAWN);
+			// [AK] The client needs to use the puff class's default actor
+			// in case the puff's decal should be used, since P_SpawnPuff
+			// always returns a null pointer for them.
+			else if (NETWORK_InClientMode())
+				puff = GetDefaultByType(puffclass->GetReplacement());
 		}
 		if (puff != NULL && puffDefaults->flags7 & MF7_FORCEDECAL && puff->DecalGenerator)
 			SpawnShootDecal(puff, trace);
@@ -5001,12 +5012,20 @@ void P_RailAttack(AActor *source, int damage, int offset_xy, fixed_t offset_z, i
 		AActor* puff = NULL;
 		if (puffclass != NULL && puffDefaults->flags3 & MF3_ALWAYSPUFF)
 		{
-			puff = P_SpawnPuff(source, puffclass, trace.X, trace.Y, trace.Z, (source->angle + angleoffset) - ANG90, 1, 0);
+			// [AK] Don't tell the clients to spawn the puff in P_SpawnPuff.
+			// It might get destroyed if it touched the sky, so they should
+			// only spawn it if it doesn't.
+			puff = P_SpawnPuff(source, puffclass, trace.X, trace.Y, trace.Z, (source->angle + angleoffset) - ANG90, 1, 0, nullptr, false);
 			if (puff && !(puff->flags3 & MF3_SKYEXPLODE) &&
 				(((trace.HitType == TRACE_HitFloor) && (puff->floorpic == skyflatnum)) ||
 				((trace.HitType == TRACE_HitCeiling) && (puff->ceilingpic == skyflatnum))))
 			{
 				puff->Destroy();
+			}
+			// [AK] The puff wasn't destroyed, tell the clients to spawn it now.
+			else if (NETWORK_GetState() == NETSTATE_SERVER)
+			{
+				P_SpawnPuffForClients(puff, source, puff->FindState(NAME_Crash) != nullptr ? STATE_CRASH : STATE_SPAWN);
 			}
 		}
 	}
