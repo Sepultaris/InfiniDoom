@@ -576,7 +576,12 @@ void G_InitNew (const char *mapname, bool bTitleLevel)
 			}
 			FRandom::StaticClearRandom ();
 		}
-		P_ClearACSVars(true);
+		// [AK] Don't reset world or global ACS variables for clients when they
+		// are changing levels, unless they haven't received the full snapshot.
+		if ((NETWORK_InClientMode() == false) || (CLIENT_GetConnectionState() != CTS_ACTIVE))
+		{
+			P_ClearACSVars(true);
+		}
 		level.time = 0;
 		level.maptime = 0;
 		level.totaltime = 0;
