@@ -6703,6 +6703,9 @@ void ServerCommands::SetSectorCeilingPlane::Execute()
 	// Change the height.
 	sector->ceilingplane.ChangeHeight( delta );
 
+	// Call this to update various actors within the sector.
+	P_ChangeSector( sector, false, delta, 1, false );
+
 	// Finally, adjust textures.
 	sector->SetPlaneTexZ(sector_t::ceiling, sector->GetPlaneTexZ(sector_t::ceiling) + sector->ceilingplane.HeightDiff( lastPos ) );
 

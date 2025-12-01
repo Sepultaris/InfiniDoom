@@ -56,6 +56,7 @@
 -	- Fixed: custom vote submenus were duplicated when the callvote menu itself wasn't closed, but a submenu of it. [AKMDM]
 -	- Fixed: it wasn't possible to set multiple ban (exemption) files via the command line during startup. [AKMDM]
 -	- Fixed: world and global ACS variables didn't persist on the client's end when the map changed in online games. [AKMDM]
+-	- Fixed: clients didn't update the sector color of a 3D floor when the server told them the sector's ceiling changed. [AKMDM]
 !	- Spectators now travel at full speed while underwater, and those using the unrestricted spectator mode now only pass through teleporters if they can see into the sector where the teleporter is. [AKMDM]
 !	- Player classes that are forbidden are no longer selectable in the player setup menu. [AKMDM]
 !	- "stat nettraffic" now shows the compression factor of packets sent or received in the last second. [AKMDM]
