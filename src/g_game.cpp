@@ -3799,6 +3799,17 @@ void GAME_ResetMap( bool bRunEnterScripts )
 				if ( NETWORK_GetState( ) == NETSTATE_SERVER )
 					SERVERCOMMANDS_Scroll3dMidtexture( &sectors[ulIdx], -move3d, !!i );
 			}
+
+			// [RK] Reset the light list for the 3d floor.
+			if ( sectors[ulIdx].e->XFloor.attached.Size() )
+			{
+				sector_t* sec;
+				for ( unsigned int f = 0; f < sectors[ulIdx].e->XFloor.attached.Size(); f++ )
+				{
+					sec = sectors[ulIdx].e->XFloor.attached[f];
+					P_Recalculate3DFloors( sec );
+				}
+			}
 		}
 	}
 
