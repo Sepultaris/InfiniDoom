@@ -508,6 +508,9 @@ BEGIN_ENUM ( NetworkErrorCode )
 	// [TP] The client sent bad userinfo
 	ENUM_ELEMENT( NETWORK_ERRORCODE_USERINFOREJECTED ),
 
+	// [SB] The client is using a different Zstandard dictionary than the server.
+	ENUM_ELEMENT( NETWORK_ERRORCODE_WRONGZSTDDICTIONARY ),
+
 	ENUM_ELEMENT( NUM_NETWORK_ERRORCODES )
 }
 END_ENUM ( NetworkErrorCode )

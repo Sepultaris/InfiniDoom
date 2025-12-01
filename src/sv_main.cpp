@@ -2128,11 +2128,10 @@ void SERVER_SetupNewConnection( BYTESTREAM_s *pByteStream, bool bNewPlayer )
 
 	const auto zstdDictId = static_cast<unsigned>( pByteStream->ReadLong() );
 
-	// [SB] Should we failsafe here (allow using zstd without a dictionary?)
-	// If not, needs its own error code.
+	// [SB] A matching Zstandard dictionary is required.
 	if ( zstdDictId != NETWORK_GetZstdDictId() )
 	{
-		SERVER_ClientError( lClient, NETWORK_ERRORCODE_WRONGPROTOCOLVERSION );
+		SERVER_ClientError( lClient, NETWORK_ERRORCODE_WRONGZSTDDICTIONARY );
 		return;
 	}
 
@@ -2506,6 +2505,10 @@ void SERVER_ClientError( ULONG ulClient, ULONG ulErrorCode )
 	case NETWORK_ERRORCODE_USERINFOREJECTED:
 
 		printMessage.Format( "Userinfo rejected.\n" );
+		break;
+	case NETWORK_ERRORCODE_WRONGZSTDDICTIONARY:
+
+		printMessage.Format( "Mismatched Zstandard dictionary.\n" );
 		break;
 	}
 

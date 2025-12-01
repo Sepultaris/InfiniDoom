@@ -1694,6 +1694,10 @@ void CLIENT_ProcessCommand( LONG lCommand, BYTESTREAM_s *pByteStream )
 
 				szErrorString = "The server rejected the userinfo.";
 				break;
+			case NETWORK_ERRORCODE_WRONGZSTDDICTIONARY:
+
+				szErrorString = "A different Zstandard dictionary is being used by the server.";
+				break;
 			default:
 
 				szErrorString.Format( "Unknown error code: %d!\n\nYour version may be different. Please check http://www." DOMAIN_NAME "/ for updates.", static_cast<unsigned int> (ulErrorCode) );
