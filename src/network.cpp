@@ -177,9 +177,6 @@ static	LONG			g_lNetworkState = NETSTATE_SINGLE;
 // Buffer that holds the data from the most recently received packet.
 static	NETBUFFER_s		g_NetworkMessage;
 
-// [AK] Was the most recently received packet compressed using ZStd?
-static	bool			g_LatestPacketUsedZStd = false;
-
 // Network address that the most recently received packet came from.
 static	NETADDRESS_s	g_AddressFrom;
 
@@ -1119,13 +1116,6 @@ NETBUFFER_s *NETWORK_GetNetworkMessageBuffer( void )
 
 //*****************************************************************************
 //
-bool NETWORK_LatestPacketCompressedUsingZStd( void )
-{
-	return g_LatestPacketUsedZStd;
-}
-
-//*****************************************************************************
-//
 USHORT NETWORK_ntohs( ULONG ul )
 {
 	return ( ntohs( (u_short)ul ));
@@ -1820,6 +1810,7 @@ static int network_ReadPacketsFromSocket( SOCKET &socket )
 	int socketFromLength = sizeof( socketFrom );
 	int numDecodedBytes = g_NetworkMessage.ulMaxSize;
 	int numBytes = 0;
+	bool usedZstd = false; // [SB] for statistics
 
 #ifdef WIN32
 	numBytes = recvfrom( socket, reinterpret_cast<char *>( g_ucHuffmanBuffer ), sizeof( g_ucHuffmanBuffer ), 0, &socketFrom, &socketFromLength );
@@ -1884,12 +1875,11 @@ static int network_ReadPacketsFromSocket( SOCKET &socket )
 			}
 
 			numDecodedBytes = static_cast<int>( zstdResult );
-			g_LatestPacketUsedZStd = true;
+			usedZstd = true;
 		}
 		else
 		{
 			HUFFMAN_Decode( g_ucHuffmanBuffer, static_cast<unsigned char *>( g_NetworkMessage.pbData ), numBytes, &numDecodedBytes );
-			g_LatestPacketUsedZStd = false;
 		}
 
 		g_NetworkMessage.ulCurrentSize = numDecodedBytes;
@@ -1909,7 +1899,7 @@ static int network_ReadPacketsFromSocket( SOCKET &socket )
 
 	// [AK] Clients add the size of the packet to the number of bytes received.
 	if (( NETWORK_GetState( ) == NETSTATE_CLIENT ) && ( g_AddressFrom.Compare( CLIENT_GetServerAddress( ))))
-		CLIENTSTATISTICS_AddToBytesReceived( g_NetworkMessage.ulCurrentSize, numBytes, g_LatestPacketUsedZStd );
+		CLIENTSTATISTICS_AddToBytesReceived( g_NetworkMessage.ulCurrentSize, numBytes, usedZstd );
 
 	return g_NetworkMessage.ulCurrentSize;
 }

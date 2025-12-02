@@ -342,7 +342,6 @@ void			NETWORK_LaunchPacket( NETBUFFER_s *buffer, NETADDRESS_s address, bool use
 NETADDRESS_s	NETWORK_GetLocalAddress( void );
 NETADDRESS_s	NETWORK_GetCachedLocalAddress( void );
 NETBUFFER_s		*NETWORK_GetNetworkMessageBuffer( void );
-bool			NETWORK_LatestPacketCompressedUsingZStd( void );
 USHORT			NETWORK_ntohs( ULONG ul );
 bool			NETWORK_IsGeoIPAvailable( void );
 ULONG			NETWORK_GetCountryIndexFromAddress( NETADDRESS_s Address );
