@@ -858,12 +858,27 @@ void NETWORK_LaunchPacket( NETBUFFER_s *buffer, NETADDRESS_s address, bool useZS
 	{
 		// [AK] Choose between compressing the packet using ZStd or Huffman.
 		if ( useZStd )
+		{
+			size_t zstdResult;
 			if ( g_zstdCdict != nullptr )
-				numBytesOut = ZSTD_compress_usingCDict( g_zstdCctx, g_ucHuffmanBuffer, sizeof( g_ucHuffmanBuffer ), buffer->pbData, buffer->ulCurrentSize, g_zstdCdict );
+				zstdResult = ZSTD_compress_usingCDict( g_zstdCctx, g_ucHuffmanBuffer, sizeof( g_ucHuffmanBuffer ), buffer->pbData, buffer->ulCurrentSize, g_zstdCdict );
 			else
-				numBytesOut = ZSTD_compressCCtx( g_zstdCctx, g_ucHuffmanBuffer, sizeof( g_ucHuffmanBuffer ), buffer->pbData, buffer->ulCurrentSize, 12 );
+				zstdResult = ZSTD_compressCCtx( g_zstdCctx, g_ucHuffmanBuffer, sizeof( g_ucHuffmanBuffer ), buffer->pbData, buffer->ulCurrentSize, 12 );
+
+			if ( ZSTD_isError( zstdResult ))
+			{
+				Printf( "NETWORK_LaunchPacket: Zstandard compression error! '%s'\n", ZSTD_getErrorName( zstdResult ) );
+				return;
+			}
+
+			numBytesOut = static_cast<int>( zstdResult );
+			didUseZstd = true;
+		}
 		else
+		{
+			numBytesOut = sizeof( g_ucHuffmanBuffer );
 			HUFFMAN_Encode( static_cast<unsigned char *>( buffer->pbData ), g_ucHuffmanBuffer, buffer->ulCurrentSize, &numBytesOut );
+		}
 	}
 	else
 	{
@@ -1816,23 +1831,31 @@ static int network_ReadPacketsFromSocket( SOCKET &socket )
 	// [BB] Communication with the auth server is not Huffman-encoded.
 	if ( g_AddressFrom.Compare( NETWORK_AUTH_GetCachedServerAddress( )) == false )
 	{
-		// [AK] First, try decompressing the packet using ZStd.
-		if ( g_zstdDdict != nullptr )
-			numDecodedBytes = ZSTD_decompress_usingDDict( g_zstdDctx, g_NetworkMessage.pbData, g_NetworkMessage.ulMaxSize, g_ucHuffmanBuffer, numBytes, g_zstdDdict );
-		else
-			numDecodedBytes = ZSTD_decompressDCtx( g_zstdDctx, g_NetworkMessage.pbData, g_NetworkMessage.ulMaxSize, g_ucHuffmanBuffer, numBytes );
+		// [SB] Check if this packet is compressed with Zstandard by looking for the frame header
+		const uint32_t zstdMagic = ZSTD_MAGICNUMBER;
+		const bool isZstd = numBytes >= 4 && memcmp( g_ucHuffmanBuffer, &zstdMagic, 4 ) == 0;
 
-
-		// [AK] If it failed, then the packet wasn't compressed using ZStd.
-		// Try decompressing it using Huffman then.
-		if ( ZSTD_isError( numDecodedBytes ))
+		if ( isZstd )
 		{
-			HUFFMAN_Decode( g_ucHuffmanBuffer, static_cast<unsigned char *>( g_NetworkMessage.pbData ), numBytes, &numDecodedBytes );
-			g_LatestPacketUsedZStd = false;
+			size_t zstdResult;
+			if ( g_zstdDdict != nullptr )
+				zstdResult = ZSTD_decompress_usingDDict( g_zstdDctx, g_NetworkMessage.pbData, g_NetworkMessage.ulMaxSize, g_ucHuffmanBuffer, numBytes, g_zstdDdict );
+			else
+				zstdResult = ZSTD_decompressDCtx( g_zstdDctx, g_NetworkMessage.pbData, g_NetworkMessage.ulMaxSize, g_ucHuffmanBuffer, numBytes );
+
+			if ( ZSTD_isError( zstdResult ))
+			{
+				Printf( "network_ReadPacketsFromSocket: Zstandard decompression error! '%s'\n", ZSTD_getErrorName( zstdResult ) );
+				return 0;
+			}
+
+			numDecodedBytes = static_cast<int>( zstdResult );
+			g_LatestPacketUsedZStd = true;
 		}
 		else
 		{
-			g_LatestPacketUsedZStd = true;
+			HUFFMAN_Decode( g_ucHuffmanBuffer, static_cast<unsigned char *>( g_NetworkMessage.pbData ), numBytes, &numDecodedBytes );
+			g_LatestPacketUsedZStd = false;
 		}
 
 		g_NetworkMessage.ulCurrentSize = numDecodedBytes;
