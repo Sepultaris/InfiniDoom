@@ -293,6 +293,7 @@ CVAR( Bool, sv_printconnectionmessages, true, CVAR_ARCHIVE|CVAR_NOSETBYACS ) // 
 
 CVAR( Bool, sv_dumppackets, false, CVAR_NOSETBYACS );
 CVAR( String, sv_dumppackets_dir, "", CVAR_NOSETBYACS );
+CVAR( Float, sv_dumppackets_chance, 1.0, CVAR_NOSETBYACS );
 
 //*****************************************************************************
 //
@@ -7629,12 +7630,19 @@ static void server_ForceRenamePlayer( ULONG playerIndex )
 // [SB]
 void SERVER_DumpPacket( const BYTE *buffer, const size_t length, const bool fromClient )
 {
+	static FRandom pr_dumppackets( "DumpPackets" );
+
 	if ( !sv_dumppackets || buffer == nullptr || length == 0 )
 	{
 		return;
 	}
 
 	if ( SERVER_CalcNumConnectedClients() == 0 )
+	{
+		return;
+	}
+
+	if ( pr_dumppackets.GenRand_Real1() > sv_dumppackets_chance )
 	{
 		return;
 	}
