@@ -491,7 +491,7 @@ ADD_STAT( nettraffic )
 {
 	FString out;
 
-	out.Format( "In: %5u/%5u/%5u (comp: %.1f%%, zstd: %.1f%%)        Out: %5u/%5u/%5u (comp: %.1f%%, zstd: %.1f%%)        Loss: %5u/%5u",
+	out.Format( "In:   %5u/%5u/%5u (comp: %.1f%%, zstd: %.1f%%)\nOut:  %5u/%5u/%5u (comp: %.1f%%, zstd: %.1f%%)\nLoss: %5u/%5u",
 		g_bytesReceivedStatTracker.getValueThisTick( ),
 		g_bytesReceivedStatTracker.getValueLastSecond( ),
 		g_bytesReceivedStatTracker.getMaxValuePerSecond( ),
