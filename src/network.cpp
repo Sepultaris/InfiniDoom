@@ -1702,14 +1702,14 @@ static int network_ReadPacketsFromSocket( SOCKET &socket )
 		errno = WSAGetLastError( );
 
 		if ( errno == WSAEMSGSIZE )
-			Printf( "NETWORK_GetPackets: WARNING! Oversized packet from %s\n", g_AddressFrom.ToString( ));
+			Printf( "network_ReadPacketsFromSocket: WARNING! Oversized packet from %s\n", g_AddressFrom.ToString( ));
 		// [AK] Don't print an error message when the connection is blocked or reset.
 		else if (( errno != WSAEWOULDBLOCK ) && ( errno != WSAECONNRESET ))
-			Printf( "NETWORK_GetPackets: WARNING!: Error #%d: %s\n", errno, strerror( errno ));
+			Printf( "network_ReadPacketsFromSocket: WARNING!: Error #%d: %s\n", errno, strerror( errno ));
 #else
 		// [AK] Don't print an error message when the connection is blocked or refused.
 		if (( errno != EWOULDBLOCK ) && ( errno != ECONNREFUSED ))
-			Printf( "NETWORK_GetPackets: WARNING!: Error #%d: %s\n", errno, strerror( errno ));
+			Printf( "network_ReadPacketsFromSocket: WARNING!: Error #%d: %s\n", errno, strerror( errno ));
 #endif
 		return 0;
 	}
