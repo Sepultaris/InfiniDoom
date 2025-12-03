@@ -5549,6 +5549,7 @@ enum EACSFunctions
 	ACSF_IsPlayerContestingControlPoint,
 	ACSF_GetWadInfo,
 	ACSF_SetMapUsedStatus,
+	ACSF_CheckScript,
 
 	// ZDaemon
 	ACSF_GetTeamScore = 19620,	// (int team)
@@ -8980,6 +8981,15 @@ doplaysound:			if (funcIndex == ACSF_PlayActorSound)
 			}
 
 			return 0;
+		}
+
+		case ACSF_CheckScript:
+		{
+			// [AK] If true, check for the script by name. Otherwise, by number.
+			if ( !!args[1] )
+				return ACS_ExistsScript( -FName( FBehavior::StaticLookupString( args[0] )));
+			else
+				return ACS_ExistsScript( args[0] );
 		}
 
 		case ACSF_GetActorFloorTexture:
