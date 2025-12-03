@@ -2560,6 +2560,8 @@ void SERVERCOMMANDS_SetGameModeLimits( ULONG ulPlayerExtra, ServerCommandFlags f
 	command.addBit( sv_limitcommands );
 	// [AK] Send sv_respawninsurvivalinvasion.
 	command.addBit( sv_respawninsurvivalinvasion );
+	// [TRSR] Send sv_requireskulltoscore.
+	command.addBit( sv_requireskulltoscore );
 	// [AM] Send lobby map.
 	command.addString( lobby );
 	// [AK] Send sv_allowprivatechat.

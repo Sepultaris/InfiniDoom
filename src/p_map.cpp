@@ -1372,7 +1372,7 @@ bool PIT_CheckThing(AActor *thing, FCheckPosition &tm)
 				( thing->args[0] == static_cast<int> (TEAM_GetNumTeamsWithStarts()) || static_cast<signed>( tm.thing->player->Team ) == thing->args[0] ) &&
 				( thing->args[1] > 0 ))
 			{
-				if ( !TEAM_GetItemTaken( tm.thing->player->Team ) )
+				if ( !sv_requireskulltoscore || !TEAM_GetItemTaken( tm.thing->player->Team ) )
 					TEAM_ScoreSkulltagPoint( tm.thing->player, thing->args[1], thing );
 				else
 					TEAM_DisplayNeedToReturnSkullMessage( tm.thing->player );
