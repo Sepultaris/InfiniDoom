@@ -266,9 +266,9 @@ static	void			network_ParseLumpAuthenticationMode( FScanner &sc, LumpAuthenticat
 
 //*****************************************************************************
 //	CONSOLE VARIABLES
+
 CUSTOM_CVAR( Int, net_zstd_level, 12, CVAR_ARCHIVE|CVAR_NOSETBYACS )
 {
-
 	// [SB] Clamp the value to the valid range of compression levels.
 	const int maxLevel = ZSTD_maxCLevel( );
 	if (self < 1)
