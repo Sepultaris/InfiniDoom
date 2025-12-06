@@ -517,9 +517,9 @@ void WI_LoadBackground(bool isenterpic)
 				{
 					// [BB] Possibly select a custom winner / loser pic.
 					if ( WI_CalcRank( ) <= 1 )
-						lumpname = TEAM_SelectCustomStringForPlayer( &players[consoleplayer], &TEAMINFO::WinnerPic, "WINERPIC" );
+						lumpname = TEAM_SelectCustomStringForPlayer(&players[consoleplayer], &TEAMINFO::WinnerPic, level.info->WinnerPic); // [BOF] Use level.info->WinnerPic
 					else
-						lumpname = TEAM_SelectCustomStringForPlayer( &players[consoleplayer], &TEAMINFO::LoserPic, "LOSERPIC" );
+						lumpname = TEAM_SelectCustomStringForPlayer(&players[consoleplayer], &TEAMINFO::LoserPic, level.info->LoserPic); // [BOF] Ditto for LoserPic
 
 					// [BB] If the selected pic doesn't exist (Zandronum itself doesn't have WINERPIC or LOSERPIC)
 					// and is no script, fall back to the default one.
@@ -2576,20 +2576,32 @@ void WI_Ticker(void)
 		if ( WI_UseSkulltagIntermissionAndMusic( ))
 		{
 			FString musicName;
+			int musicOrder;
 			if ( CAMPAIGN_DidPlayerBeatMap( ))
-				musicName = TEAM_SelectCustomStringForPlayer( &players[consoleplayer], &TEAMINFO::WinnerTheme, "d_stwin" );
-			else
-				musicName = TEAM_SelectCustomStringForPlayer( &players[consoleplayer], &TEAMINFO::LoserTheme, "d_stlose" );
-
-			// [BB] In case we want to use Skulltag's built-in intermission music,
-			// check if the lump exists and fall back to the default music if it doesn't.
-			// Don't check if the lump exists if it's not d_stwin/d_stlose. S_ChangeMusic
-			// supports much more than a simple lump name as argument  and we want to
-			// allow the full flexibility within the TEAMINFO lump.
-			if ( ( ( musicName.Compare ( "d_stwin" ) != 0 ) && ( musicName.Compare ( "d_stlose" ) != 0 ) )
-				|| Wads.CheckNumForName( musicName.GetChars(), ns_music ) != -1 )
 			{
-				S_ChangeMusic ( musicName.GetChars() );
+				musicName = TEAM_SelectCustomStringForPlayer(&players[consoleplayer], &TEAMINFO::WinnerTheme, level.info->WinnerMusic); // [BOF] Use level.info->WinnerMusic
+				// [BOF] Get Team or level.info music order.
+				musicOrder = TEAM_SelectMusicOrder(&players[consoleplayer], &TEAMINFO::WinnerTheme, &TEAMINFO::winnerthemeorder, level.info->winnermusicorder);
+			}
+			else
+			{
+				// [BOF] Ditto for LoserMusic
+				musicName = TEAM_SelectCustomStringForPlayer(&players[consoleplayer], &TEAMINFO::LoserTheme, level.info->LoserMusic);
+				musicOrder = TEAM_SelectMusicOrder(&players[consoleplayer], &TEAMINFO::LoserTheme, &TEAMINFO::loserthemeorder, level.info->losermusicorder);
+			}
+
+			// [BB/BOF] In case we want to use Skulltag's built-in intermission music,
+			// check if the lump exists and fall back to the default music if it doesn't.
+			// Don't check if the lump exists if it's not WinnerMusic/LoserMusic.
+			// S_ChangeMusic supports much more than a simple lump name as argument
+			// and we want to allow the full flexibility within the TEAMINFO lump.
+
+			// [BOF] Update to check for longer file names
+			if ( ( ( musicName.Compare ( level.info->WinnerMusic ) != 0 ) && ( musicName.Compare ( level.info->LoserMusic ) != 0 ) )
+				|| Wads.CheckNumForFullName( musicName.GetChars(), true, ns_music ) != -1 )
+			{
+				// [BOF] Get music order for track as well.
+				S_ChangeMusic ( musicName.GetChars(), musicOrder );
 				bUsingCustomMusic  = true;
 			}
 		}

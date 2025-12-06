@@ -349,6 +349,14 @@ struct level_info_t
 	// [AK] Determines which game mode the map is locked into.
 	GAMEMODE_e	GameMode;
 
+	// [BOF] Winner and Loser Intermissions for maps
+	FString		WinnerPic;
+	FString		LoserPic;
+	FString		WinnerMusic;
+	FString		LoserMusic;
+	int			winnermusicorder;
+	int			losermusicorder;
+
 	level_info_t() 
 	{ 
 		Reset(); 

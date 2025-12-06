@@ -57,6 +57,7 @@
 
 void TEAMINFO_Init ();
 void TEAMINFO_ParseTeam (FScanner &sc);
+void TEAMINFO_ParseMusic (FScanner &sc, FString &name, int &order); // [BOF]
 
 // [CW] See 'TEAM_CheckIfValid' in 'team.cpp'.
 
@@ -137,8 +138,10 @@ void TEAMINFO_Init ()
 void TEAMINFO_ParseTeam (FScanner &sc)
 {
 	TEAMINFO team;
-	// [BB] Initialize some values.
+	// [BB/BOF] Initialize some values.
 	team.bCustomPlayerColorAllowed = false;
+	team.winnerthemeorder = 0;
+	team.loserthemeorder = 0;
 
 	int i;
 	char *color;
@@ -221,13 +224,13 @@ void TEAMINFO_ParseTeam (FScanner &sc)
 			break;
 
 		case 13:
-			sc.MustGetString( );
-			team.WinnerTheme = sc.String;
+			// [BOF] Parse music similarly to MAPINFO for track position.
+			TEAMINFO_ParseMusic( sc, team.WinnerTheme, team.winnerthemeorder );
 			break;
 
 		case 14:
-			sc.MustGetString( );
-			team.LoserTheme = sc.String;
+			// [BOF] Parse music similarly to MAPINFO for track position.
+			TEAMINFO_ParseMusic( sc, team.LoserTheme, team.loserthemeorder );
 			break;
 
 		case 15:
@@ -241,6 +244,23 @@ void TEAMINFO_ParseTeam (FScanner &sc)
 	}
 
 	teams.Push (team);
+}
+
+//==========================================================================
+//
+// [BOF] TEAMINFO_ParseMusic
+//
+// Parse Winning and Losing themes.
+//
+//==========================================================================
+
+void TEAMINFO_ParseMusic (FScanner &sc, FString &name, int &order)
+{
+	FMapInfoParser mapInfoParser;
+
+	mapInfoParser.sc = sc;
+	mapInfoParser.ParseMusic( name, order );
+	sc = mapInfoParser.sc;
 }
 
 /*

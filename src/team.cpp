@@ -1716,6 +1716,29 @@ const char* TEAM_GetIntermissionTheme( ULONG ulTeam, bool bWin ) {
 }
 
 //*****************************************************************************
+// [BOF] Get Teams Winning/Losing music position
+int TEAM_GetIntermissionThemeOrder( ULONG ulTeam, bool bWin ) {
+	if ( !TEAM_CheckIfValid( ulTeam ) )
+		return 0;
+	if ( bWin )
+		return teams[ulTeam].winnerthemeorder;
+	else
+		return teams[ulTeam].loserthemeorder;
+}
+
+//*****************************************************************************
+// [BOF] Select Team or Default music position for Intermission
+int TEAM_SelectMusicOrder( player_t *pPlayer, const FString TEAMINFO::*teamMusic, const int TEAMINFO::*teamMusicOrder, const int defaultOrder ) {
+	if ( pPlayer == NULL )
+		return defaultOrder;
+
+	if ( pPlayer->bOnTeam && TEAM_HasCustomString ( pPlayer->Team, teamMusic ) )
+		return teams[pPlayer->Team].*teamMusicOrder;
+	else
+		return defaultOrder;
+}
+
+//*****************************************************************************
 //	CONSOLE COMMANDS/VARIABLES
 
 CUSTOM_CVAR( Bool, teamgame, false, CVAR_SERVERINFO | CVAR_LATCH | CVAR_CAMPAIGNLOCK )

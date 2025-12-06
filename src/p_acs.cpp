@@ -1637,6 +1637,10 @@ static int GetTeamProperty (unsigned int team, int prop) {
 			return TEAM_GetReturnTicks (team);
 		case TPROP_NumPlayers:
 			return TEAM_CountPlayers (team);
+		// [BOF] Winner/Loser Theme position
+		case TPROP_WinnerThemeOrder:
+		case TPROP_LoserThemeOrder:
+			return TEAM_GetIntermissionThemeOrder (team, prop == TPROP_WinnerThemeOrder);
 		// [Dusk] Now for the strings! Using dynamic strings for this.
 		case TPROP_TeamItem:
 		case TPROP_WinnerTheme:

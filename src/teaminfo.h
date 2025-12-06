@@ -118,6 +118,10 @@ struct TEAMINFO
 	FString		WinnerTheme;
 	FString		LoserTheme;
 
+	// [BOF] Track position for team win/lose themes
+	int			winnerthemeorder;
+	int			loserthemeorder;
+
 	// [AK] The name of the texture that this team uses as their logo.
 	FString		Logo;
 

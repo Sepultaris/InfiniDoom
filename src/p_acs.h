@@ -448,6 +448,9 @@ enum
 	TPROP_TeamItem,
 	TPROP_WinnerTheme,
 	TPROP_LoserTheme,
+	// [BOF] Team Property for Winner/Loser theme Order
+	TPROP_WinnerThemeOrder,
+	TPROP_LoserThemeOrder,
 };
 
 class FBehavior

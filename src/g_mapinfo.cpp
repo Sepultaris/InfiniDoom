@@ -297,6 +297,13 @@ void level_info_t::Reset()
 	PrecacheSounds.Clear();
 	// [AK] By default, the map can be played in any game mode.
 	GameMode = NUM_GAMEMODES;
+	// [BOF] Winning/Losing intermissions can now be defined in MAPINFO; uses Skulltag/Zandronum values by default.
+	WinnerPic = "WINERPIC";
+	LoserPic = "LOSERPIC";
+	WinnerMusic = "d_stwin";
+	LoserMusic = "d_stlose";
+	winnermusicorder = 0;
+	losermusicorder = 0;
 }
 
 
@@ -1237,6 +1244,33 @@ DEFINE_MAP_OPTION(gamemode, false)
 	{
 		parse.sc.ScriptError("%s has campaign information that forces the game mode to something other than '%s'.", info->mapname, parse.sc.String);
 	}
+}
+
+// [BOF] Winning / Losing intermission parameters
+DEFINE_MAP_OPTION(winnerpic, true)
+{
+	parse.ParseAssign();
+	parse.sc.MustGetString();
+	info->WinnerPic = parse.sc.String;
+}
+
+DEFINE_MAP_OPTION(loserpic, true)
+{
+	parse.ParseAssign();
+	parse.sc.MustGetString();
+	info->LoserPic = parse.sc.String;
+}
+
+DEFINE_MAP_OPTION(winnermusic, true)
+{
+	parse.ParseAssign();
+	parse.ParseMusic(info->WinnerMusic, info->winnermusicorder);
+}
+
+DEFINE_MAP_OPTION(losermusic, true)
+{
+	parse.ParseAssign();
+	parse.ParseMusic(info->LoserMusic, info->losermusicorder);
 }
 
 
