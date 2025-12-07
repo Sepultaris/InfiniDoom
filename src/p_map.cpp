@@ -5054,9 +5054,11 @@ void P_RailAttack(AActor *source, int damage, int offset_xy, fixed_t offset_z, i
 	// [BC] If we're the server, tell clients to create a railgun trail.
 	if ( NETWORK_GetState( ) == NETSTATE_SERVER )
 	{
-		const ULONG ulPlayer = source->player ? static_cast<ULONG> ( source->player - players ) : MAXPLAYERS;
+		const bool hitWall = ( trace.HitType == TRACE_HitWall );
+		const unsigned int playerIndex = source->player ? static_cast<unsigned>( source->player - players ) : MAXPLAYERS;
+
 		SERVERCOMMANDS_WeaponRailgun( source, start, end, color1, color2, maxdiff, railflags,
-			angleoffset, spawnclass, duration, sparsity, drift, ulPlayer,
+			angleoffset, spawnclass, duration, sparsity, drift, hitWall, puffclass, playerIndex,
 			UNLAGGED_DrawRailClientside( source ) ? SVCF_SKIPTHISCLIENT : ServerCommandFlags( 0 ) );
 	}
 }
@@ -5119,6 +5121,43 @@ void P_RailAttackWithPossibleSpread (AActor *source, int damage, int offset_xy, 
 		// Player did not strike a player with his railgun. Reset consecutive hits to 0.
 		if ( ulConsecutiveRailgunHitsBefore == source->player->ulConsecutiveRailgunHits )
 			source->player->ulConsecutiveRailgunHits = 0;
+	}
+}
+
+//==========================================================================
+//
+// [AK] P_SpawnDecalFromRailAttack
+//
+// This should only be called in ServerCommands::WeaponRailgun::Execute. If
+// a rail attack hit a wall on the server's end, then clients should retrace
+// where the rail attack landed and draw a decal.
+//
+// This is the best place to put this function to keep changes at a minimum.
+//
+//==========================================================================
+
+void P_SpawnDecalFromRailAttack (AActor *source, FVector3 &start, FVector3 &end, const PClass *puffClass)
+{
+	if (source == nullptr)
+		return;
+
+	FVector3 unitVector = FVector3(end - start).Unit();
+	FTraceResults trace;
+
+	// [AK] Use the maximum possible distance so that the trace hits a wall.
+	Trace(FLOAT2FIXED(start.X), FLOAT2FIXED(start.Y), FLOAT2FIXED(start.Z), source->Sector,
+		FLOAT2FIXED(unitVector.X), FLOAT2FIXED(unitVector.Y), FLOAT2FIXED(unitVector.Z),
+		FIXED_MAX, 0, ML_BLOCKEVERYTHING, source, trace);
+
+	if (trace.HitType == TRACE_HitWall)
+	{
+		// [AK] If the puff's class isn't null, then use its decal instead.
+		// This is a confirmation that the server checked that the puff has
+		// a decal that should be used instead of the shooter's.
+		if (puffClass != nullptr)
+			SpawnShootDecal(GetDefaultByType(puffClass), trace);
+		else
+			SpawnShootDecal(source, trace);
 	}
 }
 

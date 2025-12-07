@@ -2931,7 +2931,7 @@ void SERVERCOMMANDS_WeaponChange( ULONG ulPlayer, ULONG ulPlayerExtra, ServerCom
 
 //*****************************************************************************
 //
-void SERVERCOMMANDS_WeaponRailgun( AActor *source, const FVector3 &start, const FVector3 &end, LONG color1, LONG color2, float maxdiff, int railflags, angle_t angleoffset, const PClass* spawnclass, int duration, float sparsity, float drift, ULONG ulPlayerExtra, ServerCommandFlags flags )
+void SERVERCOMMANDS_WeaponRailgun( AActor *source, const FVector3 &start, const FVector3 &end, LONG color1, LONG color2, float maxdiff, int railflags, angle_t angleoffset, const PClass* spawnclass, int duration, float sparsity, float drift, bool hitWall, const PClass *puffClass, ULONG ulPlayerExtra, ServerCommandFlags flags )
 {
 	// Evidently, to draw a railgun trail, there must be a source actor.
 	if ( !EnsureActorHasNetID (source) )
@@ -2950,6 +2950,10 @@ void SERVERCOMMANDS_WeaponRailgun( AActor *source, const FVector3 &start, const 
 	command.SetSparsity( sparsity );
 	command.SetDrift( drift );
 	command.SetFlags( railflags );
+	command.SetHitWall( hitWall );
+	// [AK] Initialize these members for now, they'll be set accordingly below.
+	command.SetUsePuffDecal( false );
+	command.SetPuffClass( nullptr );
 
 	// [TP] Recent ZDoom versions have added more railgun parameters. Add these parameters to the command
 	// only if they're not at defaults.
@@ -2958,6 +2962,20 @@ void SERVERCOMMANDS_WeaponRailgun( AActor *source, const FVector3 &start, const 
 		|| duration != 0
 		|| fabs( sparsity - 1.0f ) > 1e-8
 		|| fabs( drift - 1.0f ) > 1e-8 );
+
+	// [AK] If the railgun hit a wall, then only send the puff's class to the
+	// clients if its decal must be used. Always use the puff's replacement class.
+	if (( hitWall ) && ( puffClass != nullptr ))
+	{
+		const PClass *replacementClass = puffClass->GetReplacement( );
+		const AActor *puffDefaults = GetDefaultByType( replacementClass );
+
+		if (( puffDefaults->flags7 & MF7_FORCEDECAL ) && ( puffDefaults->DecalGenerator != nullptr ))
+		{
+			command.SetUsePuffDecal( true );
+			command.SetPuffClass( replacementClass );
+		}
+	}
 
 	command.sendCommandToClients ( ulPlayerExtra, flags );
 }

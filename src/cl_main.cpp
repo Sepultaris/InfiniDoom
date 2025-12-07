@@ -6670,6 +6670,10 @@ void ServerCommands::WeaponRailgun::Execute()
 
 	angle_t angle = source->angle + angleoffset;
 	P_DrawRailTrail( source, start, end, color1, color2, maxdiff, flags, spawnclass, angle, duration, sparsity, drift );
+
+	// [AK] If the railgun hit a wall, spawn a decal where it ended.
+	if ( hitWall )
+		P_SpawnDecalFromRailAttack( source, start, end, usePuffDecal ? puffClass : nullptr );
 }
 
 //*****************************************************************************

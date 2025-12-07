@@ -515,6 +515,7 @@ bool	P_HitWater (AActor *thing, sector_t *sec, fixed_t splashx = FIXED_MIN, fixe
 void	P_CheckSplash(AActor *self, fixed_t distance);
 void	P_RailAttack (AActor *source, int damage, int offset_xy, fixed_t offset_z = 0, int color1 = 0, int color2 = 0, float maxdiff = 0, int flags = 0, const PClass *puff = NULL, angle_t angleoffset = 0, angle_t pitchoffset = 0, fixed_t distance = 8192*FRACUNIT, int duration = 0, float sparsity = 1.0, float drift = 1.0, const PClass *spawnclass = NULL);	// [RH] Shoot a railgun
 void	P_RailAttackWithPossibleSpread (AActor *source, int damage, int offset_xy, fixed_t offset_z = 0, int color1 = 0, int color2 = 0, float maxdiff = 0, int flags = 0, const PClass *puff = NULL, angle_t angleoffset = 0, angle_t pitchoffset = 0, fixed_t distance = 8192*FRACUNIT, int duration = 0, float sparsity = 1.0, float drift = 1.0, const PClass *spawnclass = NULL);	// [BB] Shoot a railgun with spread applied if necessary
+void	P_SpawnDecalFromRailAttack (AActor *source, FVector3 &start, FVector3 &end, const PClass *puffClass); // [AK] This should only be called in ServerCommands::WeaponRailgun::Execute.
 
 enum	// P_RailAttack / A_RailAttack / A_CustomRailgun / P_DrawRailTrail flags
 {	
