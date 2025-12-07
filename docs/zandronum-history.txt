@@ -63,6 +63,7 @@
 -	- Fixed: world and global ACS variables didn't persist on the client's end when the map changed in online games. [AKMDM]
 -	- Fixed: clients didn't update the sector color of a 3D floor when the server told them the sector's ceiling changed. [AKMDM]
 -	- Fixed: Sector color of a 3d floor that had its floor or ceiling changed wasn't set back to its default value on map reset (addresses 1876). [Ru5tK1ng]
+-	- Fixed: bots didn't spawn as the class assigned to them in offline cooperative games. [AKMDM]
 !	- Spectators now travel at full speed while underwater, and those using the unrestricted spectator mode now only pass through teleporters if they can see into the sector where the teleporter is. [AKMDM]
 !	- Player classes that are forbidden are no longer selectable in the player setup menu. [AKMDM]
 !	- "stat nettraffic" now shows the compression factor of packets sent or received in the last second. [AKMDM]

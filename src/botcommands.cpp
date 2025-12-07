@@ -2355,6 +2355,9 @@ static void botcmd_TryToJoinGame( CSkullBot *pBot )
 		return;
 	}
 
+	// [AK] Allow the bot to switch its class upon joining the game in singleplayer.
+	G_UpdateSinglePlayerClass( playerIndex );
+
 	// Everything's okay! Go ahead and join!
 	PLAYER_SpectatorJoinsGame ( pBot->GetPlayer( ) );
 

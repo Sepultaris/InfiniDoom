@@ -1986,6 +1986,9 @@ CSkullBot::CSkullBot( const char *pszName, const char *pszTeamName, ULONG ulPlay
 	// [BB] If the bot is forced to spectate, make sure he is not on a team.
 	if ( m_pPlayer->bSpectating )
 		PLAYER_SetTeam( m_pPlayer, teams.Size( ), true );
+	// [AK] If not, and it's a singleplayer game, allow them to switch their class.
+	else
+		G_UpdateSinglePlayerClass( ulPlayerNum );
 
 	// [BB] If any of the spawn functions throw an exception, we
 	// have to catch it here. Otherwise the constructor is not properly
