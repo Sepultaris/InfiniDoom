@@ -4099,6 +4099,21 @@ void SCOREBOARD_Render( const unsigned int displayPlayer, const int minYPos )
 	if ( displayPlayer >= MAXPLAYERS )
 		return;
 
+	// [AK] eviternity.wad uses graphics for the titles of its levels that fill
+	// the screen almost completely. This can force the scoreboard to the bottom
+	// of the screen, which won't look good. The graphics are 320x200 in size.
+	// In this case, the minimum y-position can be 32 pixels from the top.
+	if ( minYPos >= 200 * CleanYfac )
+	{
+		FTexture *titlePic = TexMan[TexMan.CheckForTexture( level.info->pname, FTexture::TEX_MiscPatch )];
+
+		if (( titlePic != nullptr ) && ( titlePic->GetScaledHeight( ) >= 200 ))
+		{
+			g_Scoreboard.Render( displayPlayer, 32 * CleanYfac, cl_scoreboardalpha );
+			return;
+		}
+	}
+
 	g_Scoreboard.Render( displayPlayer, minYPos, cl_scoreboardalpha );
 }
 
