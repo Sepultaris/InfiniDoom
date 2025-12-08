@@ -46,15 +46,15 @@ Command WeaponRailgun
 	Vector3 end
 	Long color1
 	Long color2
-	Float maxdiff
+	Float maxDiff
 	ShortByte<5> flags
 	Bool extended
 	Bool hitWall
 	Bool usePuffDecal
 
 	If (extended)
-		Long angleoffset
-		Class spawnclass with NullAllowed
+		Long angleOffset
+		Class spawnClass with NullAllowed
 		# Let's play safe and send this as a short
 		Short duration
 		Float sparsity
