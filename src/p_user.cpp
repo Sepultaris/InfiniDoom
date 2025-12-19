@@ -88,7 +88,8 @@ static FRandom pr_skullpop ("SkullPop");
 CVAR (Bool, cl_noprediction, false, CVAR_ARCHIVE|CVAR_GLOBALCONFIG)
 
 // [Nash] FOV cvar setting
-CUSTOM_CVAR(Float, fov, 90.f, CVAR_ARCHIVE | CVAR_USERINFO | CVAR_NOINITCALL)
+// [AK] Don't sync FOV to other clients.
+CUSTOM_CVAR(Float, fov, 90.f, CVAR_ARCHIVE | CVAR_USERINFO | CVAR_UNSYNCED_USERINFO | CVAR_NOINITCALL)
 {
 	player_t *p = &players[consoleplayer];
 	p->SetFOV(fov);
