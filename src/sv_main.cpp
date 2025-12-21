@@ -2195,7 +2195,7 @@ void SERVER_SetupNewConnection( BYTESTREAM_s *pByteStream, bool bNewPlayer )
 
 //*****************************************************************************
 //
-bool SERVER_GetUserInfo( BYTESTREAM_s *byteStream, bool allowKick, bool enforceRequired )
+bool SERVER_GetUserInfo( BYTESTREAM_s *byteStream, bool allowKick, bool enforceRequired, bool fromACS )
 {
 	player_t *const player = &players[g_lCurrentClient];
 	FString skin;
@@ -2214,6 +2214,7 @@ bool SERVER_GetUserInfo( BYTESTREAM_s *byteStream, bool allowKick, bool enforceR
 
 	FName name;
 	std::set<FName> names;
+	std::set<FBaseCVar *> cvars;
 
 	while (( name = NETWORK_ReadName( byteStream )) != NAME_None )
 	{
@@ -2226,6 +2227,13 @@ bool SERVER_GetUserInfo( BYTESTREAM_s *byteStream, bool allowKick, bool enforceR
 		}
 
 		names.insert( name );
+
+		FBaseCVar **cvarPointer = player->userinfo.CheckKey( name );
+		FBaseCVar *cvar = cvarPointer ? *cvarPointer : nullptr;
+
+		if ( cvar != nullptr )
+			cvars.insert( cvar );
+
 		FString value = byteStream->ReadString( );
 
 		switch ( name )
@@ -2366,9 +2374,6 @@ bool SERVER_GetUserInfo( BYTESTREAM_s *byteStream, bool allowKick, bool enforceR
 
 			default:
 			{
-				FBaseCVar **cvarPointer = player->userinfo.CheckKey( name );
-				FBaseCVar *cvar = cvarPointer ? *cvarPointer : nullptr;
-
 				if ( cvar )
 				{
 					UCVarValue cvarValue;
@@ -2414,6 +2419,21 @@ bool SERVER_GetUserInfo( BYTESTREAM_s *byteStream, bool allowKick, bool enforceR
 		{
 			kickPlayer = true;
 			kickReason = "Userinfo is incomplete";
+		}
+	}
+
+	// [AK] Ensure that all of the CVars that a client sends in a CLC_ACSUSERINFO
+	// command are mod-related. Otherwise, the client sent data that they're not
+	// supposed to, and they must be kicked them from the server.
+	if ( fromACS )
+	{
+		for ( auto cvar = cvars.begin( ); cvar != cvars.end( ); cvar++ )
+		{
+			if ((( *cvar )->GetFlags( ) & CVAR_MOD ) == false )
+			{
+				kickPlayer = true;
+				kickReason = "Sent a non-mod CVar with ACS user info change.";
+			}
 		}
 	}
 
@@ -4995,11 +5015,18 @@ bool SERVER_ProcessCommand( LONG lCommand, BYTESTREAM_s *pByteStream )
 	switch ( lCommand )
 	{
 	case CLC_USERINFO:
+	case CLC_ACSUSERINFO:
+		{
+			// Client is sending us his userinfo.
+			const bool fromACS = ( lCommand == CLC_ACSUSERINFO );
+			// [BB] Don't kick the client while he is still receiving the full update.
+			// During that time the client sends the full userinfo, which may be spread
+			// over multiple commands.
+			// [AK] Don't kick them for sending multiple CLC_ACSUSERINFO commands either.
+			const bool allowKick = (( !SERVER_GetClient( g_lCurrentClient )->bFullUpdateIncomplete ) && ( !fromACS ));
 
-		// Client is sending us his userinfo.
-		// [BB] Don't kick the client while he is still receiving the full update. During that time
-		// the client sends the full userinfo, which may be spread over multiple commands.
-		SERVER_GetUserInfo( pByteStream, ( SERVER_GetClient ( g_lCurrentClient )->bFullUpdateIncomplete == false ) );
+			SERVER_GetUserInfo( pByteStream, allowKick, false, fromACS );
+		}
 		break;
 	case CLC_QUIT:
 

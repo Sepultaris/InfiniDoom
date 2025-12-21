@@ -3625,11 +3625,8 @@ void DACSThinker::Tick ()
 	// get clients kicked for flooding the server.
 	if (NETWORK_GetState() == NETSTATE_CLIENT && userInfoChanges.size() > 0)
 	{
-		if (SERVER_CheckTimeInstancesBufferForFlood(userInfoBroadcastInstances, false) == false)
-		{
-			CLIENTCOMMANDS_UserInfo(userInfoChanges);
-			userInfoChanges.clear();
-		}
+		CLIENTCOMMANDS_UserInfo(userInfoChanges, true);
+		userInfoChanges.clear();
 	}
 }
 

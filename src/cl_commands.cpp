@@ -153,7 +153,7 @@ bool UserInfoSortingFunction::operator()( FName cvar1Name, FName cvar2Name ) con
 
 //*****************************************************************************
 //
-static void clientcommands_WriteCVarToUserinfo( FName name, FBaseCVar *cvar )
+static void clientcommands_WriteCVarToUserinfo( FName name, FBaseCVar *cvar, bool fromACS )
 {
 	// [BB] It's pointless to tell the server of the class, if only one class is available.
 	if (( name == NAME_PlayerClass ) && ( PlayerClasses.Size( ) == 1 ))
@@ -161,6 +161,10 @@ static void clientcommands_WriteCVarToUserinfo( FName name, FBaseCVar *cvar )
 
 	// [TP] Don't bother sending these
 	if (( cvar == nullptr ) || ( cvar->GetFlags() & CVAR_UNSYNCED_USERINFO ))
+		return;
+
+	// [AK] Don't send non-mod CVars in CLC_ACSUSERINFO commands.
+	if (( fromACS ) && (( cvar->GetFlags() & CVAR_MOD ) == false ))
 		return;
 
 	FString value;
@@ -185,10 +189,11 @@ static void clientcommands_WriteCVarToUserinfo( FName name, FBaseCVar *cvar )
 	// hard coded to 1024. The clients shouldn't mess with this setting.
 	if ( ( CLIENT_GetLocalBuffer( )->CalcSize() + elementNetSize + 2 ) >= 1024 )
 	{
-		// [BB] Terminate the current CLC_USERINFO command.
+		// [BB/AK] Terminate the current CLC_USERINFO or CLC_ACSUSERINFO command.
 		NETWORK_WriteName( &CLIENT_GetLocalBuffer( )->ByteStream, NAME_None );
 		CLIENT_SendServerPacket();
-		CLIENT_GetLocalBuffer( )->ByteStream.WriteByte( CLC_USERINFO );
+		// [AK] The command should be either CLC_ACSUSERINFO or CLC_USERINFO.
+		CLIENT_GetLocalBuffer( )->ByteStream.WriteByte( fromACS ? CLC_ACSUSERINFO : CLC_USERINFO );
 	}
 
 	NETWORK_WriteName( &CLIENT_GetLocalBuffer( )->ByteStream, name );
@@ -212,17 +217,18 @@ void CLIENTCOMMANDS_SendAllUserInfo()
 	for ( userinfo_t::ConstPair *pair; iterator.NextPair( pair ); )
 		cvarNames.insert( pair->Key );
 
-	CLIENTCOMMANDS_UserInfo ( cvarNames );
+	CLIENTCOMMANDS_UserInfo ( cvarNames, false );
 }
 
 //*****************************************************************************
 //
-void CLIENTCOMMANDS_UserInfo( const UserInfoChanges &cvars )
+void CLIENTCOMMANDS_UserInfo( const UserInfoChanges &cvars, bool fromACS )
 {
 	// Temporarily disable userinfo for when the player setup menu updates our userinfo. Then
 	// we can just send all our userinfo in one big bulk, instead of each time it updates
 	// a userinfo property.
-	if ( CLIENT_GetAllowSendingOfUserInfo( ) == false )
+	// [AK] CLC_ACSUSERINFO commands must always be sent right away.
+	if (( fromACS == false ) && ( CLIENT_GetAllowSendingOfUserInfo( ) == false ))
 		return;
 
 	// [BB] Make sure that we only send anything to the server, if cvarNames actually
@@ -232,24 +238,32 @@ void CLIENTCOMMANDS_UserInfo( const UserInfoChanges &cvars )
 	for ( UserInfoChanges::const_iterator iterator = cvars.begin(); iterator != cvars.end(); ++iterator )
 	{
 		FBaseCVar **cvarPointer = players[consoleplayer].userinfo.CheckKey( *iterator );
-		if ( cvarPointer && ( (*cvarPointer)->GetFlags() & CVAR_UNSYNCED_USERINFO ) == false )
+
+		if ( cvarPointer != nullptr )
 		{
-			sendUserinfo = true;
-			break;
+			const int cvarFlags = ( *cvarPointer )->GetFlags( );
+
+			// [AK] Don't send non-mod CVars in CLC_ACSUSERINFO commands.
+			if ((( cvarFlags & CVAR_UNSYNCED_USERINFO ) == false ) && (( fromACS == false ) || ( cvarFlags & CVAR_MOD )))
+			{
+				sendUserinfo = true;
+				break;
+			}
 		}
 	}
 
 	if ( sendUserinfo == false )
 		return;
 
-	CLIENT_GetLocalBuffer( )->ByteStream.WriteByte( CLC_USERINFO );
+	// [AK] The command should be either CLC_ACSUSERINFO or CLC_USERINFO.
+	CLIENT_GetLocalBuffer( )->ByteStream.WriteByte( fromACS ? CLC_ACSUSERINFO : CLC_USERINFO );
 
 	for ( UserInfoChanges::const_iterator iterator = cvars.begin(); iterator != cvars.end(); ++iterator )
 	{
 		FName name = *iterator;
 		FBaseCVar **cvarPointer = players[consoleplayer].userinfo.CheckKey( name );
 		FBaseCVar *cvar = cvarPointer ? *cvarPointer : nullptr;
-		clientcommands_WriteCVarToUserinfo( name, cvar );
+		clientcommands_WriteCVarToUserinfo( name, cvar, fromACS );
 	}
 
 	NETWORK_WriteName( &CLIENT_GetLocalBuffer( )->ByteStream, NAME_None );
