@@ -7741,7 +7741,10 @@ void SERVER_DumpPacket( const BYTE *buffer, const size_t length, const bool from
 // [SB]
 bool SERVER_ShouldDumpServerCommand( const SVC command, const SVC2 extcommand )
 {
-	const std::set<SVC> ignoredCommands
+	if ( !sv_dumppackets )
+		return false;
+
+	static const std::set<SVC> ignoredCommands
 	{
 		SVC_SETPLAYERUSERINFO,
 		SVC_PLAYERSAY,
@@ -7752,7 +7755,7 @@ bool SERVER_ShouldDumpServerCommand( const SVC command, const SVC2 extcommand )
 		SVC_PRINTHUDMESSAGE,
 	};
 
-	const std::set<SVC2> ignoredExtCommands
+	static const std::set<SVC2> ignoredExtCommands
 	{
 		SVC2_SETPLAYERACCOUNTNAME,
 		SVC2_ACSSENDSTRING,
@@ -7775,10 +7778,13 @@ bool SERVER_ShouldDumpServerCommand( const SVC command, const SVC2 extcommand )
 // [SB]
 bool SERVER_ShouldDumpClientCommand( const CLC command )
 {
+	if ( !sv_dumppackets )
+		return false;
+
 	if ( command < static_cast<CLC>( NUM_CLIENTCONNECT_COMMANDS ) || command >= NUM_CLIENT_COMMANDS )
 		return false;
 
-	const std::set<CLC> ignoredCommands
+	static const std::set<CLC> ignoredCommands
 	{
 		CLC_SAY,
 		CLC_CHANGERCONSTATUS,
