@@ -3992,9 +3992,9 @@ void AActor::Tick ()
 
 	// This is necessary to properly interpolate movement outside this function
 	// like from an ActorMover
-	// [AK] Don't do this for players when using the client's movement buffers.
+	// [AK] Don't do this for players when using the client's command buffers.
 	// It's already handled when the buffers are emptied in CLIENT_Tick.
-	if (NETWORK_InClientMode() == false || player == nullptr || cl_usemovebuffer == false)
+	if (NETWORK_InClientMode() == false || player == nullptr || cl_buffercommands == false)
 	{
 		PrevX = x;
 		PrevY = y;
