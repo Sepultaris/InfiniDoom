@@ -2510,7 +2510,7 @@ void WI_checkForAccelerate(void)
 	if ( NETWORK_InClientMode() )
 	{
 		// [AK] Let them still count down the intermission timer.
-		if ( g_lStopWatch > 0 )
+		if (CLIENTDEMO_IsPaused() == false && g_lStopWatch > 0)
 			g_lStopWatch--;
 
 		return;
