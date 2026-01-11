@@ -118,6 +118,9 @@ static	bool				g_bSkipToNextMap = false;
 // [AK] Did the player who recorded the demo use the unrestricted spectator mode?
 static	bool				g_ConsolePlayerUnrestricted = false;
 
+// [AK] Was the player who recorded the demo buffering commands that handle a player's movement?
+static	bool				g_UsingCMDBuffers = false;
+
 // [BB] How many tics are we still supposed to skip in the demo we are playing at the moment?
 static	ULONG				g_ulTicsToSkip = 0;
 
@@ -233,6 +236,9 @@ void CLIENTDEMO_BeginRecording( const char *pszDemoName )
 	// [AK] When recording begins, mark if whether the local player is using the
 	// unrestricted spectator mode or not.
 	CLIENTDEMO_WriteConsolePlayerUnrestricted( cl_spectatormode == SPECMODE_NO_RESTRICTIONS );
+
+	// [AK] In addition, mark if the local player is using the command buffers.
+	CLIENTDEMO_WriteUseCommandBuffer( cl_buffercommands );
 }
 
 //*****************************************************************************
@@ -620,6 +626,15 @@ void CLIENTDEMO_ReadPacket( void )
 					}
 				}
 				break;
+			case CLD_LCMD_USECMDBUFFER:
+
+				{
+					g_UsingCMDBuffers = !!g_ByteStream.ReadByte( );
+
+					if ( g_UsingCMDBuffers == false )
+						CLIENT_ResetAllCommandBuffers( );
+				}
+				break;
 			}
 			break;
 		case CLD_DEMOEND:
@@ -848,6 +863,16 @@ void CLIENTDEMO_WriteConsolePlayerUnrestricted( const bool enable )
 
 //*****************************************************************************
 //
+void CLIENTDEMO_WriteUseCommandBuffer( bool enable )
+{
+	clientdemo_CheckDemoBuffer( 3 );
+	g_ByteStream.WriteByte( CLD_LOCALCOMMAND );
+	g_ByteStream.WriteByte( CLD_LCMD_USECMDBUFFER );
+	g_ByteStream.WriteByte( enable );
+}
+
+//*****************************************************************************
+//
 bool CLIENTDEMO_IsRecording( void )
 {
 	return ( g_bDemoRecording );
@@ -923,6 +948,13 @@ bool CLIENTDEMO_IsInFreeSpectateMode( void )
 bool CLIENTDEMO_IsConsolePlayerUnrestricted( void )
 {
 	return g_ConsolePlayerUnrestricted;
+}
+
+//*****************************************************************************
+//
+bool CLIENTDEMO_IsUsingCommandBuffers( void )
+{
+	return g_UsingCMDBuffers;
 }
 
 //*****************************************************************************

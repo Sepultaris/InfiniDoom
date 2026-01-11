@@ -180,11 +180,24 @@ struct CommandBuffer
 	CommandBuffer( void ) { Reset( ); }
 
 	template <class Command>
-	void Push( Command &command )
+	bool BufferIfNecessary( const Command &command )
 	{
-		cmds.Push( std::make_shared<Command>( command ));
-		lastArrivalTick = gametic;
-	}
+		bool mustBuffer = false;
+
+		// [AK] This command will only be buffered if during an online game,
+		// cl_buffercommands is enabled, or, while playing a clientside demo,
+		// the player who recorded it had that CVar enabled.
+		if ( g_ExecuteBufferedCMDs == false )
+			mustBuffer = CLIENTDEMO_IsPlaying( ) ? CLIENTDEMO_IsUsingCommandBuffers( ) : cl_buffercommands;
+
+		if ( mustBuffer )
+		{
+			cmds.Push( std::make_shared<Command>( command ));
+			lastArrivalTick = gametic;
+		}
+
+		return mustBuffer;
+ 	}
 
 	void Reset( void )
 	{
@@ -248,6 +261,10 @@ CUSTOM_CVAR( Bool, cl_buffercommands, true, CVAR_ARCHIVE | CVAR_NOSETBYACS | CVA
 {
 	if ( self == false )
 		CLIENT_ResetAllCommandBuffers( );
+
+	// [AK] Mark if the command buffers are being used while recording a demo.
+	if (( NETWORK_GetState( ) == NETSTATE_CLIENT ) && ( CLIENTDEMO_IsRecording( )))
+		CLIENTDEMO_WriteUseCommandBuffer( self );
 }
 
 #ifdef ENABLE_AUTH_STORAGE
@@ -709,53 +726,62 @@ void CLIENT_Tick( void )
 
 	case CTS_ACTIVE:
 
-		// [AK] While in a level, execute any buffered commands.
-		if (( cl_buffercommands ) && ( gamestate == GS_LEVEL ))
-		{
-			g_ExecuteBufferedCMDs = true;
-
-			// [AK] First, check if we received each player's command during
-			// this tick to see if they're arriving consistently on our end.
-			for ( unsigned int i = 0; i < MAXPLAYERS; i++ )
-			{
-				if (( playeringame[i] == false ) || ( players[i].bSpectating ))
-					continue;
-
-				// [AK] Save their current position and angle now to ensure
-				// the best possible smoothness during interpolation.
-				if ( players[i].mo != nullptr )
-				{
-					players[i].mo->PrevX = players[i].mo->x;
-					players[i].mo->PrevY = players[i].mo->y;
-					players[i].mo->PrevZ = players[i].mo->z;
-					players[i].mo->PrevAngle = players[i].mo->angle;
-				}
-
-				g_BufferedMoveCMDs[i].Tick( );
-				g_BufferedExtraDataCMDs[i].Tick( );
-			}
-
-			// [AK] We may execute up to two commands per player, per tick.
-			for ( unsigned int i = 0; i < 2; i++ )
-			{
-				for ( unsigned int j = 0; j < MAXPLAYERS; j++ )
-				{
-					if (( playeringame[j] == false ) || ( players[j].bSpectating ))
-						continue;
-
-					g_BufferedMoveCMDs[j].TryToExecuteCommand( );
-					g_BufferedExtraDataCMDs[j].TryToExecuteCommand( );
-				}
-			}
-
-			g_ExecuteBufferedCMDs = false;
-		}
-
+		// [AK] Execute any buffered commands, if possible.
+		CLIENT_TickCommandBuffers( );
 		break;
 
 	default:
 
 		break;
+	}
+}
+
+//*****************************************************************************
+//
+void CLIENT_TickCommandBuffers( void )
+{
+	const bool usingCMDBuffers = CLIENTDEMO_IsPlaying( ) ? CLIENTDEMO_IsUsingCommandBuffers( ) : cl_buffercommands;
+
+	// [AK] This should only work while in a level.
+	if (( usingCMDBuffers ) && ( gamestate == GS_LEVEL ))
+	{
+		g_ExecuteBufferedCMDs = true;
+
+		// [AK] First, check if we received each player's command during
+		// this tick to see if they're arriving consistently on our end.
+		for ( unsigned int i = 0; i < MAXPLAYERS; i++ )
+		{
+			if (( playeringame[i] == false ) || ( players[i].bSpectating ))
+				continue;
+
+			// [AK] Save their current position and angle now to ensure
+			// the best possible smoothness during interpolation.
+			if ( players[i].mo != nullptr )
+			{
+				players[i].mo->PrevX = players[i].mo->x;
+				players[i].mo->PrevY = players[i].mo->y;
+				players[i].mo->PrevZ = players[i].mo->z;
+				players[i].mo->PrevAngle = players[i].mo->angle;
+			}
+
+			g_BufferedMoveCMDs[i].Tick( );
+			g_BufferedExtraDataCMDs[i].Tick( );
+		}
+
+		// [AK] We may execute up to two commands per player, per tick.
+		for ( unsigned int i = 0; i < 2; i++ )
+		{
+			for ( unsigned int j = 0; j < MAXPLAYERS; j++ )
+			{
+				if (( playeringame[j] == false ) || ( players[j].bSpectating ))
+					continue;
+
+				g_BufferedMoveCMDs[j].TryToExecuteCommand( );
+				g_BufferedExtraDataCMDs[j].TryToExecuteCommand( );
+			}
+		}
+
+		g_ExecuteBufferedCMDs = false;
 	}
 }
 
@@ -4009,13 +4035,10 @@ void ServerCommands::MovePlayer::Execute()
 		return;
 	}
 
-	// [AK] If the command buffers are being used, save this command into the
-	// player's buffer to be executed later.
-	if (( cl_buffercommands ) && ( g_ExecuteBufferedCMDs == false ))
-	{
-		g_BufferedMoveCMDs[player - players].Push<ServerCommands::MovePlayer>( *this );
+	// [AK] If the command buffers are currently being used, save this command
+	// into the player's buffer to be executed later.
+	if ( g_BufferedMoveCMDs[player - players].BufferIfNecessary<ServerCommands::MovePlayer>( *this ))
 		return;
-	}
 
 	// If we're not allowed to know the player's location, then just make him invisible.
 	if ( IsVisible() == false )
@@ -4628,13 +4651,10 @@ void ServerCommands::UpdatePlayerPing::Execute()
 //
 void ServerCommands::UpdatePlayerExtraData::Execute()
 {
-	// [AK] If the command buffers are being used, save this command into the
-	// player's buffer to be executed later.
-	if (( cl_buffercommands ) && ( g_ExecuteBufferedCMDs == false ))
-	{
-		g_BufferedExtraDataCMDs[player - players].Push<ServerCommands::UpdatePlayerExtraData>( *this );
+	// [AK] If the command buffers are currently being used, save this command
+	// into the player's buffer to be executed later.
+	if ( g_BufferedExtraDataCMDs[player - players].BufferIfNecessary<ServerCommands::UpdatePlayerExtraData>( *this ))
 		return;
-	}
 
 	// [BB] If the spectated player uses the GL renderer and we are using software,
 	// the viewangle has to be limited.	We don't care about cl_disallowfullpitch here.
@@ -4677,13 +4697,10 @@ void ServerCommands::MoveLocalPlayer::Execute()
 	if ( pPlayer->mo == NULL )
 		return;
 
-	// [AK] If the command buffers are being used, save this command into the
-	// local player's buffer to be executed later.
-	if (( cl_buffercommands ) && ( g_ExecuteBufferedCMDs == false ))
-	{
-		g_BufferedMoveCMDs[consoleplayer].Push<ServerCommands::MoveLocalPlayer>( *this );
+	// [AK] If the command buffers are currently being used, save this command
+	// into the local player's buffer to be executed later.
+	if ( g_BufferedMoveCMDs[consoleplayer].BufferIfNecessary<ServerCommands::MoveLocalPlayer>( *this ))
 		return;
-	}
 
 	// [BB] If the server already sent us our position for a later tic,
 	// the current update is outdated and we have to ignore it completely.
