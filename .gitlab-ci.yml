@@ -44,7 +44,6 @@ build_linux_serveronly:
 
 build_linux_serveronly_arm64:
   <<: *linux
-  image: registry.heptapod.net/zandronum/ci-images/zandronum-build-ubuntu-arm64:latest
   tags:
     - arm64
   variables:
