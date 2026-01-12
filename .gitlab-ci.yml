@@ -26,7 +26,6 @@ stages:
         cp --remove-destination "$(readlink liboutput_sdl.so)" liboutput_sdl.so ;
       fi
   artifacts:
-    expire_in: 1 week
     paths:
       - build/zandronum*
       - build/*.pk3
@@ -124,7 +123,6 @@ appimage:
         zandronum.sln &&
       Copy-Item "$env:ZA_FMOD_ROOT\api\fmodex${fmodArch}.dll" -Destination "Release"
   artifacts:
-    expire_in: 1 week
     paths:
       - build-$CI_JOB_ID/Release/*
 
