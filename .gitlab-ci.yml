@@ -11,13 +11,14 @@ stages:
   script:
     - mkdir -p build && cd build
     - cmake
+        -GNinja
         -DCMAKE_BUILD_TYPE=Release
         -DRELEASE_WITH_DEBUG_FILE=ON
         -DSERVERONLY=${SERVERONLY}
         -DFMOD_LIBRARY=${FMOD_DIR_PATH}/api/lib/libfmodex64-${FMOD_SO_VERSION}.so
         -DFMOD_INCLUDE_DIR=${FMOD_DIR_PATH}/api/inc
         ..
-    - make -j$(nproc)
+    - ninja
     - if [[ "$SERVERONLY" != "ON" ]]; then
         cp ${FMOD_DIR_PATH}/api/lib/libfmodex64-${FMOD_SO_VERSION}.so .;
       fi
