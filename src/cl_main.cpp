@@ -177,6 +177,9 @@ struct CommandBuffer
 	int lastArrivalTick;
 	bool alreadyExecutedThisTick;
 
+	// [AK] A toggle for when buffered commands need to be executed.
+	static bool executeBufferedCMDs;
+
 	CommandBuffer( void ) { Reset( ); }
 
 	template <class Command>
@@ -187,7 +190,7 @@ struct CommandBuffer
 		// [AK] This command will only be buffered if during an online game,
 		// cl_buffercommands is enabled, or, while playing a clientside demo,
 		// the player who recorded it had that CVar enabled.
-		if ( g_ExecuteBufferedCMDs == false )
+		if ( executeBufferedCMDs == false )
 			mustBuffer = CLIENTDEMO_IsPlaying( ) ? CLIENTDEMO_IsUsingCommandBuffers( ) : cl_buffercommands;
 
 		if ( mustBuffer )
@@ -236,6 +239,8 @@ struct CommandBuffer
 		alreadyExecutedThisTick = true;
 	}
 };
+
+bool CommandBuffer::executeBufferedCMDs = false;
 
 //*****************************************************************************
 //	CONSOLE COMMANDS/VARIABLES
@@ -511,9 +516,6 @@ static	bool				g_HasRCONAccess = false;
 // [AK] We are in the process of gaining RCON access to the server.
 static  bool				g_GainingRCONAccess = false;
 
-// [AK] A toggle for when buffered commands need to be executed.
-static	bool				g_ExecuteBufferedCMDs = false;
-
 // [AK] A collection of all buffered commands that handle a player's movement.
 static	CommandBuffer		g_BufferedMoveCMDs[MAXPLAYERS];
 static	CommandBuffer		g_BufferedExtraDataCMDs[MAXPLAYERS];
@@ -745,7 +747,7 @@ void CLIENT_TickCommandBuffers( void )
 	// [AK] This should only work while in a level.
 	if (( usingCMDBuffers ) && ( gamestate == GS_LEVEL ))
 	{
-		g_ExecuteBufferedCMDs = true;
+		CommandBuffer::executeBufferedCMDs = true;
 
 		// [AK] First, check if we received each player's command during
 		// this tick to see if they're arriving consistently on our end.
@@ -781,7 +783,7 @@ void CLIENT_TickCommandBuffers( void )
 			}
 		}
 
-		g_ExecuteBufferedCMDs = false;
+		CommandBuffer::executeBufferedCMDs = false;
 	}
 }
 
