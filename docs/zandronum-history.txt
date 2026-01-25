@@ -68,6 +68,7 @@
 -	- Fixed: the scoreboard always appeared at the bottom of the screen during intermissions in Eviternity. [AKMDM]
 -	- Fixed: the intermission countdown timer on the scoreboard still decremented while a clientside demo was paused. [AKMDM]
 -	- Fixed: players sometimes didn't have the correct skin on the client's end upon connecting to the server. This particularly happens when there's multiple player classes, each with their own set of skins. [AKMDM]
+-	- Fixed: in rare cases, a player's chatting or in console/menu status could be disabled on the server's end if they started typing or entered the console/menu while pressing other buttons. [AKMDM]
 !	- Spectators now travel at full speed while underwater, and those using the unrestricted spectator mode now only pass through teleporters if they can see into the sector where the teleporter is. [AKMDM]
 !	- Player classes that are forbidden are no longer selectable in the player setup menu. [AKMDM]
 !	- "stat nettraffic" now shows the compression factor of packets sent or received in the last second. [AKMDM]

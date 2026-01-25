@@ -2164,6 +2164,7 @@ void SERVER_SetupNewConnection( BYTESTREAM_s *pByteStream, bool bNewPlayer )
 	g_aClients[lClient].lLastPacketLossTick = 0;
 	g_aClients[lClient].lLastMoveTick = 0;
 	g_aClients[lClient].lLastMoveTickProcess = 0;
+	g_aClients[lClient].lastStatusChangeTick = 0;
 	g_aClients[lClient].usLastWeaponNetworkIndex = 0;
 	g_aClients[lClient].lOverMovementLevel = 0;
 	g_aClients[lClient].bRunEnterScripts = false;
@@ -5064,7 +5065,10 @@ bool SERVER_ProcessCommand( LONG lCommand, BYTESTREAM_s *pByteStream )
 			players[g_lCurrentClient].statuses |= ( statuses & mask );
 
 			if ( players[g_lCurrentClient].statuses != oldStatuses )
+			{
+				g_aClients[g_lCurrentClient].lastStatusChangeTick = gametic;
 				SERVERCOMMANDS_SetPlayerStatus( g_lCurrentClient, g_lCurrentClient, SVCF_SKIPTHISCLIENT );
+			}
 		}
 		break;
 	case CLC_IGNORE:
@@ -6138,7 +6142,13 @@ bool ClientMoveCommand::process( const ULONG clientIndex ) const
 		// [K6/BB] The client is pressing a button, so not afk.
 		client->lLastActionTic = gametic;
 
-		PLAYER_SetStatus( player, PLAYERSTATUS_CHATTING | PLAYERSTATUS_INCONSOLE | PLAYERSTATUS_INMENU, false );
+		// [AK] Don't disable these statuses if the client started chatting or
+		// opened the console/menu on the same tick. CLC_SETSTATUS will always
+		// be processed before this command, so disabling them in this case will
+		// make it seem that the client isn't chatting or in the console/menu,
+		// when they actually still are.
+		if ( client->lastStatusChangeTick != gametic )
+			PLAYER_SetStatus( player, PLAYERSTATUS_CHATTING | PLAYERSTATUS_INCONSOLE | PLAYERSTATUS_INMENU, false );
 	}
 
 	return ( false );
