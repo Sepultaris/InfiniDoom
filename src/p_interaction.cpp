@@ -3788,7 +3788,8 @@ void PLAYER_SetSpriteToSkin( player_t *pPlayer )
 
 	// [BB] There is no skin for the morphed class.
 	// [RK] Let the morph class keep the skin if they don't have +NOSKIN.
-	if (( pPlayer->mo->flags4 & MF4_NOSKIN ) == false )
+	// [AK] Except if the skin is the same as the base skin of the current class.
+	if ((( pPlayer->mo->flags4 & MF4_NOSKIN ) == false ) && (( pPlayer->morphTics == 0 ) || ( skin != pPlayer->CurrentPlayerClass )))
 	{
 		if (( pPlayer->mo->sprite == pPlayer->mo->SpawnState->sprite ) && ( pPlayer->mo->sprite != SPR_TNT1 ))
 			pPlayer->mo->sprite = skins[skin].sprite;

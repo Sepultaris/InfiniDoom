@@ -3857,10 +3857,6 @@ void ServerCommands::SpawnPlayer::Execute()
 	//Added by MC: Identification (number in the players[MAXPLAYERS] array)
 	pActor->id = ulPlayer;
 
-	// [RH] Set player sprite based on skin
-	// [RK] Handle this in a helper function.
-	PLAYER_SetSpriteToSkin( pPlayer );
-
 	// [RK] Clamp the player's FOV according to min and max FOV.
 	pPlayer->DesiredFOV = pPlayer->FOV = clamp<float>( fov, sv_minfov, sv_maxfov );
 	// If the console player was watching another player in demo mode, continue to follow
@@ -3984,6 +3980,10 @@ void ServerCommands::SpawnPlayer::Execute()
 		}
 	}
 
+	// [RH] Set player sprite based on skin
+	// [RK] Handle this in a helper function.
+	// [AK] This must be called after the player's morph properties are set.
+	PLAYER_SetSpriteToSkin( pPlayer );
 
 	// If this is the consoleplayer, set the prediction origin and velocity.
 	if ( ulPlayer == static_cast<ULONG>(consoleplayer) )
