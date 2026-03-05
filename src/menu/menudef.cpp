@@ -1409,6 +1409,11 @@ static void InitLevelsList()
 			if (( mdata = P_OpenMapData( wadlevelinfos[i].mapname, false )) != NULL )
 			{
 				level_info_t& info = wadlevelinfos[i];
+
+				// [TRSR] Don't add to list if "noskirmish" flag is set.
+				if ( info.flagsZA & LEVEL_ZA_NOSKIRMISH )
+					continue;
+
 				pair.Value = i;
 				pair.Text.Format( "%s - %s", info.mapname, info.LookupLevelName().GetChars() );
 				( *opt )->mValues.Push( pair );

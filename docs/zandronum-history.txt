@@ -32,6 +32,7 @@
 +	- Added the CVar sv_requireskulltoscore, which controls whether or not players are required to have their skull at base to score in Skulltag. [Trillster]
 +	- Added support for custom winning and losing intermission screens using the new MAPINFO properties: "winnermusic", "winnerpic", "losermusic", and "loserpic". [Barrels O' Fun]
 +	- Music tracks can now be selected for team winning and losing themes (e.g. WinnerTheme "D_STWIN:1"; LoserTheme "D_STLOSE" 1), and can be used in ACS with new GetTeamProperty properties: TPROP_WinnerThemeOrder and TPROP_LoserThemeOrder. [Barrels O' Fun]
++	- Added the new MAPINFO property "noskirmish", allowing maps to be hidden from the Offline Skirmish and map vote menus. [Trillster]
 -	- Fixed: A_SpawnItemEx didn't sync the TID or stencil color of spawned actors to clients in online games. [AKMDM]
 -	- Fixed: an actor's stencil color wasn't synced to newly connected clients in online games. [AKMDM]
 -	- Fixed: clients that gained RCON access erroneously told the server to change the values of compatflags and compatflags2. [AKMDM]
