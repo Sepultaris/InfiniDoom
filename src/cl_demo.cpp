@@ -348,7 +348,8 @@ void CLIENTDEMO_WriteUserInfo( void )
 {
 	// First, make sure we have enough space to write this command. If not, add
 	// more space.
-	clientdemo_CheckDemoBuffer( 18 +
+	// [AK] Make sure to add extra space to fit the null terminators of all strings.
+	clientdemo_CheckDemoBuffer( 22 +
 		(ULONG)strlen( players[consoleplayer].userinfo.GetName() ) +
 		(ULONG)strlen( skins[players[consoleplayer].userinfo.GetSkin()].name ) +
 		(ULONG)strlen( PlayerClasses[players[consoleplayer].CurrentPlayerClass].Type->Meta.GetMetaString( APMETA_DisplayName )));
@@ -793,8 +794,9 @@ void CLIENTDEMO_SetGameticOffset( LONG lOffset )
 //
 void CLIENTDEMO_WriteLocalCommand( ClientDemoLocalCommand command, const char* pszArg )
 {
+	// [AK] Make sure to add extra space to fit the null terminator of the string.
 	if ( pszArg != NULL )
-		clientdemo_CheckDemoBuffer( (ULONG)strlen( pszArg ) + 2 );
+		clientdemo_CheckDemoBuffer( (ULONG)strlen( pszArg ) + 3 );
 	else
 		clientdemo_CheckDemoBuffer( 2 );
 
