@@ -1316,6 +1316,10 @@ void TEAM_SetAssistPlayer( ULONG ulTeamIdx, ULONG ulPlayer )
 	if (( TEAM_CheckIfValid( ulTeamIdx ) == false ) || ( ulPlayer > MAXPLAYERS ))
 		return;
 
+	// [TRSR] Assists aren't applicable to this particular Skulltag setting.
+	if ( skulltag && !sv_requireskulltoscore )
+		return;
+
 	teams[ulTeamIdx].g_ulAssistPlayer = ulPlayer;
 }
 
