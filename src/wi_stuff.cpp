@@ -439,18 +439,19 @@ ULONG WI_CalcRank( void )
 }
 
 //====================================================================
-// 
-//	[BC] WI_UseSkulltagIntermissionAndMusic
 //
-//	Returns true if the intermission should use ST's WINERPIC or
-//	LOSERPIC, along with the appropriate music.
+//	[BC/AK] WI_UseMapOrTeamIntermissionAndMusic
+//
+//	Returns true if the intermission should use a map or team's winner
+//	or loser background, along with the appropriate music.
 //
 //====================================================================
 
-bool WI_UseSkulltagIntermissionAndMusic( void )
+bool WI_UseMapOrTeamIntermissionAndMusic( void )
 {
+	// [AK] Let this work in team-based game modes too.
 	return (( gameinfo.gametype == GAME_Doom ) &&
-			( deathmatch ) &&
+			(( deathmatch ) || ( teamgame )) &&
 			(( zacompatflags & ZACOMPATF_OLDINTERMISSION ) == false ));
 }
 
@@ -513,10 +514,10 @@ void WI_LoadBackground(bool isenterpic)
 					}
 				}
 				// [BC] 
-				if ( WI_UseSkulltagIntermissionAndMusic( ))
+				if ( WI_UseMapOrTeamIntermissionAndMusic( ))
 				{
 					// [BB] Possibly select a custom winner / loser pic.
-					if ( WI_CalcRank( ) <= 1 )
+					if ( CAMPAIGN_DidPlayerBeatMap( ))
 						lumpname = TEAM_SelectCustomStringForPlayer(&players[consoleplayer], &TEAMINFO::WinnerPic, level.info->WinnerPic); // [BOF] Use level.info->WinnerPic
 					else
 						lumpname = TEAM_SelectCustomStringForPlayer(&players[consoleplayer], &TEAMINFO::LoserPic, level.info->LoserPic); // [BOF] Ditto for LoserPic
@@ -2573,7 +2574,7 @@ void WI_Ticker(void)
 		// [BB] 
 		bool bUsingCustomMusic = false;
 		// [BC] Use Skulltag's new music.
-		if ( WI_UseSkulltagIntermissionAndMusic( ))
+		if ( WI_UseMapOrTeamIntermissionAndMusic( ))
 		{
 			FString musicName;
 			int musicOrder;

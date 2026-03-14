@@ -76,6 +76,7 @@
 !	- Player classes that are forbidden are no longer selectable in the player setup menu. [AKMDM]
 !	- "stat nettraffic" now shows the compression factor of packets sent or received in the last second. [AKMDM]
 !	- Commands from the server that update the players' movements are now buffered on the client's end, and their z-position and velocity are now sent at full precision, ensuring that they move more smoothly. [AKMDM]
+!	- A map or team's winner/loser intermission background and music is now usable in team-based game modes. The old behavior of not using them can be restored by enabling compat_oldintermission. [AKMDM]
 
 
 3.2.1
