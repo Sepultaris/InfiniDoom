@@ -4760,11 +4760,21 @@ void SERVER_SettingChanged( FBaseCVar &cvar, bool bUpdateConsole, int maxDecimal
 	switch ( cvar.GetRealType( ))
 	{
 		case CVAR_Float:
-			if ( maxDecimals <= 0 )
-				result.Format( "%f", cvar.GetGenericRep( CVAR_Float ).Float );
+		{
+			const float value = cvar.GetGenericRep( CVAR_Float ).Float;
+
+			// [AK] Handle infinity and NaN accordingly.
+			if ( std::isinf( value ))
+				result.Format( "%sinfinity", value < 0 ? "-" : "" );
+			else if ( std::isnan( value ))
+				result = "NaN";
+			else if ( maxDecimals <= 0 )
+				result.Format( "%f", value );
 			else
-				result.Format( "%.*f", maxDecimals, cvar.GetGenericRep( CVAR_Float ).Float );
+				result.Format( "%.*f", value );
+
 			break;
+		}
 
 		case CVAR_String:
 			result = cvar.GetGenericRep( CVAR_String ).String;

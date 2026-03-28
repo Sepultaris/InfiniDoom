@@ -72,6 +72,7 @@
 -	- Fixed: in rare cases, a player's chatting or in console/menu status could be disabled on the server's end if they started typing or entered the console/menu while pressing other buttons. [AKMDM]
 -	- Fixed: clientside demos didn't allocate enough memory in the buffer to write userinfo or local commands, causing the recordings to become corrupted on rare occassions. [AKMDM]
 -	- Fixed: the ACS function "RemoveBot" couldn't remove bots with color codes in their name, and didn't handle empty inputs or inputs with color codes correctly. [AKMDM, Trillster]
+-	- Fixed: the server printed garbled text when a float CVar was changed to infinity or NaN. [AKMDM]
 !	- Spectators now travel at full speed while underwater, and those using the unrestricted spectator mode now only pass through teleporters if they can see into the sector where the teleporter is. [AKMDM]
 !	- Player classes that are forbidden are no longer selectable in the player setup menu. [AKMDM]
 !	- "stat nettraffic" now shows the compression factor of packets sent or received in the last second. [AKMDM]
