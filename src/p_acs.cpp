@@ -8586,6 +8586,7 @@ doplaysound:			if (funcIndex == ACSF_PlayActorSound)
 					return 0;
 
 				const char *botName = nullptr;
+				unsigned int playerIndex = MAXPLAYERS;
 
 				if ( argCount > 0 )
 				{
@@ -8594,6 +8595,15 @@ doplaysound:			if (funcIndex == ACSF_PlayActorSound)
 					// [TRSR] ACC doesn't allow not providing an argument, so we should treat empty strings as not provided.
 					if ( botName != nullptr && strlen( botName ) == 0 )
 						botName = nullptr;
+				}
+
+				if ( argCount > 1 )
+				{
+					playerIndex = args[1];
+
+					// [AK] If an invalid player index was passed into the argument, then abort immediately.
+					if ( playerIndex >= MAXPLAYERS )
+						return 0;
 				}
 
 				// [AK] If a name is provided, remove the bot with that name.
@@ -8611,7 +8621,8 @@ doplaysound:			if (funcIndex == ACSF_PlayActorSound)
 						FString playerName = players[i].userinfo.GetName( );
 						V_RemoveColorCodes( playerName );
 
-						if ( playerName.CompareNoCase( cleanBotName ) == 0 )
+						// [AK] If a valid player index was provided, check if the bot has that index.
+						if (( playerName.CompareNoCase( cleanBotName ) == 0 ) && (( playerIndex == MAXPLAYERS ) || ( playerIndex == i )))
 						{
 							BOTS_RemoveBot( i, true );
 							return 1;
@@ -8619,6 +8630,15 @@ doplaysound:			if (funcIndex == ACSF_PlayActorSound)
 					}
 
 					return 0;
+				}
+				// [AK] If a valid player index was provided, check if that player is a bot, then remove them.
+				else if ( playerIndex < MAXPLAYERS )
+				{
+					if (( playeringame[playerIndex] == false ) || ( players[playerIndex].bIsBot == false ))
+						return 0;
+
+					BOTS_RemoveBot( playerIndex, true );
+					return 1;
 				}
 				// [AK] Otherwise, try removing a random bot from the game.
 				else
