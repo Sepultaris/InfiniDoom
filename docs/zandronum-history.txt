@@ -75,6 +75,7 @@
 -	- Fixed: the ACS function "RemoveBot" couldn't remove bots with color codes in their name, and didn't handle empty inputs or inputs with color codes correctly. [AKMDM, Trillster]
 -	- Fixed: the server printed garbled text when a float CVar was changed to infinity or NaN. [AKMDM]
 -	- Fixed: it was not possible to start conversations with actors that have the FRIENDLY flag (such as Rowan at the start of Strife) if sv_shootthroughallies was enabled (addresses 4608). [Sean]
+-	- Fixed: the client didn't log out from the auth server while reconnecting due to the 'map' command (addresses 4605). [Sean]
 !	- Spectators now travel at full speed while underwater, and those using the unrestricted spectator mode now only pass through teleporters if they can see into the sector where the teleporter is. [AKMDM]
 !	- Player classes that are forbidden are no longer selectable in the player setup menu. [AKMDM]
 !	- "stat nettraffic" now shows the compression factor of packets sent or received in the last second. [AKMDM]

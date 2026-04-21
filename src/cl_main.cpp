@@ -7423,6 +7423,9 @@ void ServerCommands::MapNew::Execute()
 	// [AK] Reset all command buffers.
 	CLIENT_ResetAllCommandBuffers( );
 
+	// [SB] Forget our auth session, as it's no longer known by the server.
+	CLIENT_LogOut( );
+
 	// Back to the full console.
 	gameaction = ga_fullconsole;
 
