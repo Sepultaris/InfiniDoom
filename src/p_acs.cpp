@@ -5551,6 +5551,7 @@ enum EACSFunctions
 	ACSF_GetWadInfo,
 	ACSF_SetMapUsedStatus,
 	ACSF_CheckScript,
+	ACSF_CheckAutomap,
 
 	// ZDaemon
 	ACSF_GetTeamScore = 19620,	// (int team)
@@ -9024,6 +9025,21 @@ doplaysound:			if (funcIndex == ACSF_PlayActorSound)
 				return ACS_ExistsScript( -FName( FBehavior::StaticLookupString( args[0] )));
 			else
 				return ACS_ExistsScript( args[0] );
+		}
+
+		case ACSF_CheckAutomap:
+		{
+			enum
+			{
+				AUTOMAP_OFF,
+				AUTOMAP_FULLMAP,
+				AUTOMAP_OVERLAYMAP,
+			};
+
+			if ( automapactive )
+				return viewactive ? AUTOMAP_OVERLAYMAP : AUTOMAP_FULLMAP;
+			else
+				return AUTOMAP_OFF;
 		}
 
 		case ACSF_GetActorFloorTexture:
