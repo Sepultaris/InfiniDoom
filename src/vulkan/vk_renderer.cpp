@@ -123,7 +123,8 @@ namespace
 			  ImageAvailableSemaphore(VK_NULL_HANDLE), RenderFinishedSemaphore(VK_NULL_HANDLE), RenderFence(VK_NULL_HANDLE),
 			  UploadBuffer(VK_NULL_HANDLE), UploadMemory(VK_NULL_HANDLE), UploadPtr(NULL), UploadSize(0),
 			  GraphicsQueueFamily(~0u), DeviceCount(0), SwapchainImageCount(0), SwapchainViewCount(0),
-			  SwapchainFormat(VK_FORMAT_UNDEFINED), SwapchainColorSpace(VK_COLOR_SPACE_SRGB_NONLINEAR_KHR), Ready(false)
+			  SwapchainFormat(VK_FORMAT_UNDEFINED), SwapchainColorSpace(VK_COLOR_SPACE_SRGB_NONLINEAR_KHR),
+			  SwapchainRecreateCount(0), OutOfDateCount(0), WindowMinimized(false), Ready(false)
 		{
 			SwapchainExtent.width = 0;
 			SwapchainExtent.height = 0;
@@ -341,49 +342,44 @@ namespace
 			return UploadSize;
 		}
 
+		unsigned int GetSwapchainRecreateCount() const
+		{
+			return SwapchainRecreateCount;
+		}
+
+		unsigned int GetOutOfDateCount() const
+		{
+			return OutOfDateCount;
+		}
+
+		bool IsWindowMinimized() const
+		{
+			return WindowMinimized;
+		}
+
 		bool RecreateSwapchainForWindow()
 		{
-			if (Device == NULL || Swapchain == VK_NULL_HANDLE)
+			if (Device == NULL)
 			{
 				return false;
 			}
 
 			Ready = false;
-			Vk.DeviceWaitIdle(Device);
+			if (Vk.DeviceWaitIdle != NULL)
+			{
+				Vk.DeviceWaitIdle(Device);
+			}
 
-			if (UploadMemory != VK_NULL_HANDLE && UploadPtr != NULL)
-			{
-				Vk.UnmapMemory(Device, UploadMemory);
-			}
-			UploadPtr = NULL;
-			if (UploadBuffer != VK_NULL_HANDLE)
-			{
-				Vk.DestroyBuffer(Device, UploadBuffer, NULL);
-			}
-			UploadBuffer = VK_NULL_HANDLE;
-			if (UploadMemory != VK_NULL_HANDLE)
-			{
-				Vk.FreeMemory(Device, UploadMemory, NULL);
-			}
-			UploadMemory = VK_NULL_HANDLE;
-			UploadSize = 0;
+			DestroyUploadBuffer();
+			DestroySwapchainResources();
 
-			for (unsigned int i = 0; i < SwapchainViewCount; ++i)
+			if (IsClientMinimized())
 			{
-				if (SwapchainImageViews[i] != VK_NULL_HANDLE)
-				{
-					Vk.DestroyImageView(Device, SwapchainImageViews[i], NULL);
-				}
-				SwapchainImageViews[i] = VK_NULL_HANDLE;
+				WindowMinimized = true;
+				PublishVulkanStats(this);
+				return true;
 			}
-			SwapchainViewCount = 0;
-			Vk.DestroySwapchainKHR(Device, Swapchain, NULL);
-			Swapchain = VK_NULL_HANDLE;
-			SwapchainImageCount = 0;
-			for (unsigned int i = 0; i < MaxSwapchainImages; ++i)
-			{
-				SwapchainImages[i] = VK_NULL_HANDLE;
-			}
+			WindowMinimized = false;
 
 			if (!CreateSwapchain() || !CreateImageViews())
 			{
@@ -391,6 +387,7 @@ namespace
 				return false;
 			}
 			Ready = true;
+			SwapchainRecreateCount++;
 			PublishVulkanStats(this);
 			return true;
 		}
@@ -398,6 +395,22 @@ namespace
 		bool PresentPalettedFrame(const BYTE *pixels, int pitch, int width, int height, const PalEntry *palette)
 		{
 			unsigned int startMS = I_FPSTime();
+			if (IsClientMinimized())
+			{
+				WindowMinimized = true;
+				VulkanStats.LastPresentSucceeded = false;
+				PublishVulkanStats(this);
+				return true;
+			}
+			WindowMinimized = false;
+
+			if (!EnsureSwapchainMatchesWindow())
+			{
+				VulkanStats.LastPresentSucceeded = false;
+				PublishVulkanStats(this);
+				return false;
+			}
+
 			if (!Ready || pixels == NULL || palette == NULL || width <= 0 || height <= 0)
 			{
 				VulkanStats.LastPresentSucceeded = false;
@@ -444,16 +457,26 @@ namespace
 
 			unsigned int imageIndex = 0;
 			result = Vk.AcquireNextImageKHR(Device, Swapchain, ~(uint64_t)0, ImageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex);
+			if (result == VK_ERROR_OUT_OF_DATE_KHR)
+			{
+				OutOfDateCount++;
+				VulkanStats.LastPresentSucceeded = false;
+				RecreateSwapchainForWindow();
+				return false;
+			}
 			if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR)
 			{
+				VulkanStats.LastPresentSucceeded = false;
 				return false;
 			}
 			if (imageIndex >= SwapchainImageCount)
 			{
+				VulkanStats.LastPresentSucceeded = false;
 				return false;
 			}
 			if (!RecordUploadCommands(imageIndex, presentWidth, presentHeight))
 			{
+				VulkanStats.LastPresentSucceeded = false;
 				return false;
 			}
 
@@ -473,6 +496,7 @@ namespace
 			if (result != VK_SUCCESS)
 			{
 				Printf(TEXTCOLOR_RED "Vulkan: vkQueueSubmit failed (%d).\n", (int)result);
+				VulkanStats.LastPresentSucceeded = false;
 				return false;
 			}
 
@@ -486,9 +510,21 @@ namespace
 			presentInfo.pImageIndices = &imageIndex;
 
 			result = Vk.QueuePresentKHR(GraphicsQueue, &presentInfo);
+			if (result == VK_ERROR_OUT_OF_DATE_KHR)
+			{
+				OutOfDateCount++;
+				VulkanStats.LastPresentMS = I_FPSTime() - startMS;
+				VulkanStats.LastPresentSucceeded = false;
+				RecreateSwapchainForWindow();
+				return false;
+			}
 			PublishVulkanStats(this);
 			VulkanStats.LastPresentMS = I_FPSTime() - startMS;
 			VulkanStats.LastPresentSucceeded = result == VK_SUCCESS || result == VK_SUBOPTIMAL_KHR;
+			if (result == VK_SUBOPTIMAL_KHR)
+			{
+				RecreateSwapchainForWindow();
+			}
 			return VulkanStats.LastPresentSucceeded;
 		}
 
@@ -902,6 +938,13 @@ namespace
 
 		bool CreateSwapchain()
 		{
+			if (IsClientMinimized())
+			{
+				WindowMinimized = true;
+				return false;
+			}
+			WindowMinimized = false;
+
 			VkSurfaceCapabilitiesKHR capabilities;
 			VkResult result = Vk.GetPhysicalDeviceSurfaceCapabilitiesKHR(PhysicalDevice, Surface, &capabilities);
 			if (result != VK_SUCCESS)
@@ -1021,6 +1064,131 @@ namespace
 					return false;
 				}
 				SwapchainViewCount++;
+			}
+			return true;
+		}
+
+		void DestroyUploadBuffer()
+		{
+			if (Device == NULL)
+			{
+				UploadBuffer = VK_NULL_HANDLE;
+				UploadMemory = VK_NULL_HANDLE;
+				UploadPtr = NULL;
+				UploadSize = 0;
+				return;
+			}
+			if (UploadMemory != VK_NULL_HANDLE && UploadPtr != NULL && Vk.UnmapMemory != NULL)
+			{
+				Vk.UnmapMemory(Device, UploadMemory);
+			}
+			UploadPtr = NULL;
+			if (UploadBuffer != VK_NULL_HANDLE && Vk.DestroyBuffer != NULL)
+			{
+				Vk.DestroyBuffer(Device, UploadBuffer, NULL);
+			}
+			UploadBuffer = VK_NULL_HANDLE;
+			if (UploadMemory != VK_NULL_HANDLE && Vk.FreeMemory != NULL)
+			{
+				Vk.FreeMemory(Device, UploadMemory, NULL);
+			}
+			UploadMemory = VK_NULL_HANDLE;
+			UploadSize = 0;
+		}
+
+		void DestroySwapchainResources()
+		{
+			if (Device == NULL)
+			{
+				Swapchain = VK_NULL_HANDLE;
+				SwapchainImageCount = 0;
+				SwapchainViewCount = 0;
+				return;
+			}
+			for (unsigned int i = 0; i < SwapchainViewCount; ++i)
+			{
+				if (SwapchainImageViews[i] != VK_NULL_HANDLE && Vk.DestroyImageView != NULL)
+				{
+					Vk.DestroyImageView(Device, SwapchainImageViews[i], NULL);
+				}
+				SwapchainImageViews[i] = VK_NULL_HANDLE;
+			}
+			SwapchainViewCount = 0;
+			if (Swapchain != VK_NULL_HANDLE && Vk.DestroySwapchainKHR != NULL)
+			{
+				Vk.DestroySwapchainKHR(Device, Swapchain, NULL);
+			}
+			Swapchain = VK_NULL_HANDLE;
+			SwapchainImageCount = 0;
+			for (unsigned int i = 0; i < MaxSwapchainImages; ++i)
+			{
+				SwapchainImages[i] = VK_NULL_HANDLE;
+			}
+			SwapchainFormat = VK_FORMAT_UNDEFINED;
+			SwapchainColorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
+			SwapchainExtent.width = 0;
+			SwapchainExtent.height = 0;
+		}
+
+		bool GetClientExtent(unsigned int &width, unsigned int &height) const
+		{
+#ifdef _WIN32
+			if (Window == NULL)
+			{
+				width = 0;
+				height = 0;
+				return false;
+			}
+			RECT rect;
+			if (!GetClientRect(Window, &rect))
+			{
+				width = 0;
+				height = 0;
+				return false;
+			}
+			int clientWidth = rect.right - rect.left;
+			int clientHeight = rect.bottom - rect.top;
+			if (clientWidth <= 0 || clientHeight <= 0)
+			{
+				width = 0;
+				height = 0;
+				return true;
+			}
+			width = (unsigned int)clientWidth;
+			height = (unsigned int)clientHeight;
+			return true;
+#else
+			width = SwapchainExtent.width;
+			height = SwapchainExtent.height;
+			return width > 0 && height > 0;
+#endif
+		}
+
+		bool IsClientMinimized() const
+		{
+			unsigned int width = 0;
+			unsigned int height = 0;
+			return GetClientExtent(width, height) && (width == 0 || height == 0);
+		}
+
+		bool EnsureSwapchainMatchesWindow()
+		{
+			unsigned int clientWidth = 0;
+			unsigned int clientHeight = 0;
+			if (!GetClientExtent(clientWidth, clientHeight))
+			{
+				return false;
+			}
+			if (clientWidth == 0 || clientHeight == 0)
+			{
+				WindowMinimized = true;
+				return true;
+			}
+			if (Swapchain == VK_NULL_HANDLE ||
+				SwapchainExtent.width != clientWidth ||
+				SwapchainExtent.height != clientHeight)
+			{
+				return RecreateSwapchainForWindow();
 			}
 			return true;
 		}
@@ -1403,6 +1571,9 @@ namespace
 		VkExtent2D SwapchainExtent;
 		VkPhysicalDeviceProperties DeviceProperties;
 		VkPhysicalDeviceMemoryProperties MemoryProperties;
+		unsigned int SwapchainRecreateCount;
+		unsigned int OutOfDateCount;
+		bool WindowMinimized;
 		bool Ready;
 	};
 
@@ -1437,6 +1608,9 @@ namespace
 		VulkanStats.SwapchainWidth = extent.width;
 		VulkanStats.SwapchainHeight = extent.height;
 		VulkanStats.UploadBufferBytes = (unsigned long long)runtime->GetUploadSize();
+		VulkanStats.SwapchainRecreateCount = runtime->GetSwapchainRecreateCount();
+		VulkanStats.OutOfDateCount = runtime->GetOutOfDateCount();
+		VulkanStats.WindowMinimized = runtime->IsWindowMinimized();
 
 		const VkPhysicalDeviceProperties &properties = runtime->GetDeviceProperties();
 		CopyVulkanString(VulkanStats.DeviceName, sizeof(VulkanStats.DeviceName), properties.deviceName);
@@ -1653,8 +1827,12 @@ public:
 			return true;
 		}
 		ResizeVulkanWindow(Width, Height, fullscreen);
-		Fullscreen = fullscreen;
-		return Runtime != NULL && Runtime->RecreateSwapchainForWindow();
+		if (Runtime != NULL && Runtime->RecreateSwapchainForWindow())
+		{
+			Fullscreen = fullscreen;
+			return true;
+		}
+		return false;
 	}
 
 	void PaletteChanged()
@@ -1725,7 +1903,7 @@ public:
 			}
 			delete old;
 		}
-		return new VulkanFrameBuffer(width, height, false);
+		return new VulkanFrameBuffer(width, height, fs);
 	}
 
 	void StartModeIterator(int bits, bool fs)

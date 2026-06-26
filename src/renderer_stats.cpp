@@ -126,6 +126,10 @@ ADD_STAT(renderer)
 				vk.SwapchainHeight,
 				vk.SwapchainImageCount,
 				vk.SwapchainFormat);
+			out.AppendFormat("Swapchain state: %u recreate(s), %u out-of-date event(s)%s\n",
+				vk.SwapchainRecreateCount,
+				vk.OutOfDateCount,
+				vk.WindowMinimized ? ", minimized" : "");
 			out.AppendFormat("Queue: graphics/present family %u of %u device(s)\n",
 				vk.GraphicsQueueFamily,
 				vk.DeviceCount);

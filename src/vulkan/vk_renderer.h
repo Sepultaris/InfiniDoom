@@ -25,7 +25,10 @@ struct FVulkanBackendStats
 	unsigned long long DeviceLocalMemoryBytes;
 	unsigned long long UploadBufferBytes;
 	unsigned int LastPresentMS;
+	unsigned int SwapchainRecreateCount;
+	unsigned int OutOfDateCount;
 	bool LastPresentSucceeded;
+	bool WindowMinimized;
 };
 
 FRenderer *vk_CreateInterface();

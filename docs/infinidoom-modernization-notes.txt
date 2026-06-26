@@ -47,6 +47,10 @@ Current Vulkan direction:
   framebuffer mode, process RAM, and Vulkan device/swapchain/upload-buffer
   data. True GPU frame time and live VRAM usage should be added with Vulkan
   timestamp queries and VK_EXT_memory_budget rather than estimated.
+- The Vulkan window path should always treat the Win32 client size as the
+  swapchain authority. Logical software framebuffer size can differ from the
+  swapchain in borderless fullscreen, so presentation must scale into the
+  current swapchain extent and recreate when the client extent changes.
 - Next steps should be:
   1. add SDL surface creation for non-Windows targets;
   2. harden resize, alt-tab, and swapchain recreation;

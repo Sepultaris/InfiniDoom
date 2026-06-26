@@ -1,5 +1,14 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.4 - 2026-06-26
+
+- Fixed Vulkan framebuffer creation so fresh modes preserve the requested
+  fullscreen state instead of falling back to windowed after resolution changes.
+- Hardened Vulkan swapchain recreation around client-size changes, minimized
+  windows, and out-of-date/suboptimal acquire/present results.
+- Expanded `stat renderer` with Vulkan swapchain recreation and out-of-date
+  counters.
+
 ## 3.3-alpha-vdoom.3 - 2026-06-26
 
 - Added `stat renderer`, a backend-neutral renderer diagnostics overlay.
