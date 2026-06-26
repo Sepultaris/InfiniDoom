@@ -130,15 +130,35 @@ ADD_STAT(renderer)
 				vk.SwapchainRecreateCount,
 				vk.OutOfDateCount,
 				vk.WindowMinimized ? ", minimized" : "");
-			out.AppendFormat("Presentation: %s\n", vk.GpuPresentationActive ? "GPU palette shader" : "transfer fallback");
+			out.AppendFormat("Presentation: %s, %s filter\n",
+				vk.GpuPresentationActive ? "GPU palette shader" : "transfer fallback",
+				vk.PresentFilterMode != 0 ? "linear" : "nearest");
 			out.AppendFormat("Queue: graphics/present family %u of %u device(s)\n",
 				vk.GraphicsQueueFamily,
 				vk.DeviceCount);
 			out.AppendFormat("Upload buffer: %s\n", FormatBytes(vk.UploadBufferBytes).GetChars());
-			out.AppendFormat("VRAM/local heap: %s total\n", FormatBytes(vk.DeviceLocalMemoryBytes).GetChars());
+			if (vk.MemoryBudgetAvailable)
+			{
+				out.AppendFormat("VRAM/local heap: %s used, %s budget, %s total\n",
+					FormatBytes(vk.DeviceLocalMemoryUsageBytes).GetChars(),
+					FormatBytes(vk.DeviceLocalMemoryBudgetBytes).GetChars(),
+					FormatBytes(vk.DeviceLocalMemoryBytes).GetChars());
+			}
+			else
+			{
+				out.AppendFormat("VRAM/local heap: %s total, live budget unavailable\n", FormatBytes(vk.DeviceLocalMemoryBytes).GetChars());
+			}
 			out.AppendFormat("Vulkan present CPU: %u ms, %s\n",
 				vk.LastPresentMS,
 				vk.LastPresentSucceeded ? "ok" : "not presented");
+			if (vk.TimestampQueriesAvailable)
+			{
+				out.AppendFormat("Vulkan GPU frame: %.3f ms\n", vk.LastGpuFrameMS);
+			}
+			else
+			{
+				out += "Vulkan GPU frame: timestamp queries unavailable\n";
+			}
 		}
 		else
 		{
@@ -156,7 +176,6 @@ ADD_STAT(renderer)
 		out += "Process RAM: unavailable\n";
 	}
 
-	out += "Frame timing: use vid_fps 1 or stat fps\n";
-	out += "GPU frame time / VRAM usage: pending Vulkan timestamp and memory-budget instrumentation";
+	out += "Frame timing: use vid_fps 1 or stat fps";
 	return out;
 }

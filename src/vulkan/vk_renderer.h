@@ -23,11 +23,17 @@ struct FVulkanBackendStats
 	unsigned int SwapchainWidth;
 	unsigned int SwapchainHeight;
 	unsigned long long DeviceLocalMemoryBytes;
+	unsigned long long DeviceLocalMemoryBudgetBytes;
+	unsigned long long DeviceLocalMemoryUsageBytes;
 	unsigned long long UploadBufferBytes;
 	unsigned int LastPresentMS;
+	double LastGpuFrameMS;
 	unsigned int SwapchainRecreateCount;
 	unsigned int OutOfDateCount;
+	unsigned int PresentFilterMode;
 	bool GpuPresentationActive;
+	bool TimestampQueriesAvailable;
+	bool MemoryBudgetAvailable;
 	bool LastPresentSucceeded;
 	bool WindowMinimized;
 };

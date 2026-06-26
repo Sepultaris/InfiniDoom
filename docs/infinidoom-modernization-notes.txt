@@ -45,8 +45,9 @@ Current Vulkan direction:
 - Renderer diagnostics are exposed through the existing stat overlay system as
   "stat renderer". The first pass reports selected renderer, engine version,
   framebuffer mode, process RAM, and Vulkan device/swapchain/upload-buffer
-  data. True GPU frame time and live VRAM usage should be added with Vulkan
-  timestamp queries and VK_EXT_memory_budget rather than estimated.
+  data. Vulkan now reports real GPU presentation time through timestamp queries
+  when supported and live VRAM usage/budget through VK_EXT_memory_budget when
+  the driver exposes it.
 - The Vulkan window path should always treat the Win32 client size as the
   swapchain authority. Logical software framebuffer size can differ from the
   swapchain in borderless fullscreen, so presentation must scale into the
@@ -56,10 +57,14 @@ Current Vulkan direction:
   triangle shader performs palette lookup and scaling into the swapchain. The
   previous CPU-expanded transfer copy remains as a fallback while the GPU path
   matures.
+- `vk_present_filter` controls the Vulkan palette present sampler. The default
+  value `0` keeps nearest filtering for the classic pixel look; value `1`
+  enables linear filtering for smoother scaling experiments.
 - Next steps should be:
   1. add SDL surface creation for non-Windows targets;
   2. harden resize, alt-tab, and swapchain recreation;
-  3. add scaling/color conversion shaders instead of CPU palette expansion;
+  3. add higher-quality scaling/color conversion shaders around the palette
+     presenter;
   4. move renderer-owned scene features to GPU paths incrementally.
 
 Release discipline:

@@ -30,6 +30,7 @@
 
 #include "r_swrenderer.h"
 #include "version.h"
+#include "c_cvars.h"
 #include "v_text.h"
 #include "v_palette.h"
 #include "vulkan/vk_palette_present_shaders.h"
@@ -45,6 +46,18 @@ void DoBlending(const PalEntry *from, PalEntry *to, int count, int r, int g, int
 extern HINSTANCE g_hInst;
 extern HWND Window;
 #endif
+
+CUSTOM_CVAR(Int, vk_present_filter, 0, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINITCALL)
+{
+	if (self < 0)
+	{
+		self = 0;
+	}
+	else if (self > 1)
+	{
+		self = 1;
+	}
+}
 
 namespace
 {
@@ -63,8 +76,10 @@ namespace
 		PFN_vkEnumeratePhysicalDevices EnumeratePhysicalDevices;
 		PFN_vkGetPhysicalDeviceQueueFamilyProperties GetPhysicalDeviceQueueFamilyProperties;
 		PFN_vkGetPhysicalDeviceProperties GetPhysicalDeviceProperties;
-		PFN_vkCreateDevice CreateDevice;
 		PFN_vkGetPhysicalDeviceMemoryProperties GetPhysicalDeviceMemoryProperties;
+		PFN_vkGetPhysicalDeviceMemoryProperties2 GetPhysicalDeviceMemoryProperties2;
+		PFN_vkEnumerateDeviceExtensionProperties EnumerateDeviceExtensionProperties;
+		PFN_vkCreateDevice CreateDevice;
 		PFN_vkDestroyDevice DestroyDevice;
 		PFN_vkDeviceWaitIdle DeviceWaitIdle;
 		PFN_vkGetDeviceQueue GetDeviceQueue;
@@ -133,6 +148,11 @@ namespace
 		PFN_vkCmdDraw CmdDraw;
 		PFN_vkCmdSetViewport CmdSetViewport;
 		PFN_vkCmdSetScissor CmdSetScissor;
+		PFN_vkCreateQueryPool CreateQueryPool;
+		PFN_vkDestroyQueryPool DestroyQueryPool;
+		PFN_vkCmdResetQueryPool CmdResetQueryPool;
+		PFN_vkCmdWriteTimestamp CmdWriteTimestamp;
+		PFN_vkGetQueryPoolResults GetQueryPoolResults;
 #ifdef _WIN32
 		PFN_vkCreateWin32SurfaceKHR CreateWin32SurfaceKHR;
 #endif
@@ -157,6 +177,9 @@ namespace
 			  NearestSampler(VK_NULL_HANDLE), DescriptorSetLayout(VK_NULL_HANDLE), DescriptorPool(VK_NULL_HANDLE),
 			  DescriptorSet(VK_NULL_HANDLE), PipelineLayout(VK_NULL_HANDLE), RenderPass(VK_NULL_HANDLE),
 			  GraphicsPipeline(VK_NULL_HANDLE), SourceImageWidth(0), SourceImageHeight(0), GpuPresentationReady(false),
+			  PresentFilterMode(-1), TimestampQueryPool(VK_NULL_HANDLE), TimestampQueriesSupported(false),
+			  TimestampQueryPending(false), TimestampPeriod(0.0), LastGpuFrameMS(0.0), MemoryBudgetSupported(false),
+			  DeviceLocalMemoryBudgetBytes(0), DeviceLocalMemoryUsageBytes(0),
 			  GraphicsQueueFamily(~0u), DeviceCount(0), SwapchainImageCount(0), SwapchainViewCount(0),
 			  SwapchainFormat(VK_FORMAT_UNDEFINED), SwapchainColorSpace(VK_COLOR_SPACE_SRGB_NONLINEAR_KHR),
 			  SwapchainRecreateCount(0), OutOfDateCount(0), WindowMinimized(false), Ready(false)
@@ -235,6 +258,7 @@ namespace
 					Vk.DestroyFence(Device, RenderFence, NULL);
 				}
 				RenderFence = VK_NULL_HANDLE;
+				DestroyTimestampQueries();
 				if (RenderFinishedSemaphore != VK_NULL_HANDLE && Vk.DestroySemaphore != NULL)
 				{
 					Vk.DestroySemaphore(Device, RenderFinishedSemaphore, NULL);
@@ -282,6 +306,13 @@ namespace
 			GraphicsQueueFamily = ~0u;
 			DeviceCount = 0;
 			Ready = false;
+			TimestampQueriesSupported = false;
+			TimestampQueryPending = false;
+			TimestampPeriod = 0.0;
+			LastGpuFrameMS = 0.0;
+			MemoryBudgetSupported = false;
+			DeviceLocalMemoryBudgetBytes = 0;
+			DeviceLocalMemoryUsageBytes = 0;
 			memset(&DeviceProperties, 0, sizeof(DeviceProperties));
 			memset(&MemoryProperties, 0, sizeof(MemoryProperties));
 
@@ -369,6 +400,36 @@ namespace
 		bool IsGpuPresentationReady() const
 		{
 			return GpuPresentationReady;
+		}
+
+		bool AreTimestampQueriesAvailable() const
+		{
+			return TimestampQueriesSupported && TimestampQueryPool != VK_NULL_HANDLE;
+		}
+
+		double GetLastGpuFrameMS() const
+		{
+			return LastGpuFrameMS;
+		}
+
+		bool IsMemoryBudgetAvailable() const
+		{
+			return MemoryBudgetSupported && DeviceLocalMemoryBudgetBytes != 0;
+		}
+
+		unsigned long long GetDeviceLocalMemoryBudgetBytes() const
+		{
+			return DeviceLocalMemoryBudgetBytes;
+		}
+
+		unsigned long long GetDeviceLocalMemoryUsageBytes() const
+		{
+			return DeviceLocalMemoryUsageBytes;
+		}
+
+		unsigned int GetPresentFilterMode() const
+		{
+			return (unsigned int)(PresentFilterMode < 0 ? 0 : PresentFilterMode);
 		}
 
 		bool RecreateSwapchainForWindow()
@@ -490,6 +551,8 @@ namespace
 				Printf(TEXTCOLOR_RED "Vulkan: vkWaitForFences failed (%d).\n", (int)result);
 				return false;
 			}
+			ReadGpuFrameTime();
+			RefreshMemoryBudgetStats();
 			Vk.ResetFences(Device, 1, &RenderFence);
 			Vk.ResetCommandBuffer(CommandBuffer, 0);
 
@@ -543,8 +606,10 @@ namespace
 			{
 				Printf(TEXTCOLOR_RED "Vulkan: vkQueueSubmit failed (%d).\n", (int)result);
 				VulkanStats.LastPresentSucceeded = false;
+				TimestampQueryPending = false;
 				return false;
 			}
+			TimestampQueryPending = AreTimestampQueriesAvailable();
 
 			VkPresentInfoKHR presentInfo;
 			memset(&presentInfo, 0, sizeof(presentInfo));
@@ -632,6 +697,12 @@ namespace
 			Vk.GetPhysicalDeviceQueueFamilyProperties = reinterpret_cast<PFN_vkGetPhysicalDeviceQueueFamilyProperties>(Vk.GetInstanceProcAddr(Instance, "vkGetPhysicalDeviceQueueFamilyProperties"));
 			Vk.GetPhysicalDeviceProperties = reinterpret_cast<PFN_vkGetPhysicalDeviceProperties>(Vk.GetInstanceProcAddr(Instance, "vkGetPhysicalDeviceProperties"));
 			Vk.GetPhysicalDeviceMemoryProperties = reinterpret_cast<PFN_vkGetPhysicalDeviceMemoryProperties>(Vk.GetInstanceProcAddr(Instance, "vkGetPhysicalDeviceMemoryProperties"));
+			Vk.GetPhysicalDeviceMemoryProperties2 = reinterpret_cast<PFN_vkGetPhysicalDeviceMemoryProperties2>(Vk.GetInstanceProcAddr(Instance, "vkGetPhysicalDeviceMemoryProperties2"));
+			if (Vk.GetPhysicalDeviceMemoryProperties2 == NULL)
+			{
+				Vk.GetPhysicalDeviceMemoryProperties2 = reinterpret_cast<PFN_vkGetPhysicalDeviceMemoryProperties2>(Vk.GetInstanceProcAddr(Instance, "vkGetPhysicalDeviceMemoryProperties2KHR"));
+			}
+			Vk.EnumerateDeviceExtensionProperties = reinterpret_cast<PFN_vkEnumerateDeviceExtensionProperties>(Vk.GetInstanceProcAddr(Instance, "vkEnumerateDeviceExtensionProperties"));
 			Vk.CreateDevice = reinterpret_cast<PFN_vkCreateDevice>(Vk.GetInstanceProcAddr(Instance, "vkCreateDevice"));
 			Vk.GetDeviceProcAddr = reinterpret_cast<PFN_vkGetDeviceProcAddr>(Vk.GetInstanceProcAddr(Instance, "vkGetDeviceProcAddr"));
 			Vk.DestroySurfaceKHR = reinterpret_cast<PFN_vkDestroySurfaceKHR>(Vk.GetInstanceProcAddr(Instance, "vkDestroySurfaceKHR"));
@@ -647,6 +718,7 @@ namespace
 				Vk.GetPhysicalDeviceQueueFamilyProperties != NULL &&
 				Vk.GetPhysicalDeviceProperties != NULL &&
 				Vk.GetPhysicalDeviceMemoryProperties != NULL &&
+				Vk.EnumerateDeviceExtensionProperties != NULL &&
 				Vk.CreateDevice != NULL &&
 				Vk.GetDeviceProcAddr != NULL &&
 				Vk.DestroySurfaceKHR != NULL &&
@@ -725,6 +797,11 @@ namespace
 			Vk.CmdDraw = reinterpret_cast<PFN_vkCmdDraw>(Vk.GetDeviceProcAddr(Device, "vkCmdDraw"));
 			Vk.CmdSetViewport = reinterpret_cast<PFN_vkCmdSetViewport>(Vk.GetDeviceProcAddr(Device, "vkCmdSetViewport"));
 			Vk.CmdSetScissor = reinterpret_cast<PFN_vkCmdSetScissor>(Vk.GetDeviceProcAddr(Device, "vkCmdSetScissor"));
+			Vk.CreateQueryPool = reinterpret_cast<PFN_vkCreateQueryPool>(Vk.GetDeviceProcAddr(Device, "vkCreateQueryPool"));
+			Vk.DestroyQueryPool = reinterpret_cast<PFN_vkDestroyQueryPool>(Vk.GetDeviceProcAddr(Device, "vkDestroyQueryPool"));
+			Vk.CmdResetQueryPool = reinterpret_cast<PFN_vkCmdResetQueryPool>(Vk.GetDeviceProcAddr(Device, "vkCmdResetQueryPool"));
+			Vk.CmdWriteTimestamp = reinterpret_cast<PFN_vkCmdWriteTimestamp>(Vk.GetDeviceProcAddr(Device, "vkCmdWriteTimestamp"));
+			Vk.GetQueryPoolResults = reinterpret_cast<PFN_vkGetQueryPoolResults>(Vk.GetDeviceProcAddr(Device, "vkGetQueryPoolResults"));
 			return Vk.DestroyDevice != NULL &&
 				Vk.DeviceWaitIdle != NULL &&
 				Vk.GetDeviceQueue != NULL &&
@@ -911,6 +988,9 @@ namespace
 						GraphicsQueueFamily = q;
 						Vk.GetPhysicalDeviceProperties(PhysicalDevice, &DeviceProperties);
 						Vk.GetPhysicalDeviceMemoryProperties(PhysicalDevice, &MemoryProperties);
+						TimestampQueriesSupported = queues[q].timestampValidBits > 0 && DeviceProperties.limits.timestampPeriod > 0.f;
+						TimestampPeriod = DeviceProperties.limits.timestampPeriod;
+						MemoryBudgetSupported = IsDeviceExtensionSupported(VK_EXT_MEMORY_BUDGET_EXTENSION_NAME);
 						PublishVulkanStats(this);
 						return true;
 					}
@@ -924,10 +1004,13 @@ namespace
 		bool CreateDevice()
 		{
 			const float queuePriority = 1.f;
-			const char *deviceExtensions[] =
+			const char *deviceExtensions[2];
+			unsigned int deviceExtensionCount = 0;
+			deviceExtensions[deviceExtensionCount++] = VK_KHR_SWAPCHAIN_EXTENSION_NAME;
+			if (MemoryBudgetSupported)
 			{
-				VK_KHR_SWAPCHAIN_EXTENSION_NAME,
-			};
+				deviceExtensions[deviceExtensionCount++] = VK_EXT_MEMORY_BUDGET_EXTENSION_NAME;
+			}
 
 			VkDeviceQueueCreateInfo queueInfo;
 			memset(&queueInfo, 0, sizeof(queueInfo));
@@ -941,7 +1024,7 @@ namespace
 			createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
 			createInfo.queueCreateInfoCount = 1;
 			createInfo.pQueueCreateInfos = &queueInfo;
-			createInfo.enabledExtensionCount = sizeof(deviceExtensions) / sizeof(deviceExtensions[0]);
+			createInfo.enabledExtensionCount = deviceExtensionCount;
 			createInfo.ppEnabledExtensionNames = deviceExtensions;
 
 			VkResult result = Vk.CreateDevice(PhysicalDevice, &createInfo, NULL, &Device);
@@ -956,7 +1039,42 @@ namespace
 				return false;
 			}
 			Vk.GetDeviceQueue(Device, GraphicsQueueFamily, 0, &GraphicsQueue);
+			RefreshMemoryBudgetStats();
 			return GraphicsQueue != NULL;
+		}
+
+		bool IsDeviceExtensionSupported(const char *extensionName) const
+		{
+			if (Vk.EnumerateDeviceExtensionProperties == NULL || PhysicalDevice == NULL || extensionName == NULL)
+			{
+				return false;
+			}
+
+			unsigned int count = 0;
+			if (Vk.EnumerateDeviceExtensionProperties(PhysicalDevice, NULL, &count, NULL) != VK_SUCCESS || count == 0)
+			{
+				return false;
+			}
+
+			VkExtensionProperties extensions[128];
+			unsigned int queryCount = count;
+			if (queryCount > 128)
+			{
+				queryCount = 128;
+			}
+			if (Vk.EnumerateDeviceExtensionProperties(PhysicalDevice, NULL, &queryCount, extensions) != VK_SUCCESS)
+			{
+				return false;
+			}
+
+			for (unsigned int i = 0; i < queryCount; ++i)
+			{
+				if (strcmp(extensions[i].extensionName, extensionName) == 0)
+				{
+					return true;
+				}
+			}
+			return false;
 		}
 
 		VkSurfaceFormatKHR ChooseSurfaceFormat(const VkSurfaceFormatKHR *formats, unsigned int count)
@@ -1313,8 +1431,10 @@ namespace
 			VkSamplerCreateInfo samplerInfo;
 			memset(&samplerInfo, 0, sizeof(samplerInfo));
 			samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-			samplerInfo.magFilter = VK_FILTER_NEAREST;
-			samplerInfo.minFilter = VK_FILTER_NEAREST;
+			PresentFilterMode = vk_present_filter != 0 ? 1 : 0;
+			VkFilter filter = PresentFilterMode != 0 ? VK_FILTER_LINEAR : VK_FILTER_NEAREST;
+			samplerInfo.magFilter = filter;
+			samplerInfo.minFilter = filter;
 			samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
 			samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
 			samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
@@ -1559,6 +1679,7 @@ namespace
 			}
 			NearestSampler = VK_NULL_HANDLE;
 			GpuPresentationReady = false;
+			PresentFilterMode = -1;
 		}
 
 		bool GetClientExtent(unsigned int &width, unsigned int &height) const
@@ -1681,7 +1802,42 @@ namespace
 				Printf(TEXTCOLOR_RED "Vulkan: vkCreateFence failed (%d).\n", (int)result);
 				return false;
 			}
+			CreateTimestampQueries();
 			return true;
+		}
+
+		void CreateTimestampQueries()
+		{
+			if (!TimestampQueriesSupported || Vk.CreateQueryPool == NULL || Vk.DestroyQueryPool == NULL ||
+				Vk.CmdResetQueryPool == NULL || Vk.CmdWriteTimestamp == NULL || Vk.GetQueryPoolResults == NULL)
+			{
+				TimestampQueriesSupported = false;
+				return;
+			}
+
+			VkQueryPoolCreateInfo queryInfo;
+			memset(&queryInfo, 0, sizeof(queryInfo));
+			queryInfo.sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO;
+			queryInfo.queryType = VK_QUERY_TYPE_TIMESTAMP;
+			queryInfo.queryCount = 2;
+
+			VkResult result = Vk.CreateQueryPool(Device, &queryInfo, NULL, &TimestampQueryPool);
+			if (result != VK_SUCCESS)
+			{
+				Printf(TEXTCOLOR_ORANGE "Vulkan: timestamp query pool unavailable (%d).\n", (int)result);
+				TimestampQueriesSupported = false;
+				TimestampQueryPool = VK_NULL_HANDLE;
+			}
+		}
+
+		void DestroyTimestampQueries()
+		{
+			if (TimestampQueryPool != VK_NULL_HANDLE && Vk.DestroyQueryPool != NULL)
+			{
+				Vk.DestroyQueryPool(Device, TimestampQueryPool, NULL);
+			}
+			TimestampQueryPool = VK_NULL_HANDLE;
+			TimestampQueryPending = false;
 		}
 
 		unsigned int FindMemoryType(unsigned int typeFilter, VkMemoryPropertyFlags properties)
@@ -1842,6 +1998,10 @@ namespace
 			if (width <= 0 || height <= 0)
 			{
 				return false;
+			}
+			if (PresentFilterMode != -1 && PresentFilterMode != (vk_present_filter != 0 ? 1 : 0))
+			{
+				DestroyPresentationResources();
 			}
 			if (RenderPass == VK_NULL_HANDLE && !CreateRenderPass())
 			{
@@ -2041,6 +2201,7 @@ namespace
 			{
 				return false;
 			}
+			WriteTimestampStart();
 
 			VkImageSubresourceRange colorRange;
 			memset(&colorRange, 0, sizeof(colorRange));
@@ -2085,6 +2246,7 @@ namespace
 			toPresent.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
 			Vk.CmdPipelineBarrier(CommandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, NULL, 0, NULL, 1, &toPresent);
 
+			WriteTimestampEnd();
 			return Vk.EndCommandBuffer(CommandBuffer) == VK_SUCCESS;
 		}
 
@@ -2100,6 +2262,7 @@ namespace
 			{
 				return false;
 			}
+			WriteTimestampStart();
 
 			VkImageSubresourceRange colorRange;
 			memset(&colorRange, 0, sizeof(colorRange));
@@ -2176,7 +2339,73 @@ namespace
 			Vk.CmdDraw(CommandBuffer, 3, 1, 0, 0);
 			Vk.CmdEndRenderPass(CommandBuffer);
 
+			WriteTimestampEnd();
 			return Vk.EndCommandBuffer(CommandBuffer) == VK_SUCCESS;
+		}
+
+		void WriteTimestampStart()
+		{
+			if (!AreTimestampQueriesAvailable())
+			{
+				return;
+			}
+			Vk.CmdResetQueryPool(CommandBuffer, TimestampQueryPool, 0, 2);
+			Vk.CmdWriteTimestamp(CommandBuffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, TimestampQueryPool, 0);
+		}
+
+		void WriteTimestampEnd()
+		{
+			if (!AreTimestampQueriesAvailable())
+			{
+				return;
+			}
+			Vk.CmdWriteTimestamp(CommandBuffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, TimestampQueryPool, 1);
+		}
+
+		void ReadGpuFrameTime()
+		{
+			if (!TimestampQueryPending || !AreTimestampQueriesAvailable())
+			{
+				return;
+			}
+
+			uint64_t timestamps[2] = { 0, 0 };
+			VkResult result = Vk.GetQueryPoolResults(Device, TimestampQueryPool, 0, 2, sizeof(timestamps), timestamps,
+				sizeof(uint64_t), VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT);
+			TimestampQueryPending = false;
+			if (result == VK_SUCCESS && timestamps[1] >= timestamps[0])
+			{
+				LastGpuFrameMS = ((double)(timestamps[1] - timestamps[0]) * TimestampPeriod) / 1000000.0;
+			}
+		}
+
+		void RefreshMemoryBudgetStats()
+		{
+			DeviceLocalMemoryBudgetBytes = 0;
+			DeviceLocalMemoryUsageBytes = 0;
+			if (!MemoryBudgetSupported || Vk.GetPhysicalDeviceMemoryProperties2 == NULL || PhysicalDevice == NULL)
+			{
+				return;
+			}
+
+			VkPhysicalDeviceMemoryBudgetPropertiesEXT budget;
+			memset(&budget, 0, sizeof(budget));
+			budget.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_BUDGET_PROPERTIES_EXT;
+
+			VkPhysicalDeviceMemoryProperties2 memory;
+			memset(&memory, 0, sizeof(memory));
+			memory.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_PROPERTIES_2;
+			memory.pNext = &budget;
+
+			Vk.GetPhysicalDeviceMemoryProperties2(PhysicalDevice, &memory);
+			for (unsigned int i = 0; i < memory.memoryProperties.memoryHeapCount; ++i)
+			{
+				if (memory.memoryProperties.memoryHeaps[i].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT)
+				{
+					DeviceLocalMemoryBudgetBytes += (unsigned long long)budget.heapBudget[i];
+					DeviceLocalMemoryUsageBytes += (unsigned long long)budget.heapUsage[i];
+				}
+			}
 		}
 
 		bool PresentStartupFrame()
@@ -2278,6 +2507,15 @@ namespace
 		unsigned int SourceImageWidth;
 		unsigned int SourceImageHeight;
 		bool GpuPresentationReady;
+		int PresentFilterMode;
+		VkQueryPool TimestampQueryPool;
+		bool TimestampQueriesSupported;
+		bool TimestampQueryPending;
+		double TimestampPeriod;
+		double LastGpuFrameMS;
+		bool MemoryBudgetSupported;
+		unsigned long long DeviceLocalMemoryBudgetBytes;
+		unsigned long long DeviceLocalMemoryUsageBytes;
 		unsigned int GraphicsQueueFamily;
 		unsigned int DeviceCount;
 		unsigned int SwapchainImageCount;
@@ -2328,6 +2566,12 @@ namespace
 		VulkanStats.OutOfDateCount = runtime->GetOutOfDateCount();
 		VulkanStats.GpuPresentationActive = runtime->IsGpuPresentationReady();
 		VulkanStats.WindowMinimized = runtime->IsWindowMinimized();
+		VulkanStats.TimestampQueriesAvailable = runtime->AreTimestampQueriesAvailable();
+		VulkanStats.LastGpuFrameMS = runtime->GetLastGpuFrameMS();
+		VulkanStats.MemoryBudgetAvailable = runtime->IsMemoryBudgetAvailable();
+		VulkanStats.DeviceLocalMemoryBudgetBytes = runtime->GetDeviceLocalMemoryBudgetBytes();
+		VulkanStats.DeviceLocalMemoryUsageBytes = runtime->GetDeviceLocalMemoryUsageBytes();
+		VulkanStats.PresentFilterMode = runtime->GetPresentFilterMode();
 
 		const VkPhysicalDeviceProperties &properties = runtime->GetDeviceProperties();
 		CopyVulkanString(VulkanStats.DeviceName, sizeof(VulkanStats.DeviceName), properties.deviceName);

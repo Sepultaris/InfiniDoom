@@ -1,5 +1,14 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.7 - 2026-06-26
+
+- Added Vulkan timestamp-query instrumentation so `stat renderer` can report
+  measured GPU frame time for the current presentation path.
+- Enabled `VK_EXT_memory_budget` when supported and report live local VRAM
+  usage/budget alongside the physical local heap size.
+- Added `vk_present_filter`: `0` keeps the default nearest presentation,
+  while `1` enables linear filtering for the Vulkan palette presenter.
+
 ## 3.3-alpha-vdoom.6 - 2026-06-26
 
 - Fixed the Vulkan GPU palette presenter drawing the software framebuffer
