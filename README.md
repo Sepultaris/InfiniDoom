@@ -1,14 +1,14 @@
-Welcome to Zandronum!
-=====================
+Welcome to vDoom!
+=================
 
-A continuation of Skulltag.
----------------------------
+An InfiniDoom source port derived from Zandronum.
+------------------------------------------------
 
-Zandronum is a multiplayer oriented port, based off Skulltag, for Doom and Doom II by [id Software](http://www.idsoftware.com/).
+vDoom is a new Doom source port built from the InfiniDoom fork of Zandronum, itself a multiplayer oriented port based off Skulltag, for Doom and Doom II by [id Software](http://www.idsoftware.com/).
 
-Zandronum brings classic Doom into the 21st century, maintaining the essence of what has made Doom great for so many years and, at the same time, adding new features to modernize it, creating a fresh, fun new experience.
+vDoom keeps the classic Doom feel while modernizing the engine around long-term systems such as OpenAL/FluidSynth audio and a new Vulkan renderer path.
 
-Here's why you should kill your time with Zandronum, versus vanilla Doom:
+Here's why you should spend time with vDoom, versus vanilla Doom:
  
 * Excellent online play
     * Client/server architecture: play and switch between games with ease
@@ -34,13 +34,10 @@ Acknowledgements
 
 Special thanks to [Octobus](https://octobus.net/) and [Clever Cloud](https://clever-cloud.com/) for generously providing hosting services for this project.
 
-Links
------
+Upstream
+--------
 
-* [Official Website](http://zandronum.com/)
-* [Community Forums](http://zandronum.com/forum/)
-* [Wiki](http://wiki.zandronum.com/)
-* [Bugtracker](http://zandronum.com/tracker/)
+vDoom is derived from Zandronum. The original upstream project is available at [zandronum.com](http://zandronum.com/).
 
 
 License

@@ -706,6 +706,7 @@ BYTE *ungzip(BYTE *data, int *complen)
 
 void I_UpdateMusic()
 {
+	I_UpdateSound();
 	if (currSong != NULL)
 	{
 		currSong->Update();

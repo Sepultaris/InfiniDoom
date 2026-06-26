@@ -332,6 +332,11 @@ void MIDIStreamer::Play(bool looping, int subsong)
 	if (MIDI == NULL || 0 != MIDI->Open(Callback, this))
 	{
 		Printf(PRINT_BOLD, "Could not open MIDI out device\n");
+		if (MIDI != NULL)
+		{
+			delete MIDI;
+			MIDI = NULL;
+		}
 		return;
 	}
 
@@ -520,12 +525,20 @@ void MIDIStreamer::Stop()
 
 bool MIDIStreamer::IsPlaying()
 {
-	if (m_Status != STATE_Stopped && (MIDI == NULL || (EndQueued != 0 && EndQueued < 4)))
+	if (m_Status != STATE_Stopped && MIDI == NULL)
 	{
+		Printf("MIDIStreamer stopped: MIDI device is gone.\n");
+		Stop();
+	}
+	if (m_Status != STATE_Stopped && EndQueued != 0 && EndQueued < 4)
+	{
+		Printf("MIDIStreamer stopped: end buffer queued (EndQueued=%d, looping=%s).\n",
+			EndQueued, m_Looping ? "true" : "false");
 		Stop();
 	}
 	if (m_Status != STATE_Stopped && !MIDI->IsOpen())
 	{
+		Printf("MIDIStreamer stopped: MIDI device closed.\n");
 		Stop();
 	}
 	return m_Status != STATE_Stopped;
@@ -542,6 +555,10 @@ bool MIDIStreamer::IsPlaying()
 
 void MIDIStreamer::MusicVolumeChanged()
 {
+	if (MIDI == NULL)
+	{
+		return;
+	}
 	if (MIDI->FakeVolume())
 	{
 		float realvolume = clamp<float>(snd_musicvolume * relative_volume, 0.f, 1.f);
@@ -624,6 +641,10 @@ void MIDIStreamer::FluidSettingStr(const char *setting, const char *value)
 
 void MIDIStreamer::OutputVolume (DWORD volume)
 {
+	if (MIDI == NULL)
+	{
+		return;
+	}
 	if (MIDI->FakeVolume())
 	{
 		NewVolume = volume;

@@ -2,7 +2,7 @@
 <VisualStudioProject
 	ProjectType="Visual C++"
 	Version="8,00"
-	Name="zandronum"
+	Name="vDoom"
 	ProjectGUID="{8049475B-5C87-46F9-9358-635218A4EF18}"
 	RootNamespace=" zdoom"
 	>
@@ -2664,6 +2664,18 @@
 					>
 				</File>
 			</Filter>
+		</Filter>
+		<Filter
+			Name="Vulkan Renderer"
+			>
+			<File
+				RelativePath=".\src\vulkan\vk_renderer.cpp"
+				>
+			</File>
+			<File
+				RelativePath=".\src\vulkan\vk_renderer.h"
+				>
+			</File>
 		</Filter>
 		<Filter
 			Name="Text Files"

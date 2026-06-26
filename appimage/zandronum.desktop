@@ -1,8 +1,8 @@
 [Desktop Entry]
 Type=Application
-Name=Zandronum
+Name=vDoom
 Comment=Online Doom source port
-Exec=zandronum %F
+Exec=vdoom %F
 Terminal=false
 Categories=Game
-Icon=zandronum
+Icon=vdoom

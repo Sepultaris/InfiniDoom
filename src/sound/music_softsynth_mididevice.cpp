@@ -395,8 +395,20 @@ bool SoftSynthMIDIDevice::ServiceStream (void *buff, int numbytes)
 	memset(buff, 0, numbytes);
 
 	CritSec.Enter();
-	while (Events != NULL && numsamples > 0)
+	while (numsamples > 0)
 	{
+		if (Events == NULL)
+		{
+			if (Callback != NULL)
+			{
+				Callback(MOM_DONE, CallbackData, 0, 0);
+			}
+			if (Events == NULL)
+			{
+				break;
+			}
+		}
+
 		double ticky = NextTickIn;
 		int tick_in = int(NextTickIn);
 		int samplesleft = MIN(numsamples, tick_in);
@@ -432,10 +444,6 @@ bool SoftSynthMIDIDevice::ServiceStream (void *buff, int numbytes)
 		}
 	}
 
-	if (Events == NULL)
-	{
-		res = false;
-	}
 	CritSec.Leave();
 	return res;
 }

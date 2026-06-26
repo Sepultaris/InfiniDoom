@@ -1,0 +1,1738 @@
+/*
+** vk_renderer.cpp
+** Vulkan renderer bootstrap interface.
+**
+** This backend is intentionally InfiniDoom-shaped: it proves Vulkan runtime,
+** instance, physical device, and graphics queue availability while continuing
+** to use the existing software renderer until the swapchain/render path is
+** built in small steps.
+*/
+
+#include <string.h>
+
+#ifdef _WIN32
+#define VK_USE_PLATFORM_WIN32_KHR
+#define USE_WINDOWS_DWORD
+#include <windows.h>
+#endif
+
+#include <vulkan/vulkan.h>
+
+#include "vulkan/vk_renderer.h"
+
+#ifndef _WIN32
+#include <dlfcn.h>
+#endif
+
+#ifdef _WIN32
+#include "win32/hardware.h"
+#endif
+
+#include "r_swrenderer.h"
+#include "version.h"
+#include "v_text.h"
+#include "v_palette.h"
+
+void DoBlending(const PalEntry *from, PalEntry *to, int count, int r, int g, int b, int a);
+
+#ifdef _WIN32
+extern HINSTANCE g_hInst;
+extern HWND Window;
+#endif
+
+namespace
+{
+#ifdef _WIN32
+	typedef HMODULE VulkanLoaderModule;
+#else
+	typedef void *VulkanLoaderModule;
+#endif
+
+	struct VulkanFunctions
+	{
+		PFN_vkGetInstanceProcAddr GetInstanceProcAddr;
+		PFN_vkGetDeviceProcAddr GetDeviceProcAddr;
+		PFN_vkCreateInstance CreateInstance;
+		PFN_vkDestroyInstance DestroyInstance;
+		PFN_vkEnumeratePhysicalDevices EnumeratePhysicalDevices;
+		PFN_vkGetPhysicalDeviceQueueFamilyProperties GetPhysicalDeviceQueueFamilyProperties;
+		PFN_vkCreateDevice CreateDevice;
+		PFN_vkGetPhysicalDeviceMemoryProperties GetPhysicalDeviceMemoryProperties;
+		PFN_vkDestroyDevice DestroyDevice;
+		PFN_vkDeviceWaitIdle DeviceWaitIdle;
+		PFN_vkGetDeviceQueue GetDeviceQueue;
+		PFN_vkDestroySurfaceKHR DestroySurfaceKHR;
+		PFN_vkGetPhysicalDeviceSurfaceSupportKHR GetPhysicalDeviceSurfaceSupportKHR;
+		PFN_vkGetPhysicalDeviceSurfaceCapabilitiesKHR GetPhysicalDeviceSurfaceCapabilitiesKHR;
+		PFN_vkGetPhysicalDeviceSurfaceFormatsKHR GetPhysicalDeviceSurfaceFormatsKHR;
+		PFN_vkGetPhysicalDeviceSurfacePresentModesKHR GetPhysicalDeviceSurfacePresentModesKHR;
+		PFN_vkCreateSwapchainKHR CreateSwapchainKHR;
+		PFN_vkDestroySwapchainKHR DestroySwapchainKHR;
+		PFN_vkGetSwapchainImagesKHR GetSwapchainImagesKHR;
+		PFN_vkCreateImageView CreateImageView;
+		PFN_vkDestroyImageView DestroyImageView;
+		PFN_vkCreateCommandPool CreateCommandPool;
+		PFN_vkDestroyCommandPool DestroyCommandPool;
+		PFN_vkAllocateCommandBuffers AllocateCommandBuffers;
+		PFN_vkBeginCommandBuffer BeginCommandBuffer;
+		PFN_vkEndCommandBuffer EndCommandBuffer;
+		PFN_vkCmdPipelineBarrier CmdPipelineBarrier;
+		PFN_vkCmdClearColorImage CmdClearColorImage;
+		PFN_vkCreateSemaphore CreateSemaphore;
+		PFN_vkDestroySemaphore DestroySemaphore;
+		PFN_vkCreateFence CreateFence;
+		PFN_vkDestroyFence DestroyFence;
+		PFN_vkWaitForFences WaitForFences;
+		PFN_vkResetFences ResetFences;
+		PFN_vkResetCommandBuffer ResetCommandBuffer;
+		PFN_vkQueueSubmit QueueSubmit;
+		PFN_vkQueuePresentKHR QueuePresentKHR;
+		PFN_vkAcquireNextImageKHR AcquireNextImageKHR;
+		PFN_vkCreateBuffer CreateBuffer;
+		PFN_vkDestroyBuffer DestroyBuffer;
+		PFN_vkGetBufferMemoryRequirements GetBufferMemoryRequirements;
+		PFN_vkAllocateMemory AllocateMemory;
+		PFN_vkFreeMemory FreeMemory;
+		PFN_vkBindBufferMemory BindBufferMemory;
+		PFN_vkMapMemory MapMemory;
+		PFN_vkUnmapMemory UnmapMemory;
+		PFN_vkCmdCopyBufferToImage CmdCopyBufferToImage;
+#ifdef _WIN32
+		PFN_vkCreateWin32SurfaceKHR CreateWin32SurfaceKHR;
+#endif
+	};
+
+	class VulkanRuntime
+	{
+	public:
+		VulkanRuntime()
+			: Module(NULL), Instance(NULL), Surface(VK_NULL_HANDLE), PhysicalDevice(NULL), Device(NULL), GraphicsQueue(NULL),
+			  Swapchain(VK_NULL_HANDLE), CommandPool(VK_NULL_HANDLE), CommandBuffer(VK_NULL_HANDLE),
+			  ImageAvailableSemaphore(VK_NULL_HANDLE), RenderFinishedSemaphore(VK_NULL_HANDLE), RenderFence(VK_NULL_HANDLE),
+			  UploadBuffer(VK_NULL_HANDLE), UploadMemory(VK_NULL_HANDLE), UploadPtr(NULL), UploadSize(0),
+			  GraphicsQueueFamily(~0u), DeviceCount(0), SwapchainImageCount(0), SwapchainViewCount(0),
+			  SwapchainFormat(VK_FORMAT_UNDEFINED), SwapchainColorSpace(VK_COLOR_SPACE_SRGB_NONLINEAR_KHR), Ready(false)
+		{
+			SwapchainExtent.width = 0;
+			SwapchainExtent.height = 0;
+			for (unsigned int i = 0; i < MaxSwapchainImages; ++i)
+			{
+				SwapchainImages[i] = VK_NULL_HANDLE;
+				SwapchainImageViews[i] = VK_NULL_HANDLE;
+			}
+			memset(&Vk, 0, sizeof(Vk));
+		}
+
+		~VulkanRuntime()
+		{
+			Shutdown();
+		}
+
+		bool Init()
+		{
+			if (!LoadLoader())
+			{
+				return false;
+			}
+			if (!LoadGlobalFunctions())
+			{
+				return false;
+			}
+			if (!CreateInstance())
+			{
+				return false;
+			}
+			if (!CreateSurface())
+			{
+				return false;
+			}
+			if (!ChoosePhysicalDevice())
+			{
+				return false;
+			}
+			if (!CreateDevice())
+			{
+				return false;
+			}
+			if (!CreateSwapchain())
+			{
+				return false;
+			}
+			if (!CreateImageViews())
+			{
+				return false;
+			}
+			if (!CreateCommandResources())
+			{
+				return false;
+			}
+			Ready = true;
+			return true;
+		}
+
+		void Shutdown()
+		{
+			if (Device != NULL && Vk.DestroyDevice != NULL)
+			{
+				if (Vk.DeviceWaitIdle != NULL)
+				{
+					Vk.DeviceWaitIdle(Device);
+				}
+				if (RenderFence != VK_NULL_HANDLE && Vk.DestroyFence != NULL)
+				{
+					Vk.DestroyFence(Device, RenderFence, NULL);
+				}
+				RenderFence = VK_NULL_HANDLE;
+				if (RenderFinishedSemaphore != VK_NULL_HANDLE && Vk.DestroySemaphore != NULL)
+				{
+					Vk.DestroySemaphore(Device, RenderFinishedSemaphore, NULL);
+				}
+				RenderFinishedSemaphore = VK_NULL_HANDLE;
+				if (ImageAvailableSemaphore != VK_NULL_HANDLE && Vk.DestroySemaphore != NULL)
+				{
+					Vk.DestroySemaphore(Device, ImageAvailableSemaphore, NULL);
+				}
+				ImageAvailableSemaphore = VK_NULL_HANDLE;
+				if (CommandPool != VK_NULL_HANDLE && Vk.DestroyCommandPool != NULL)
+				{
+					Vk.DestroyCommandPool(Device, CommandPool, NULL);
+				}
+				CommandPool = VK_NULL_HANDLE;
+				CommandBuffer = VK_NULL_HANDLE;
+				if (UploadMemory != VK_NULL_HANDLE && UploadPtr != NULL && Vk.UnmapMemory != NULL)
+				{
+					Vk.UnmapMemory(Device, UploadMemory);
+				}
+				UploadPtr = NULL;
+				if (UploadBuffer != VK_NULL_HANDLE && Vk.DestroyBuffer != NULL)
+				{
+					Vk.DestroyBuffer(Device, UploadBuffer, NULL);
+				}
+				UploadBuffer = VK_NULL_HANDLE;
+				if (UploadMemory != VK_NULL_HANDLE && Vk.FreeMemory != NULL)
+				{
+					Vk.FreeMemory(Device, UploadMemory, NULL);
+				}
+				UploadMemory = VK_NULL_HANDLE;
+				UploadSize = 0;
+				for (unsigned int i = 0; i < SwapchainViewCount; ++i)
+				{
+					if (SwapchainImageViews[i] != VK_NULL_HANDLE && Vk.DestroyImageView != NULL)
+					{
+						Vk.DestroyImageView(Device, SwapchainImageViews[i], NULL);
+					}
+					SwapchainImageViews[i] = VK_NULL_HANDLE;
+				}
+				SwapchainViewCount = 0;
+				if (Swapchain != VK_NULL_HANDLE && Vk.DestroySwapchainKHR != NULL)
+				{
+					Vk.DestroySwapchainKHR(Device, Swapchain, NULL);
+				}
+				Swapchain = VK_NULL_HANDLE;
+				Vk.DestroyDevice(Device, NULL);
+			}
+			Device = NULL;
+			GraphicsQueue = NULL;
+			SwapchainImageCount = 0;
+			for (unsigned int i = 0; i < MaxSwapchainImages; ++i)
+			{
+				SwapchainImages[i] = VK_NULL_HANDLE;
+			}
+			SwapchainFormat = VK_FORMAT_UNDEFINED;
+			SwapchainColorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
+			SwapchainExtent.width = 0;
+			SwapchainExtent.height = 0;
+
+			if (Instance != NULL && Vk.DestroyInstance != NULL)
+			{
+				if (Surface != VK_NULL_HANDLE && Vk.DestroySurfaceKHR != NULL)
+				{
+					Vk.DestroySurfaceKHR(Instance, Surface, NULL);
+				}
+				Surface = VK_NULL_HANDLE;
+				Vk.DestroyInstance(Instance, NULL);
+			}
+			Instance = NULL;
+			PhysicalDevice = NULL;
+			GraphicsQueueFamily = ~0u;
+			DeviceCount = 0;
+			Ready = false;
+
+#ifdef _WIN32
+			if (Module != NULL)
+			{
+				FreeLibrary(Module);
+			}
+#else
+			if (Module != NULL)
+			{
+				dlclose(Module);
+			}
+#endif
+			Module = NULL;
+			memset(&Vk, 0, sizeof(Vk));
+		}
+
+		bool IsReady() const
+		{
+			return Ready;
+		}
+
+		unsigned int GetDeviceCount() const
+		{
+			return DeviceCount;
+		}
+
+		unsigned int GetGraphicsQueueFamily() const
+		{
+			return GraphicsQueueFamily;
+		}
+
+		unsigned int GetSwapchainImageCount() const
+		{
+			return SwapchainImageCount;
+		}
+
+		VkFormat GetSwapchainFormat() const
+		{
+			return SwapchainFormat;
+		}
+
+		VkExtent2D GetSwapchainExtent() const
+		{
+			return SwapchainExtent;
+		}
+
+		bool RecreateSwapchainForWindow()
+		{
+			if (Device == NULL || Swapchain == VK_NULL_HANDLE)
+			{
+				return false;
+			}
+
+			Ready = false;
+			Vk.DeviceWaitIdle(Device);
+
+			if (UploadMemory != VK_NULL_HANDLE && UploadPtr != NULL)
+			{
+				Vk.UnmapMemory(Device, UploadMemory);
+			}
+			UploadPtr = NULL;
+			if (UploadBuffer != VK_NULL_HANDLE)
+			{
+				Vk.DestroyBuffer(Device, UploadBuffer, NULL);
+			}
+			UploadBuffer = VK_NULL_HANDLE;
+			if (UploadMemory != VK_NULL_HANDLE)
+			{
+				Vk.FreeMemory(Device, UploadMemory, NULL);
+			}
+			UploadMemory = VK_NULL_HANDLE;
+			UploadSize = 0;
+
+			for (unsigned int i = 0; i < SwapchainViewCount; ++i)
+			{
+				if (SwapchainImageViews[i] != VK_NULL_HANDLE)
+				{
+					Vk.DestroyImageView(Device, SwapchainImageViews[i], NULL);
+				}
+				SwapchainImageViews[i] = VK_NULL_HANDLE;
+			}
+			SwapchainViewCount = 0;
+			Vk.DestroySwapchainKHR(Device, Swapchain, NULL);
+			Swapchain = VK_NULL_HANDLE;
+			SwapchainImageCount = 0;
+			for (unsigned int i = 0; i < MaxSwapchainImages; ++i)
+			{
+				SwapchainImages[i] = VK_NULL_HANDLE;
+			}
+
+			if (!CreateSwapchain() || !CreateImageViews())
+			{
+				return false;
+			}
+			Ready = true;
+			return true;
+		}
+
+		bool PresentPalettedFrame(const BYTE *pixels, int pitch, int width, int height, const PalEntry *palette)
+		{
+			if (!Ready || pixels == NULL || palette == NULL || width <= 0 || height <= 0)
+			{
+				return false;
+			}
+
+			const int presentWidth = (int)SwapchainExtent.width;
+			const int presentHeight = (int)SwapchainExtent.height;
+			if (presentWidth <= 0 || presentHeight <= 0)
+			{
+				return false;
+			}
+			if (!EnsureUploadBuffer(presentWidth, presentHeight))
+			{
+				return false;
+			}
+
+			BYTE *dst = reinterpret_cast<BYTE *>(UploadPtr);
+			for (int y = 0; y < presentHeight; ++y)
+			{
+				const BYTE *src = pixels + ((y * height) / presentHeight) * pitch;
+				for (int x = 0; x < presentWidth; ++x)
+				{
+					PalEntry color = palette[src[(x * width) / presentWidth]];
+					dst[0] = color.b;
+					dst[1] = color.g;
+					dst[2] = color.r;
+					dst[3] = 255;
+					dst += 4;
+				}
+			}
+
+			VkResult result = Vk.WaitForFences(Device, 1, &RenderFence, VK_TRUE, ~(uint64_t)0);
+			if (result != VK_SUCCESS)
+			{
+				Printf(TEXTCOLOR_RED "Vulkan: vkWaitForFences failed (%d).\n", (int)result);
+				return false;
+			}
+			Vk.ResetFences(Device, 1, &RenderFence);
+			Vk.ResetCommandBuffer(CommandBuffer, 0);
+
+			unsigned int imageIndex = 0;
+			result = Vk.AcquireNextImageKHR(Device, Swapchain, ~(uint64_t)0, ImageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex);
+			if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR)
+			{
+				return false;
+			}
+			if (imageIndex >= SwapchainImageCount)
+			{
+				return false;
+			}
+			if (!RecordUploadCommands(imageIndex, presentWidth, presentHeight))
+			{
+				return false;
+			}
+
+			VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+			VkSubmitInfo submitInfo;
+			memset(&submitInfo, 0, sizeof(submitInfo));
+			submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+			submitInfo.waitSemaphoreCount = 1;
+			submitInfo.pWaitSemaphores = &ImageAvailableSemaphore;
+			submitInfo.pWaitDstStageMask = &waitStage;
+			submitInfo.commandBufferCount = 1;
+			submitInfo.pCommandBuffers = &CommandBuffer;
+			submitInfo.signalSemaphoreCount = 1;
+			submitInfo.pSignalSemaphores = &RenderFinishedSemaphore;
+
+			result = Vk.QueueSubmit(GraphicsQueue, 1, &submitInfo, RenderFence);
+			if (result != VK_SUCCESS)
+			{
+				Printf(TEXTCOLOR_RED "Vulkan: vkQueueSubmit failed (%d).\n", (int)result);
+				return false;
+			}
+
+			VkPresentInfoKHR presentInfo;
+			memset(&presentInfo, 0, sizeof(presentInfo));
+			presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+			presentInfo.waitSemaphoreCount = 1;
+			presentInfo.pWaitSemaphores = &RenderFinishedSemaphore;
+			presentInfo.swapchainCount = 1;
+			presentInfo.pSwapchains = &Swapchain;
+			presentInfo.pImageIndices = &imageIndex;
+
+			result = Vk.QueuePresentKHR(GraphicsQueue, &presentInfo);
+			return result == VK_SUCCESS || result == VK_SUBOPTIMAL_KHR;
+		}
+
+	private:
+		enum
+		{
+			MaxSwapchainImages = 16
+		};
+
+		bool LoadLoader()
+		{
+#ifdef _WIN32
+			Module = LoadLibraryA("vulkan-1.dll");
+#else
+			Module = dlopen("libvulkan.so.1", RTLD_NOW | RTLD_LOCAL);
+			if (Module == NULL)
+			{
+				Module = dlopen("libvulkan.so", RTLD_NOW | RTLD_LOCAL);
+			}
+#endif
+			if (Module == NULL)
+			{
+				Printf(TEXTCOLOR_RED "Vulkan: loader library not found.\n");
+				return false;
+			}
+			return true;
+		}
+
+		PFN_vkVoidFunction GetLoaderProc(const char *name)
+		{
+#ifdef _WIN32
+			return reinterpret_cast<PFN_vkVoidFunction>(GetProcAddress(Module, name));
+#else
+			return reinterpret_cast<PFN_vkVoidFunction>(dlsym(Module, name));
+#endif
+		}
+
+		bool LoadGlobalFunctions()
+		{
+			Vk.GetInstanceProcAddr = reinterpret_cast<PFN_vkGetInstanceProcAddr>(GetLoaderProc("vkGetInstanceProcAddr"));
+			if (Vk.GetInstanceProcAddr == NULL)
+			{
+				Printf(TEXTCOLOR_RED "Vulkan: vkGetInstanceProcAddr is unavailable.\n");
+				return false;
+			}
+			Vk.CreateInstance = reinterpret_cast<PFN_vkCreateInstance>(Vk.GetInstanceProcAddr(NULL, "vkCreateInstance"));
+			if (Vk.CreateInstance == NULL)
+			{
+				Printf(TEXTCOLOR_RED "Vulkan: vkCreateInstance is unavailable.\n");
+				return false;
+			}
+			return true;
+		}
+
+		bool LoadInstanceFunctions()
+		{
+			Vk.DestroyInstance = reinterpret_cast<PFN_vkDestroyInstance>(Vk.GetInstanceProcAddr(Instance, "vkDestroyInstance"));
+			Vk.EnumeratePhysicalDevices = reinterpret_cast<PFN_vkEnumeratePhysicalDevices>(Vk.GetInstanceProcAddr(Instance, "vkEnumeratePhysicalDevices"));
+			Vk.GetPhysicalDeviceQueueFamilyProperties = reinterpret_cast<PFN_vkGetPhysicalDeviceQueueFamilyProperties>(Vk.GetInstanceProcAddr(Instance, "vkGetPhysicalDeviceQueueFamilyProperties"));
+			Vk.GetPhysicalDeviceMemoryProperties = reinterpret_cast<PFN_vkGetPhysicalDeviceMemoryProperties>(Vk.GetInstanceProcAddr(Instance, "vkGetPhysicalDeviceMemoryProperties"));
+			Vk.CreateDevice = reinterpret_cast<PFN_vkCreateDevice>(Vk.GetInstanceProcAddr(Instance, "vkCreateDevice"));
+			Vk.GetDeviceProcAddr = reinterpret_cast<PFN_vkGetDeviceProcAddr>(Vk.GetInstanceProcAddr(Instance, "vkGetDeviceProcAddr"));
+			Vk.DestroySurfaceKHR = reinterpret_cast<PFN_vkDestroySurfaceKHR>(Vk.GetInstanceProcAddr(Instance, "vkDestroySurfaceKHR"));
+			Vk.GetPhysicalDeviceSurfaceSupportKHR = reinterpret_cast<PFN_vkGetPhysicalDeviceSurfaceSupportKHR>(Vk.GetInstanceProcAddr(Instance, "vkGetPhysicalDeviceSurfaceSupportKHR"));
+			Vk.GetPhysicalDeviceSurfaceCapabilitiesKHR = reinterpret_cast<PFN_vkGetPhysicalDeviceSurfaceCapabilitiesKHR>(Vk.GetInstanceProcAddr(Instance, "vkGetPhysicalDeviceSurfaceCapabilitiesKHR"));
+			Vk.GetPhysicalDeviceSurfaceFormatsKHR = reinterpret_cast<PFN_vkGetPhysicalDeviceSurfaceFormatsKHR>(Vk.GetInstanceProcAddr(Instance, "vkGetPhysicalDeviceSurfaceFormatsKHR"));
+			Vk.GetPhysicalDeviceSurfacePresentModesKHR = reinterpret_cast<PFN_vkGetPhysicalDeviceSurfacePresentModesKHR>(Vk.GetInstanceProcAddr(Instance, "vkGetPhysicalDeviceSurfacePresentModesKHR"));
+#ifdef _WIN32
+			Vk.CreateWin32SurfaceKHR = reinterpret_cast<PFN_vkCreateWin32SurfaceKHR>(Vk.GetInstanceProcAddr(Instance, "vkCreateWin32SurfaceKHR"));
+#endif
+			return Vk.DestroyInstance != NULL &&
+				Vk.EnumeratePhysicalDevices != NULL &&
+				Vk.GetPhysicalDeviceQueueFamilyProperties != NULL &&
+				Vk.GetPhysicalDeviceMemoryProperties != NULL &&
+				Vk.CreateDevice != NULL &&
+				Vk.GetDeviceProcAddr != NULL &&
+				Vk.DestroySurfaceKHR != NULL &&
+				Vk.GetPhysicalDeviceSurfaceSupportKHR != NULL &&
+				Vk.GetPhysicalDeviceSurfaceCapabilitiesKHR != NULL &&
+				Vk.GetPhysicalDeviceSurfaceFormatsKHR != NULL &&
+				Vk.GetPhysicalDeviceSurfacePresentModesKHR != NULL
+#ifdef _WIN32
+				&& Vk.CreateWin32SurfaceKHR != NULL
+#endif
+				;
+		}
+
+		bool LoadDeviceFunctions()
+		{
+			Vk.DestroyDevice = reinterpret_cast<PFN_vkDestroyDevice>(Vk.GetDeviceProcAddr(Device, "vkDestroyDevice"));
+			Vk.DeviceWaitIdle = reinterpret_cast<PFN_vkDeviceWaitIdle>(Vk.GetDeviceProcAddr(Device, "vkDeviceWaitIdle"));
+			Vk.GetDeviceQueue = reinterpret_cast<PFN_vkGetDeviceQueue>(Vk.GetDeviceProcAddr(Device, "vkGetDeviceQueue"));
+			Vk.CreateSwapchainKHR = reinterpret_cast<PFN_vkCreateSwapchainKHR>(Vk.GetDeviceProcAddr(Device, "vkCreateSwapchainKHR"));
+			Vk.DestroySwapchainKHR = reinterpret_cast<PFN_vkDestroySwapchainKHR>(Vk.GetDeviceProcAddr(Device, "vkDestroySwapchainKHR"));
+			Vk.GetSwapchainImagesKHR = reinterpret_cast<PFN_vkGetSwapchainImagesKHR>(Vk.GetDeviceProcAddr(Device, "vkGetSwapchainImagesKHR"));
+			Vk.CreateImageView = reinterpret_cast<PFN_vkCreateImageView>(Vk.GetDeviceProcAddr(Device, "vkCreateImageView"));
+			Vk.DestroyImageView = reinterpret_cast<PFN_vkDestroyImageView>(Vk.GetDeviceProcAddr(Device, "vkDestroyImageView"));
+			Vk.CreateCommandPool = reinterpret_cast<PFN_vkCreateCommandPool>(Vk.GetDeviceProcAddr(Device, "vkCreateCommandPool"));
+			Vk.DestroyCommandPool = reinterpret_cast<PFN_vkDestroyCommandPool>(Vk.GetDeviceProcAddr(Device, "vkDestroyCommandPool"));
+			Vk.AllocateCommandBuffers = reinterpret_cast<PFN_vkAllocateCommandBuffers>(Vk.GetDeviceProcAddr(Device, "vkAllocateCommandBuffers"));
+			Vk.BeginCommandBuffer = reinterpret_cast<PFN_vkBeginCommandBuffer>(Vk.GetDeviceProcAddr(Device, "vkBeginCommandBuffer"));
+			Vk.EndCommandBuffer = reinterpret_cast<PFN_vkEndCommandBuffer>(Vk.GetDeviceProcAddr(Device, "vkEndCommandBuffer"));
+			Vk.CmdPipelineBarrier = reinterpret_cast<PFN_vkCmdPipelineBarrier>(Vk.GetDeviceProcAddr(Device, "vkCmdPipelineBarrier"));
+			Vk.CmdClearColorImage = reinterpret_cast<PFN_vkCmdClearColorImage>(Vk.GetDeviceProcAddr(Device, "vkCmdClearColorImage"));
+			Vk.CreateSemaphore = reinterpret_cast<PFN_vkCreateSemaphore>(Vk.GetDeviceProcAddr(Device, "vkCreateSemaphore"));
+			Vk.DestroySemaphore = reinterpret_cast<PFN_vkDestroySemaphore>(Vk.GetDeviceProcAddr(Device, "vkDestroySemaphore"));
+			Vk.CreateFence = reinterpret_cast<PFN_vkCreateFence>(Vk.GetDeviceProcAddr(Device, "vkCreateFence"));
+			Vk.DestroyFence = reinterpret_cast<PFN_vkDestroyFence>(Vk.GetDeviceProcAddr(Device, "vkDestroyFence"));
+			Vk.WaitForFences = reinterpret_cast<PFN_vkWaitForFences>(Vk.GetDeviceProcAddr(Device, "vkWaitForFences"));
+			Vk.ResetFences = reinterpret_cast<PFN_vkResetFences>(Vk.GetDeviceProcAddr(Device, "vkResetFences"));
+			Vk.ResetCommandBuffer = reinterpret_cast<PFN_vkResetCommandBuffer>(Vk.GetDeviceProcAddr(Device, "vkResetCommandBuffer"));
+			Vk.QueueSubmit = reinterpret_cast<PFN_vkQueueSubmit>(Vk.GetDeviceProcAddr(Device, "vkQueueSubmit"));
+			Vk.QueuePresentKHR = reinterpret_cast<PFN_vkQueuePresentKHR>(Vk.GetDeviceProcAddr(Device, "vkQueuePresentKHR"));
+			Vk.AcquireNextImageKHR = reinterpret_cast<PFN_vkAcquireNextImageKHR>(Vk.GetDeviceProcAddr(Device, "vkAcquireNextImageKHR"));
+			Vk.CreateBuffer = reinterpret_cast<PFN_vkCreateBuffer>(Vk.GetDeviceProcAddr(Device, "vkCreateBuffer"));
+			Vk.DestroyBuffer = reinterpret_cast<PFN_vkDestroyBuffer>(Vk.GetDeviceProcAddr(Device, "vkDestroyBuffer"));
+			Vk.GetBufferMemoryRequirements = reinterpret_cast<PFN_vkGetBufferMemoryRequirements>(Vk.GetDeviceProcAddr(Device, "vkGetBufferMemoryRequirements"));
+			Vk.AllocateMemory = reinterpret_cast<PFN_vkAllocateMemory>(Vk.GetDeviceProcAddr(Device, "vkAllocateMemory"));
+			Vk.FreeMemory = reinterpret_cast<PFN_vkFreeMemory>(Vk.GetDeviceProcAddr(Device, "vkFreeMemory"));
+			Vk.BindBufferMemory = reinterpret_cast<PFN_vkBindBufferMemory>(Vk.GetDeviceProcAddr(Device, "vkBindBufferMemory"));
+			Vk.MapMemory = reinterpret_cast<PFN_vkMapMemory>(Vk.GetDeviceProcAddr(Device, "vkMapMemory"));
+			Vk.UnmapMemory = reinterpret_cast<PFN_vkUnmapMemory>(Vk.GetDeviceProcAddr(Device, "vkUnmapMemory"));
+			Vk.CmdCopyBufferToImage = reinterpret_cast<PFN_vkCmdCopyBufferToImage>(Vk.GetDeviceProcAddr(Device, "vkCmdCopyBufferToImage"));
+			return Vk.DestroyDevice != NULL &&
+				Vk.DeviceWaitIdle != NULL &&
+				Vk.GetDeviceQueue != NULL &&
+				Vk.CreateSwapchainKHR != NULL &&
+				Vk.DestroySwapchainKHR != NULL &&
+				Vk.GetSwapchainImagesKHR != NULL &&
+				Vk.CreateImageView != NULL &&
+				Vk.DestroyImageView != NULL &&
+				Vk.CreateCommandPool != NULL &&
+				Vk.DestroyCommandPool != NULL &&
+				Vk.AllocateCommandBuffers != NULL &&
+				Vk.BeginCommandBuffer != NULL &&
+				Vk.EndCommandBuffer != NULL &&
+				Vk.CmdPipelineBarrier != NULL &&
+				Vk.CmdClearColorImage != NULL &&
+				Vk.CreateSemaphore != NULL &&
+				Vk.DestroySemaphore != NULL &&
+				Vk.CreateFence != NULL &&
+				Vk.DestroyFence != NULL &&
+				Vk.WaitForFences != NULL &&
+				Vk.ResetFences != NULL &&
+				Vk.ResetCommandBuffer != NULL &&
+				Vk.QueueSubmit != NULL &&
+				Vk.QueuePresentKHR != NULL &&
+				Vk.AcquireNextImageKHR != NULL &&
+				Vk.CreateBuffer != NULL &&
+				Vk.DestroyBuffer != NULL &&
+				Vk.GetBufferMemoryRequirements != NULL &&
+				Vk.AllocateMemory != NULL &&
+				Vk.FreeMemory != NULL &&
+				Vk.BindBufferMemory != NULL &&
+				Vk.MapMemory != NULL &&
+				Vk.UnmapMemory != NULL &&
+				Vk.CmdCopyBufferToImage != NULL;
+		}
+
+		bool CreateInstance()
+		{
+			VkApplicationInfo appInfo;
+			memset(&appInfo, 0, sizeof(appInfo));
+			appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
+			appInfo.pApplicationName = GAMENAME;
+			appInfo.applicationVersion = 1;
+			appInfo.pEngineName = "InfiniDoom";
+			appInfo.engineVersion = 1;
+			appInfo.apiVersion = VK_API_VERSION_1_0;
+
+			const char *extensions[] =
+			{
+				VK_KHR_SURFACE_EXTENSION_NAME,
+#ifdef _WIN32
+				VK_KHR_WIN32_SURFACE_EXTENSION_NAME,
+#endif
+			};
+
+			VkInstanceCreateInfo createInfo;
+			memset(&createInfo, 0, sizeof(createInfo));
+			createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
+			createInfo.pApplicationInfo = &appInfo;
+			createInfo.enabledExtensionCount = sizeof(extensions) / sizeof(extensions[0]);
+			createInfo.ppEnabledExtensionNames = extensions;
+
+			VkResult result = Vk.CreateInstance(&createInfo, NULL, &Instance);
+			if (result != VK_SUCCESS)
+			{
+				Printf(TEXTCOLOR_RED "Vulkan: vkCreateInstance failed (%d).\n", (int)result);
+				return false;
+			}
+			if (!LoadInstanceFunctions())
+			{
+				Printf(TEXTCOLOR_RED "Vulkan: required instance functions are unavailable.\n");
+				return false;
+			}
+			return true;
+		}
+
+		bool CreateSurface()
+		{
+#ifdef _WIN32
+			if (Window == NULL || g_hInst == NULL)
+			{
+				Printf(TEXTCOLOR_RED "Vulkan: Win32 window is unavailable for surface creation.\n");
+				return false;
+			}
+
+			VkWin32SurfaceCreateInfoKHR createInfo;
+			memset(&createInfo, 0, sizeof(createInfo));
+			createInfo.sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR;
+			createInfo.hinstance = g_hInst;
+			createInfo.hwnd = Window;
+
+			VkResult result = Vk.CreateWin32SurfaceKHR(Instance, &createInfo, NULL, &Surface);
+			if (result != VK_SUCCESS)
+			{
+				Printf(TEXTCOLOR_RED "Vulkan: vkCreateWin32SurfaceKHR failed (%d).\n", (int)result);
+				return false;
+			}
+			return true;
+#else
+			Printf(TEXTCOLOR_ORANGE "Vulkan: platform surface creation is not implemented for this target yet.\n");
+			return false;
+#endif
+		}
+
+		bool ChoosePhysicalDevice()
+		{
+			unsigned int count = 0;
+			VkResult result = Vk.EnumeratePhysicalDevices(Instance, &count, NULL);
+			if (result != VK_SUCCESS || count == 0)
+			{
+				Printf(TEXTCOLOR_RED "Vulkan: no physical devices found (%d).\n", (int)result);
+				return false;
+			}
+
+			VkPhysicalDevice devices[16];
+			unsigned int queryCount = count;
+			if (queryCount > 16)
+			{
+				queryCount = 16;
+			}
+			result = Vk.EnumeratePhysicalDevices(Instance, &queryCount, devices);
+			if (result != VK_SUCCESS || queryCount == 0)
+			{
+				Printf(TEXTCOLOR_RED "Vulkan: failed to enumerate physical devices (%d).\n", (int)result);
+				return false;
+			}
+			DeviceCount = count;
+
+			for (unsigned int i = 0; i < queryCount; ++i)
+			{
+				unsigned int queueCount = 0;
+				Vk.GetPhysicalDeviceQueueFamilyProperties(devices[i], &queueCount, NULL);
+				if (queueCount == 0)
+				{
+					continue;
+				}
+
+				VkQueueFamilyProperties queues[32];
+				unsigned int queueQueryCount = queueCount;
+				if (queueQueryCount > 32)
+				{
+					queueQueryCount = 32;
+				}
+				Vk.GetPhysicalDeviceQueueFamilyProperties(devices[i], &queueQueryCount, queues);
+				for (unsigned int q = 0; q < queueQueryCount; ++q)
+				{
+					VkBool32 presentSupported = VK_FALSE;
+					VkResult presentResult = Vk.GetPhysicalDeviceSurfaceSupportKHR(devices[i], q, Surface, &presentSupported);
+					if ((queues[q].queueFlags & VK_QUEUE_GRAPHICS_BIT) &&
+						queues[q].queueCount > 0 &&
+						presentResult == VK_SUCCESS &&
+						presentSupported)
+					{
+						PhysicalDevice = devices[i];
+						GraphicsQueueFamily = q;
+						return true;
+					}
+				}
+			}
+
+			Printf(TEXTCOLOR_RED "Vulkan: no graphics-capable queue family found.\n");
+			return false;
+		}
+
+		bool CreateDevice()
+		{
+			const float queuePriority = 1.f;
+			const char *deviceExtensions[] =
+			{
+				VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+			};
+
+			VkDeviceQueueCreateInfo queueInfo;
+			memset(&queueInfo, 0, sizeof(queueInfo));
+			queueInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+			queueInfo.queueFamilyIndex = GraphicsQueueFamily;
+			queueInfo.queueCount = 1;
+			queueInfo.pQueuePriorities = &queuePriority;
+
+			VkDeviceCreateInfo createInfo;
+			memset(&createInfo, 0, sizeof(createInfo));
+			createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+			createInfo.queueCreateInfoCount = 1;
+			createInfo.pQueueCreateInfos = &queueInfo;
+			createInfo.enabledExtensionCount = sizeof(deviceExtensions) / sizeof(deviceExtensions[0]);
+			createInfo.ppEnabledExtensionNames = deviceExtensions;
+
+			VkResult result = Vk.CreateDevice(PhysicalDevice, &createInfo, NULL, &Device);
+			if (result != VK_SUCCESS)
+			{
+				Printf(TEXTCOLOR_RED "Vulkan: vkCreateDevice failed (%d).\n", (int)result);
+				return false;
+			}
+			if (!LoadDeviceFunctions())
+			{
+				Printf(TEXTCOLOR_RED "Vulkan: required device functions are unavailable.\n");
+				return false;
+			}
+			Vk.GetDeviceQueue(Device, GraphicsQueueFamily, 0, &GraphicsQueue);
+			return GraphicsQueue != NULL;
+		}
+
+		VkSurfaceFormatKHR ChooseSurfaceFormat(const VkSurfaceFormatKHR *formats, unsigned int count)
+		{
+			if (count == 1 && formats[0].format == VK_FORMAT_UNDEFINED)
+			{
+				VkSurfaceFormatKHR format;
+				format.format = VK_FORMAT_B8G8R8A8_UNORM;
+				format.colorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
+				return format;
+			}
+
+			for (unsigned int i = 0; i < count; ++i)
+			{
+				if (formats[i].format == VK_FORMAT_B8G8R8A8_UNORM &&
+					formats[i].colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR)
+				{
+					return formats[i];
+				}
+			}
+			return formats[0];
+		}
+
+		VkExtent2D ChooseSwapchainExtent(const VkSurfaceCapabilitiesKHR &capabilities)
+		{
+			if (capabilities.currentExtent.width != 0xffffffffu)
+			{
+				return capabilities.currentExtent;
+			}
+
+			VkExtent2D extent;
+#ifdef _WIN32
+			RECT rect;
+			if (GetClientRect(Window, &rect))
+			{
+				extent.width = (unsigned int)(rect.right - rect.left);
+				extent.height = (unsigned int)(rect.bottom - rect.top);
+			}
+			else
+#endif
+			{
+				extent.width = 640;
+				extent.height = 480;
+			}
+
+			if (extent.width < capabilities.minImageExtent.width)
+			{
+				extent.width = capabilities.minImageExtent.width;
+			}
+			if (extent.height < capabilities.minImageExtent.height)
+			{
+				extent.height = capabilities.minImageExtent.height;
+			}
+			if (extent.width > capabilities.maxImageExtent.width)
+			{
+				extent.width = capabilities.maxImageExtent.width;
+			}
+			if (extent.height > capabilities.maxImageExtent.height)
+			{
+				extent.height = capabilities.maxImageExtent.height;
+			}
+			return extent;
+		}
+
+		VkCompositeAlphaFlagBitsKHR ChooseCompositeAlpha(VkCompositeAlphaFlagsKHR supported)
+		{
+			const VkCompositeAlphaFlagBitsKHR choices[] =
+			{
+				VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
+				VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR,
+				VK_COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR,
+				VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR,
+			};
+			for (unsigned int i = 0; i < sizeof(choices) / sizeof(choices[0]); ++i)
+			{
+				if (supported & choices[i])
+				{
+					return choices[i];
+				}
+			}
+			return VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+		}
+
+		bool CreateSwapchain()
+		{
+			VkSurfaceCapabilitiesKHR capabilities;
+			VkResult result = Vk.GetPhysicalDeviceSurfaceCapabilitiesKHR(PhysicalDevice, Surface, &capabilities);
+			if (result != VK_SUCCESS)
+			{
+				Printf(TEXTCOLOR_RED "Vulkan: vkGetPhysicalDeviceSurfaceCapabilitiesKHR failed (%d).\n", (int)result);
+				return false;
+			}
+
+			unsigned int formatCount = 0;
+			result = Vk.GetPhysicalDeviceSurfaceFormatsKHR(PhysicalDevice, Surface, &formatCount, NULL);
+			if (result != VK_SUCCESS || formatCount == 0)
+			{
+				Printf(TEXTCOLOR_RED "Vulkan: no surface formats found (%d).\n", (int)result);
+				return false;
+			}
+
+			VkSurfaceFormatKHR formats[64];
+			unsigned int queryFormatCount = formatCount;
+			if (queryFormatCount > 64)
+			{
+				queryFormatCount = 64;
+			}
+			result = Vk.GetPhysicalDeviceSurfaceFormatsKHR(PhysicalDevice, Surface, &queryFormatCount, formats);
+			if (result != VK_SUCCESS || queryFormatCount == 0)
+			{
+				Printf(TEXTCOLOR_RED "Vulkan: failed to enumerate surface formats (%d).\n", (int)result);
+				return false;
+			}
+
+			VkSurfaceFormatKHR surfaceFormat = ChooseSurfaceFormat(formats, queryFormatCount);
+			VkExtent2D extent = ChooseSwapchainExtent(capabilities);
+			if (extent.width == 0 || extent.height == 0)
+			{
+				Printf(TEXTCOLOR_RED "Vulkan: swapchain extent is empty.\n");
+				return false;
+			}
+
+			unsigned int imageCount = capabilities.minImageCount + 1;
+			if (capabilities.maxImageCount > 0 && imageCount > capabilities.maxImageCount)
+			{
+				imageCount = capabilities.maxImageCount;
+			}
+
+			VkSwapchainCreateInfoKHR createInfo;
+			memset(&createInfo, 0, sizeof(createInfo));
+			createInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
+			createInfo.surface = Surface;
+			createInfo.minImageCount = imageCount;
+			createInfo.imageFormat = surfaceFormat.format;
+			createInfo.imageColorSpace = surfaceFormat.colorSpace;
+			createInfo.imageExtent = extent;
+			createInfo.imageArrayLayers = 1;
+			createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+			createInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
+			createInfo.preTransform = capabilities.currentTransform;
+			createInfo.compositeAlpha = ChooseCompositeAlpha(capabilities.supportedCompositeAlpha);
+			createInfo.presentMode = VK_PRESENT_MODE_FIFO_KHR;
+			createInfo.clipped = VK_TRUE;
+			createInfo.oldSwapchain = VK_NULL_HANDLE;
+
+			result = Vk.CreateSwapchainKHR(Device, &createInfo, NULL, &Swapchain);
+			if (result != VK_SUCCESS)
+			{
+				Printf(TEXTCOLOR_RED "Vulkan: vkCreateSwapchainKHR failed (%d).\n", (int)result);
+				return false;
+			}
+
+			SwapchainImageCount = 0;
+			result = Vk.GetSwapchainImagesKHR(Device, Swapchain, &SwapchainImageCount, NULL);
+			if (result != VK_SUCCESS || SwapchainImageCount == 0)
+			{
+				Printf(TEXTCOLOR_RED "Vulkan: failed to query swapchain images (%d).\n", (int)result);
+				return false;
+			}
+			if (SwapchainImageCount > MaxSwapchainImages)
+			{
+				Printf(TEXTCOLOR_RED "Vulkan: swapchain returned too many images (%u).\n", SwapchainImageCount);
+				return false;
+			}
+			result = Vk.GetSwapchainImagesKHR(Device, Swapchain, &SwapchainImageCount, SwapchainImages);
+			if (result != VK_SUCCESS)
+			{
+				Printf(TEXTCOLOR_RED "Vulkan: failed to enumerate swapchain images (%d).\n", (int)result);
+				return false;
+			}
+
+			SwapchainFormat = surfaceFormat.format;
+			SwapchainColorSpace = surfaceFormat.colorSpace;
+			SwapchainExtent = extent;
+			return true;
+		}
+
+		bool CreateImageViews()
+		{
+			for (unsigned int i = 0; i < SwapchainImageCount; ++i)
+			{
+				VkImageViewCreateInfo createInfo;
+				memset(&createInfo, 0, sizeof(createInfo));
+				createInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+				createInfo.image = SwapchainImages[i];
+				createInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+				createInfo.format = SwapchainFormat;
+				createInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+				createInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+				createInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+				createInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+				createInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+				createInfo.subresourceRange.baseMipLevel = 0;
+				createInfo.subresourceRange.levelCount = 1;
+				createInfo.subresourceRange.baseArrayLayer = 0;
+				createInfo.subresourceRange.layerCount = 1;
+
+				VkResult result = Vk.CreateImageView(Device, &createInfo, NULL, &SwapchainImageViews[i]);
+				if (result != VK_SUCCESS)
+				{
+					Printf(TEXTCOLOR_RED "Vulkan: vkCreateImageView failed (%d).\n", (int)result);
+					return false;
+				}
+				SwapchainViewCount++;
+			}
+			return true;
+		}
+
+		bool CreateCommandResources()
+		{
+			VkCommandPoolCreateInfo poolInfo;
+			memset(&poolInfo, 0, sizeof(poolInfo));
+			poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+			poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+			poolInfo.queueFamilyIndex = GraphicsQueueFamily;
+
+			VkResult result = Vk.CreateCommandPool(Device, &poolInfo, NULL, &CommandPool);
+			if (result != VK_SUCCESS)
+			{
+				Printf(TEXTCOLOR_RED "Vulkan: vkCreateCommandPool failed (%d).\n", (int)result);
+				return false;
+			}
+
+			VkCommandBufferAllocateInfo allocInfo;
+			memset(&allocInfo, 0, sizeof(allocInfo));
+			allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+			allocInfo.commandPool = CommandPool;
+			allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+			allocInfo.commandBufferCount = 1;
+
+			result = Vk.AllocateCommandBuffers(Device, &allocInfo, &CommandBuffer);
+			if (result != VK_SUCCESS)
+			{
+				Printf(TEXTCOLOR_RED "Vulkan: vkAllocateCommandBuffers failed (%d).\n", (int)result);
+				return false;
+			}
+
+			VkSemaphoreCreateInfo semaphoreInfo;
+			memset(&semaphoreInfo, 0, sizeof(semaphoreInfo));
+			semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+
+			result = Vk.CreateSemaphore(Device, &semaphoreInfo, NULL, &ImageAvailableSemaphore);
+			if (result != VK_SUCCESS)
+			{
+				Printf(TEXTCOLOR_RED "Vulkan: vkCreateSemaphore image-available failed (%d).\n", (int)result);
+				return false;
+			}
+			result = Vk.CreateSemaphore(Device, &semaphoreInfo, NULL, &RenderFinishedSemaphore);
+			if (result != VK_SUCCESS)
+			{
+				Printf(TEXTCOLOR_RED "Vulkan: vkCreateSemaphore render-finished failed (%d).\n", (int)result);
+				return false;
+			}
+
+			VkFenceCreateInfo fenceInfo;
+			memset(&fenceInfo, 0, sizeof(fenceInfo));
+			fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+			fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+
+			result = Vk.CreateFence(Device, &fenceInfo, NULL, &RenderFence);
+			if (result != VK_SUCCESS)
+			{
+				Printf(TEXTCOLOR_RED "Vulkan: vkCreateFence failed (%d).\n", (int)result);
+				return false;
+			}
+			return true;
+		}
+
+		unsigned int FindMemoryType(unsigned int typeFilter, VkMemoryPropertyFlags properties)
+		{
+			VkPhysicalDeviceMemoryProperties memProperties;
+			Vk.GetPhysicalDeviceMemoryProperties(PhysicalDevice, &memProperties);
+			for (unsigned int i = 0; i < memProperties.memoryTypeCount; ++i)
+			{
+				if ((typeFilter & (1u << i)) &&
+					(memProperties.memoryTypes[i].propertyFlags & properties) == properties)
+				{
+					return i;
+				}
+			}
+			return ~0u;
+		}
+
+		bool EnsureUploadBuffer(int width, int height)
+		{
+			VkDeviceSize needed = (VkDeviceSize)width * (VkDeviceSize)height * 4;
+			if (UploadBuffer != VK_NULL_HANDLE && UploadSize >= needed)
+			{
+				return true;
+			}
+
+			if (UploadMemory != VK_NULL_HANDLE && UploadPtr != NULL)
+			{
+				Vk.UnmapMemory(Device, UploadMemory);
+			}
+			UploadPtr = NULL;
+			if (UploadBuffer != VK_NULL_HANDLE)
+			{
+				Vk.DestroyBuffer(Device, UploadBuffer, NULL);
+			}
+			UploadBuffer = VK_NULL_HANDLE;
+			if (UploadMemory != VK_NULL_HANDLE)
+			{
+				Vk.FreeMemory(Device, UploadMemory, NULL);
+			}
+			UploadMemory = VK_NULL_HANDLE;
+			UploadSize = 0;
+
+			VkBufferCreateInfo bufferInfo;
+			memset(&bufferInfo, 0, sizeof(bufferInfo));
+			bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+			bufferInfo.size = needed;
+			bufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+			bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+			VkResult result = Vk.CreateBuffer(Device, &bufferInfo, NULL, &UploadBuffer);
+			if (result != VK_SUCCESS)
+			{
+				Printf(TEXTCOLOR_RED "Vulkan: vkCreateBuffer failed (%d).\n", (int)result);
+				return false;
+			}
+
+			VkMemoryRequirements requirements;
+			Vk.GetBufferMemoryRequirements(Device, UploadBuffer, &requirements);
+			unsigned int memoryType = FindMemoryType(requirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+			if (memoryType == ~0u)
+			{
+				Printf(TEXTCOLOR_RED "Vulkan: no host-visible upload memory type found.\n");
+				return false;
+			}
+
+			VkMemoryAllocateInfo allocInfo;
+			memset(&allocInfo, 0, sizeof(allocInfo));
+			allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+			allocInfo.allocationSize = requirements.size;
+			allocInfo.memoryTypeIndex = memoryType;
+
+			result = Vk.AllocateMemory(Device, &allocInfo, NULL, &UploadMemory);
+			if (result != VK_SUCCESS)
+			{
+				Printf(TEXTCOLOR_RED "Vulkan: vkAllocateMemory failed (%d).\n", (int)result);
+				return false;
+			}
+			result = Vk.BindBufferMemory(Device, UploadBuffer, UploadMemory, 0);
+			if (result != VK_SUCCESS)
+			{
+				Printf(TEXTCOLOR_RED "Vulkan: vkBindBufferMemory failed (%d).\n", (int)result);
+				return false;
+			}
+			result = Vk.MapMemory(Device, UploadMemory, 0, needed, 0, &UploadPtr);
+			if (result != VK_SUCCESS)
+			{
+				Printf(TEXTCOLOR_RED "Vulkan: vkMapMemory failed (%d).\n", (int)result);
+				return false;
+			}
+			UploadSize = needed;
+			return true;
+		}
+
+		bool RecordClearCommands(unsigned int imageIndex)
+		{
+			VkCommandBufferBeginInfo beginInfo;
+			memset(&beginInfo, 0, sizeof(beginInfo));
+			beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+			beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+			VkResult result = Vk.BeginCommandBuffer(CommandBuffer, &beginInfo);
+			if (result != VK_SUCCESS)
+			{
+				Printf(TEXTCOLOR_RED "Vulkan: vkBeginCommandBuffer failed (%d).\n", (int)result);
+				return false;
+			}
+
+			VkImageSubresourceRange colorRange;
+			memset(&colorRange, 0, sizeof(colorRange));
+			colorRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+			colorRange.baseMipLevel = 0;
+			colorRange.levelCount = 1;
+			colorRange.baseArrayLayer = 0;
+			colorRange.layerCount = 1;
+
+			VkImageMemoryBarrier toClear;
+			memset(&toClear, 0, sizeof(toClear));
+			toClear.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+			toClear.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+			toClear.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+			toClear.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+			toClear.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+			toClear.image = SwapchainImages[imageIndex];
+			toClear.subresourceRange = colorRange;
+			toClear.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+
+			Vk.CmdPipelineBarrier(CommandBuffer,
+				VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+				VK_PIPELINE_STAGE_TRANSFER_BIT,
+				0,
+				0, NULL,
+				0, NULL,
+				1, &toClear);
+
+			VkClearColorValue clearColor;
+			clearColor.float32[0] = 0.02f;
+			clearColor.float32[1] = 0.02f;
+			clearColor.float32[2] = 0.05f;
+			clearColor.float32[3] = 1.f;
+			Vk.CmdClearColorImage(CommandBuffer, SwapchainImages[imageIndex], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &clearColor, 1, &colorRange);
+
+			VkImageMemoryBarrier toPresent;
+			memset(&toPresent, 0, sizeof(toPresent));
+			toPresent.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+			toPresent.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+			toPresent.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+			toPresent.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+			toPresent.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+			toPresent.image = SwapchainImages[imageIndex];
+			toPresent.subresourceRange = colorRange;
+			toPresent.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+
+			Vk.CmdPipelineBarrier(CommandBuffer,
+				VK_PIPELINE_STAGE_TRANSFER_BIT,
+				VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+				0,
+				0, NULL,
+				0, NULL,
+				1, &toPresent);
+
+			result = Vk.EndCommandBuffer(CommandBuffer);
+			if (result != VK_SUCCESS)
+			{
+				Printf(TEXTCOLOR_RED "Vulkan: vkEndCommandBuffer failed (%d).\n", (int)result);
+				return false;
+			}
+			return true;
+		}
+
+		bool RecordUploadCommands(unsigned int imageIndex, int width, int height)
+		{
+			VkCommandBufferBeginInfo beginInfo;
+			memset(&beginInfo, 0, sizeof(beginInfo));
+			beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+			beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+			VkResult result = Vk.BeginCommandBuffer(CommandBuffer, &beginInfo);
+			if (result != VK_SUCCESS)
+			{
+				return false;
+			}
+
+			VkImageSubresourceRange colorRange;
+			memset(&colorRange, 0, sizeof(colorRange));
+			colorRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+			colorRange.baseMipLevel = 0;
+			colorRange.levelCount = 1;
+			colorRange.baseArrayLayer = 0;
+			colorRange.layerCount = 1;
+
+			VkImageMemoryBarrier toTransfer;
+			memset(&toTransfer, 0, sizeof(toTransfer));
+			toTransfer.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+			toTransfer.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+			toTransfer.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+			toTransfer.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+			toTransfer.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+			toTransfer.image = SwapchainImages[imageIndex];
+			toTransfer.subresourceRange = colorRange;
+			toTransfer.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+			Vk.CmdPipelineBarrier(CommandBuffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 0, NULL, 1, &toTransfer);
+
+			VkBufferImageCopy copyRegion;
+			memset(&copyRegion, 0, sizeof(copyRegion));
+			copyRegion.bufferRowLength = (unsigned int)width;
+			copyRegion.bufferImageHeight = (unsigned int)height;
+			copyRegion.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+			copyRegion.imageSubresource.layerCount = 1;
+			copyRegion.imageExtent.width = (unsigned int)MIN<int>(width, (int)SwapchainExtent.width);
+			copyRegion.imageExtent.height = (unsigned int)MIN<int>(height, (int)SwapchainExtent.height);
+			copyRegion.imageExtent.depth = 1;
+			Vk.CmdCopyBufferToImage(CommandBuffer, UploadBuffer, SwapchainImages[imageIndex], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copyRegion);
+
+			VkImageMemoryBarrier toPresent;
+			memset(&toPresent, 0, sizeof(toPresent));
+			toPresent.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+			toPresent.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+			toPresent.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+			toPresent.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+			toPresent.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+			toPresent.image = SwapchainImages[imageIndex];
+			toPresent.subresourceRange = colorRange;
+			toPresent.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+			Vk.CmdPipelineBarrier(CommandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, NULL, 0, NULL, 1, &toPresent);
+
+			return Vk.EndCommandBuffer(CommandBuffer) == VK_SUCCESS;
+		}
+
+		bool PresentStartupFrame()
+		{
+			unsigned int imageIndex = 0;
+			VkResult result = Vk.AcquireNextImageKHR(Device, Swapchain, ~(uint64_t)0, ImageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex);
+			if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR)
+			{
+				Printf(TEXTCOLOR_RED "Vulkan: vkAcquireNextImageKHR failed (%d).\n", (int)result);
+				return false;
+			}
+			if (imageIndex >= SwapchainImageCount)
+			{
+				Printf(TEXTCOLOR_RED "Vulkan: acquired invalid swapchain image %u.\n", imageIndex);
+				return false;
+			}
+			if (!RecordClearCommands(imageIndex))
+			{
+				return false;
+			}
+
+			VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+			VkSubmitInfo submitInfo;
+			memset(&submitInfo, 0, sizeof(submitInfo));
+			submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+			submitInfo.waitSemaphoreCount = 1;
+			submitInfo.pWaitSemaphores = &ImageAvailableSemaphore;
+			submitInfo.pWaitDstStageMask = &waitStage;
+			submitInfo.commandBufferCount = 1;
+			submitInfo.pCommandBuffers = &CommandBuffer;
+			submitInfo.signalSemaphoreCount = 1;
+			submitInfo.pSignalSemaphores = &RenderFinishedSemaphore;
+
+			result = Vk.QueueSubmit(GraphicsQueue, 1, &submitInfo, RenderFence);
+			if (result != VK_SUCCESS)
+			{
+				Printf(TEXTCOLOR_RED "Vulkan: vkQueueSubmit failed (%d).\n", (int)result);
+				return false;
+			}
+
+			result = Vk.WaitForFences(Device, 1, &RenderFence, VK_TRUE, ~(uint64_t)0);
+			if (result != VK_SUCCESS)
+			{
+				Printf(TEXTCOLOR_RED "Vulkan: vkWaitForFences failed (%d).\n", (int)result);
+				return false;
+			}
+
+			VkPresentInfoKHR presentInfo;
+			memset(&presentInfo, 0, sizeof(presentInfo));
+			presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+			presentInfo.waitSemaphoreCount = 1;
+			presentInfo.pWaitSemaphores = &RenderFinishedSemaphore;
+			presentInfo.swapchainCount = 1;
+			presentInfo.pSwapchains = &Swapchain;
+			presentInfo.pImageIndices = &imageIndex;
+
+			result = Vk.QueuePresentKHR(GraphicsQueue, &presentInfo);
+			if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR)
+			{
+				Printf(TEXTCOLOR_RED "Vulkan: vkQueuePresentKHR failed (%d).\n", (int)result);
+				return false;
+			}
+			return true;
+		}
+
+		VulkanLoaderModule Module;
+		VulkanFunctions Vk;
+		VkInstance Instance;
+		VkSurfaceKHR Surface;
+		VkPhysicalDevice PhysicalDevice;
+		VkDevice Device;
+		VkQueue GraphicsQueue;
+		VkSwapchainKHR Swapchain;
+		VkImage SwapchainImages[MaxSwapchainImages];
+		VkImageView SwapchainImageViews[MaxSwapchainImages];
+		VkCommandPool CommandPool;
+		VkCommandBuffer CommandBuffer;
+		VkSemaphore ImageAvailableSemaphore;
+		VkSemaphore RenderFinishedSemaphore;
+		VkFence RenderFence;
+		VkBuffer UploadBuffer;
+		VkDeviceMemory UploadMemory;
+		void *UploadPtr;
+		VkDeviceSize UploadSize;
+		unsigned int GraphicsQueueFamily;
+		unsigned int DeviceCount;
+		unsigned int SwapchainImageCount;
+		unsigned int SwapchainViewCount;
+		VkFormat SwapchainFormat;
+		VkColorSpaceKHR SwapchainColorSpace;
+		VkExtent2D SwapchainExtent;
+		bool Ready;
+	};
+}
+
+#ifdef _WIN32
+
+static void ResizeVulkanWindow(int clientWidth, int clientHeight, bool fullscreen)
+{
+	if (Window == NULL || clientWidth <= 0 || clientHeight <= 0)
+	{
+		return;
+	}
+
+	if (fullscreen)
+	{
+		I_SaveWindowedPos();
+
+		HMONITOR monitor = MonitorFromWindow(Window, MONITOR_DEFAULTTONEAREST);
+		MONITORINFO monitorInfo;
+		memset(&monitorInfo, 0, sizeof(monitorInfo));
+		monitorInfo.cbSize = sizeof(monitorInfo);
+		if (!GetMonitorInfo(monitor, &monitorInfo))
+		{
+			return;
+		}
+
+		SetWindowLong(Window, GWL_STYLE, WS_VISIBLE | WS_POPUP);
+		SetWindowLong(Window, GWL_EXSTYLE, 0);
+		SetWindowPos(Window, HWND_TOP,
+			monitorInfo.rcMonitor.left,
+			monitorInfo.rcMonitor.top,
+			monitorInfo.rcMonitor.right - monitorInfo.rcMonitor.left,
+			monitorInfo.rcMonitor.bottom - monitorInfo.rcMonitor.top,
+			SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
+		ShowWindow(Window, SW_SHOW);
+		UpdateWindow(Window);
+		return;
+	}
+
+	SetWindowLong(Window, GWL_STYLE, WS_VISIBLE | WS_OVERLAPPEDWINDOW);
+	SetWindowLong(Window, GWL_EXSTYLE, WS_EX_WINDOWEDGE);
+
+	RECT windowRect;
+	GetWindowRect(Window, &windowRect);
+
+	RECT clientRect;
+	clientRect.left = 0;
+	clientRect.top = 0;
+	clientRect.right = clientWidth;
+	clientRect.bottom = clientHeight;
+	AdjustWindowRectEx(&clientRect, WS_OVERLAPPEDWINDOW, FALSE, WS_EX_WINDOWEDGE);
+
+	int windowWidth = clientRect.right - clientRect.left;
+	int windowHeight = clientRect.bottom - clientRect.top;
+	SetWindowPos(Window, NULL, windowRect.left, windowRect.top, windowWidth, windowHeight,
+		SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
+	I_RestoreWindowedPos();
+	ShowWindow(Window, SW_SHOW);
+	UpdateWindow(Window);
+}
+
+class VulkanFrameBuffer : public DFrameBuffer
+{
+	DECLARE_CLASS(VulkanFrameBuffer, DFrameBuffer)
+public:
+	VulkanFrameBuffer()
+		: Runtime(NULL), Fullscreen(false), GammaValue(1.f), FlashColor(0), FlashAmount(0)
+	{
+	}
+
+	VulkanFrameBuffer(int width, int height, bool fullscreen)
+		: DFrameBuffer(width, height), Runtime(NULL), Fullscreen(fullscreen),
+		  GammaValue(1.f), FlashColor(0), FlashAmount(0)
+	{
+		memcpy(SourcePalette, GPalette.BaseColors, sizeof(SourcePalette));
+		ResizeVulkanWindow(width, height, fullscreen);
+		Runtime = new VulkanRuntime;
+		if (!Runtime->Init())
+		{
+			delete Runtime;
+			Runtime = NULL;
+		}
+		else
+		{
+			VkExtent2D extent = Runtime->GetSwapchainExtent();
+			Printf("%s Vulkan framebuffer active: %u swapchain images, format %d, %ux%u.\n",
+				GAMENAME,
+				Runtime->GetSwapchainImageCount(),
+				(int)Runtime->GetSwapchainFormat(),
+				extent.width,
+				extent.height);
+		}
+	}
+
+	~VulkanFrameBuffer()
+	{
+		delete Runtime;
+		Runtime = NULL;
+	}
+
+	bool IsValid()
+	{
+		return MemBuffer != NULL && Runtime != NULL && Runtime->IsReady();
+	}
+
+	bool Lock(bool buffered)
+	{
+		return DSimpleCanvas::Lock(buffered);
+	}
+
+	void Unlock()
+	{
+		DSimpleCanvas::Unlock();
+	}
+
+	void Update()
+	{
+		if (LockCount != 1)
+		{
+			if (LockCount > 0)
+			{
+				--LockCount;
+			}
+			return;
+		}
+
+		DrawRateStuff();
+
+		PalEntry palette[256];
+		GetFlashedPalette(palette);
+		Runtime->PresentPalettedFrame(MemBuffer, Pitch, Width, Height, palette);
+
+		LockCount = 0;
+		Buffer = NULL;
+	}
+
+	PalEntry *GetPalette()
+	{
+		return SourcePalette;
+	}
+
+	void GetFlashedPalette(PalEntry palette[256])
+	{
+		memcpy(palette, SourcePalette, sizeof(SourcePalette));
+		if (FlashAmount != 0)
+		{
+			DoBlending(palette, palette, 256, FlashColor.r, FlashColor.g, FlashColor.b, FlashAmount);
+		}
+	}
+
+	void UpdatePalette()
+	{
+	}
+
+	bool SetGamma(float gamma)
+	{
+		GammaValue = gamma;
+		return true;
+	}
+
+	bool SetFlash(PalEntry rgb, int amount)
+	{
+		FlashColor = rgb;
+		FlashAmount = amount;
+		return true;
+	}
+
+	void GetFlash(PalEntry &rgb, int &amount)
+	{
+		rgb = FlashColor;
+		amount = FlashAmount;
+	}
+
+	int GetPageCount()
+	{
+		return 1;
+	}
+
+	bool IsFullscreen()
+	{
+		return Fullscreen;
+	}
+
+	bool SetFullscreenMode(bool fullscreen)
+	{
+		if (Fullscreen == fullscreen)
+		{
+			return true;
+		}
+		ResizeVulkanWindow(Width, Height, fullscreen);
+		Fullscreen = fullscreen;
+		return Runtime != NULL && Runtime->RecreateSwapchainForWindow();
+	}
+
+	void PaletteChanged()
+	{
+	}
+
+	int QueryNewPalette()
+	{
+		return 0;
+	}
+
+	bool Is8BitMode()
+	{
+		return false;
+	}
+
+private:
+	VulkanRuntime *Runtime;
+	bool Fullscreen;
+	float GammaValue;
+	PalEntry SourcePalette[256];
+	PalEntry FlashColor;
+	int FlashAmount;
+};
+
+IMPLEMENT_CLASS(VulkanFrameBuffer)
+
+class Win32VulkanVideo : public IVideo
+{
+public:
+	Win32VulkanVideo()
+		: Modes(NULL), Iterator(NULL)
+	{
+		I_SetWndProc();
+		MakeModesList();
+	}
+
+	~Win32VulkanVideo()
+	{
+		FreeModes();
+	}
+
+	EDisplayType GetDisplayType()
+	{
+		return DISPLAY_Both;
+	}
+
+	void SetWindowedScale(float scale)
+	{
+	}
+
+	DFrameBuffer *CreateFrameBuffer(int width, int height, bool fs, DFrameBuffer *old)
+	{
+		if (old != NULL)
+		{
+			if (old->GetWidth() == width && old->GetHeight() == height)
+			{
+				VulkanFrameBuffer *fb = static_cast<VulkanFrameBuffer *>(old);
+				if (fb->SetFullscreenMode(fs))
+				{
+					return old;
+				}
+			}
+			old->ObjectFlags |= OF_YesReallyDelete;
+			if (old == screen)
+			{
+				screen = NULL;
+			}
+			delete old;
+		}
+		return new VulkanFrameBuffer(width, height, false);
+	}
+
+	void StartModeIterator(int bits, bool fs)
+	{
+		Iterator = Modes;
+	}
+
+	bool NextMode(int *width, int *height, bool *letterbox)
+	{
+		if (Iterator == NULL)
+		{
+			return false;
+		}
+		*width = Iterator->Width;
+		*height = Iterator->Height;
+		if (letterbox != NULL)
+		{
+			*letterbox = false;
+		}
+		Iterator = Iterator->Next;
+		return true;
+	}
+
+private:
+	struct ModeInfo
+	{
+		ModeInfo(int width, int height)
+			: Width(width), Height(height), Next(NULL)
+		{
+		}
+
+		int Width;
+		int Height;
+		ModeInfo *Next;
+	};
+
+	void AddMode(int width, int height)
+	{
+		for (ModeInfo *mode = Modes; mode != NULL; mode = mode->Next)
+		{
+			if (mode->Width == width && mode->Height == height)
+			{
+				return;
+			}
+		}
+		ModeInfo *mode = new ModeInfo(width, height);
+		mode->Next = Modes;
+		Modes = mode;
+	}
+
+	void MakeModesList()
+	{
+		DEVMODE dm;
+		memset(&dm, 0, sizeof(dm));
+		dm.dmSize = sizeof(dm);
+		for (int i = 0; EnumDisplaySettings(NULL, i, &dm); ++i)
+		{
+			if (dm.dmBitsPerPel >= 24)
+			{
+				AddMode((int)dm.dmPelsWidth, (int)dm.dmPelsHeight);
+			}
+		}
+		AddMode(640, 480);
+		AddMode(800, 600);
+		AddMode(1280, 720);
+		AddMode(1600, 900);
+	}
+
+	void FreeModes()
+	{
+		while (Modes != NULL)
+		{
+			ModeInfo *next = Modes->Next;
+			delete Modes;
+			Modes = next;
+		}
+		Iterator = NULL;
+	}
+
+	ModeInfo *Modes;
+	ModeInfo *Iterator;
+};
+
+#endif
+
+class FVulkanRenderer : public FSoftwareRenderer
+{
+public:
+	FVulkanRenderer()
+		: Runtime(NULL)
+	{
+	}
+
+	~FVulkanRenderer()
+	{
+		delete Runtime;
+	}
+
+	void Init()
+	{
+		Printf("%s Vulkan renderer active; software draw path will present through Vulkan when Vulkan video is active.\n", GAMENAME);
+		FSoftwareRenderer::Init();
+	}
+
+	bool IsVulkanReady() const
+	{
+		return Runtime != NULL && Runtime->IsReady();
+	}
+
+private:
+	VulkanRuntime *Runtime;
+};
+
+FRenderer *vk_CreateInterface()
+{
+	return new FVulkanRenderer;
+}
+
+IVideo *vk_CreateVideo()
+{
+#ifdef _WIN32
+	return new Win32VulkanVideo;
+#else
+	return NULL;
+#endif
+}

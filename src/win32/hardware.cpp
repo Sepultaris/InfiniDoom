@@ -48,6 +48,7 @@
 #include "m_argv.h"
 #include "version.h"
 #include "r_swrenderer.h"
+#include "vulkan/vk_renderer.h"
 
 EXTERN_CVAR (Bool, ticker)
 EXTERN_CVAR (Bool, fullscreen)
@@ -71,10 +72,11 @@ int currentrenderer = -1;
 bool changerenderer;
 
 // [ZDoomGL]
-CUSTOM_CVAR (Int, vid_renderer, 1, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINITCALL)
+CUSTOM_CVAR (Int, vid_renderer, 2, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINITCALL)
 {
 	// 0: Software renderer
 	// 1: OpenGL renderer
+	// 2: Vulkan renderer
 
 	if (self != currentrenderer)
 	{
@@ -85,6 +87,9 @@ CUSTOM_CVAR (Int, vid_renderer, 1, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINI
 			break;
 		case 1:
 			Printf("Switching to OpenGL renderer...\n");
+			break;
+		case 2:
+			Printf("Switching to Vulkan renderer...\n");
 			break;
 		default:
 			Printf("Unknown renderer (%d).  Falling back to software renderer...\n", *vid_renderer);
@@ -142,10 +147,12 @@ void I_InitGraphics ()
 
 	//currentrenderer = vid_renderer;
 #ifndef NO_GL
-	if (currentrenderer==1) Video = gl_CreateVideo();
+	if (vid_renderer == 2) Video = vk_CreateVideo();
+	else if (currentrenderer==1) Video = gl_CreateVideo();
 	else Video = new Win32Video (0);
 #else
-	Video = new Win32Video (0);
+	if (vid_renderer == 2) Video = vk_CreateVideo();
+	else Video = new Win32Video (0);
 #endif
 
 	if (Video == NULL)
@@ -166,7 +173,8 @@ void I_CreateRenderer()
 	currentrenderer = vid_renderer;
 	if (Renderer == NULL)
 	{
-		if (currentrenderer==1) Renderer = gl_CreateInterface();
+		if (currentrenderer==2) Renderer = vk_CreateInterface();
+		else if (currentrenderer==1) Renderer = gl_CreateInterface();
 		else Renderer = new FSoftwareRenderer;
 		atterm(I_DeleteRenderer);
 	}

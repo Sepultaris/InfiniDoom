@@ -61,7 +61,11 @@ extern HINSTANCE g_hInst;
 #include <math.h>
 
 #ifndef NO_SOUND
+#ifdef USE_OPENAL_SOUND
+#include "oalsound.h"
+#else
 #include "fmodsound.h"
+#endif
 #endif
 
 #include "m_swap.h"
@@ -93,6 +97,7 @@ CVAR (Bool, snd_pitched, false, CVAR_ARCHIVE)
 SoundRenderer *GSnd;
 bool nosound;
 bool nosfx;
+ReverbContainer *ForcedEnvironment;
 
 void I_CloseSound ();
 
@@ -263,7 +268,11 @@ void I_InitSound ()
 		return;
 	}
 
+#ifdef USE_OPENAL_SOUND
+	GSnd = new OpenALSoundRenderer;
+#else
 	GSnd = new FMODSoundRenderer;
+#endif
 
 	if (!GSnd->IsValid ())
 	{
@@ -295,6 +304,14 @@ void I_ShutdownSound()
 	{
 		S_StopAllChannels();
 		I_CloseSound();
+	}
+}
+
+void I_UpdateSound()
+{
+	if (GSnd != NULL && !GSnd->IsNull())
+	{
+		GSnd->UpdateSounds();
 	}
 }
 

@@ -337,6 +337,8 @@ void S_MIDIDeviceChanged();
 
 int S_GetMusic (char **name);
 
+bool S_MusicPlaying ();
+
 // Stops the music for sure.
 void S_StopMusic (bool force);
 

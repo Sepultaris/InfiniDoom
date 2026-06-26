@@ -1,0 +1,23 @@
+# vDoom Changelog
+
+## 3.3-alpha-vdoom.2 - 2026-06-26
+
+- Fixed Vulkan fullscreen state drift where the menu/config could report
+  fullscreen while the Win32 window was still running as a framed window.
+- Vulkan fullscreen currently uses borderless fullscreen and rebuilds the
+  swapchain when toggling between fullscreen and windowed mode.
+
+## 3.3-alpha-vdoom.1 - 2026-06-26
+
+- Renamed the user-facing source port identity from Zandronum to vDoom while
+  keeping the repository name as InfiniDoom.
+- Changed the built executable and base data package names to `vdoom.exe` and
+  `vdoom.pk3`.
+- Added an OpenAL sound backend with FluidSynth MIDI support for the long-term
+  native audio path.
+- Added an initial Vulkan renderer/video backend selected with `vid_renderer 2`.
+  The current Vulkan path presents the existing software framebuffer through a
+  Win32 Vulkan swapchain.
+- Made Vulkan the default renderer for new configurations and added its renderer
+  menu label.
+- Vulkan fullscreen is experimental and implemented as borderless fullscreen.

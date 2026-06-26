@@ -1,0 +1,14 @@
+UZDoom-trunk.zip
+fmod/
+fmodapi*/
+build/
+.local/
+tools/vcpkg/
+protocolspec/generator/__pycache__/
+src/gitinfo.h
+src/network/servercommands.cpp
+src/network/servercommands.h
+sqlite/sqlite-*.tar.gz
+sqlite/sqlite3.c
+sqlite/sqlite3.h
+sqlite/sqlite3ext.h

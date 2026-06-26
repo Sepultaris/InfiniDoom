@@ -59,7 +59,7 @@
 #include "team.h"
 #include "chat.h"
 
-#ifndef NO_SOUND
+#if !defined(NO_SOUND) && defined(USE_FMOD_SOUND)
 #include "fmod_errors.h"
 #endif
 
@@ -270,8 +270,8 @@ CCMD( voice_unignore_idx )
 	CHAT_ExecuteUnignoreCmd( argv, true, true );
 }
 
-// [AK] Everything past this point only compiles if compiling with sound.
-#ifndef NO_SOUND
+// [AK] Everything past this point only compiles for the FMOD-backed VoIP implementation.
+#if !defined(NO_SOUND) && defined(USE_FMOD_SOUND)
 
 static void voicechat_SetChannelVolume( FCommandLine &argv, const bool isIndexCmd )
 {

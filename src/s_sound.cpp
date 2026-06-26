@@ -2835,6 +2835,11 @@ int S_GetMusic (char **name)
 	return order;
 }
 
+bool S_MusicPlaying ()
+{
+	return mus_playing.handle != NULL && mus_playing.handle->IsPlaying();
+}
+
 //==========================================================================
 //
 // S_StopMusic

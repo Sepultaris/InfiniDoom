@@ -121,8 +121,6 @@ extern int sfx_empty;
 
 // PUBLIC DATA DEFINITIONS -------------------------------------------------
 
-ReverbContainer *ForcedEnvironment;
-
 CVAR (Int, snd_driver, 0, CVAR_ARCHIVE|CVAR_GLOBALCONFIG)
 CVAR (Int, snd_buffercount, 0, CVAR_ARCHIVE|CVAR_GLOBALCONFIG)
 CVAR (Bool, snd_hrtf, false, CVAR_ARCHIVE|CVAR_GLOBALCONFIG)

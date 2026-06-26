@@ -47,7 +47,8 @@ int GetRevisionNumber();
 #define GAME_MAJOR_VERSION 3
 #define GAME_MINOR_VERSION 3
 #define GAMEVER_STRING "3.3"
-#define DOTVERSIONSTR GAMEVER_STRING "-alpha"
+#define VDOOM_DEV_VERSION 2
+#define DOTVERSIONSTR GAMEVER_STRING "-alpha-vdoom.2"
 #define VERSIONSTR DOTVERSIONSTR
 
 // [BB] The version string that includes revision / compatibility data.
@@ -117,12 +118,12 @@ int GetRevisionNumber();
 #define DYNLIGHT
 
 // This is so that derivates can use the same savegame versions without worrying about engine compatibility
-#define GAMESIG "ZANDRONUM"
-#define BASEWAD "zandronum.pk3"
+#define GAMESIG "vDoom"
+#define BASEWAD "vdoom.pk3"
 
 // More stuff that needs to be different for derivatives.
-#define GAMENAME "Zandronum"
-#define GAMENAMELOWERCASE "zandronum"
+#define GAMENAME "vDoom"
+#define GAMENAMELOWERCASE "vdoom"
 #define DOMAIN_NAME "zandronum.com"
 #define FORUM_URL "https://" DOMAIN_NAME "/forum/"
 #define BUGS_FORUM_URL	"https://" DOMAIN_NAME "/tracker/"
@@ -132,7 +133,7 @@ int GetRevisionNumber();
 #define	SERVERCONSOLE_TITLESTRING	GAMENAME " v" DOTVERSIONSTR " Server"
 
 // [SB] Used for the libsecret schema.
-#define DOMAIN_NAME_REVERSE "com.zandronum"
+#define DOMAIN_NAME_REVERSE "com.vdoom"
 
 #if defined(__APPLE__) || defined(_WIN32)
 #define GAME_DIR GAMENAME

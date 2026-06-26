@@ -56,8 +56,8 @@
 #include "i_soundinternal.h"
 #include "v_font.h"
 
-// [AK] Only include FMOD, Opus, and RNNoise files if compiling with sound.
-#ifndef NO_SOUND
+// [AK] The current VoIP implementation is still tied to FMOD.
+#if !defined(NO_SOUND) && defined(USE_FMOD_SOUND)
 #include "fmod_wrap.h"
 #include "opus.h"
 #include "rnnoise.h"
@@ -148,8 +148,9 @@ class VOIPController
 public:
 	static VOIPController &GetInstance( void ) { static VOIPController instance; return instance; }
 
-// [AK] Some of these functions only exist as stubs if compiling without sound.
-#ifdef NO_SOUND
+// [AK] Some of these functions only exist as stubs if compiling without sound
+// or while a non-FMOD sound backend is selected.
+#if defined(NO_SOUND) || !defined(USE_FMOD_SOUND)
 
 	void Tick( void ) { }
 	void StartRecording( void ) { }
@@ -303,7 +304,7 @@ private:
 	// calculate the sound's volume based on distance.
 	FISoundChannel proximityInfo;
 
-#endif // NO_SOUND
+#endif // defined(NO_SOUND) || !defined(USE_FMOD_SOUND)
 
 };
 

@@ -1306,6 +1306,7 @@ void D_DoomLoop ()
 
 				// Run at least 1 tick.
 				TryRunTics( );
+				I_UpdateSound();
 
 				// Move positional sounds.
 				// NOTE: .camera can be NULL if player has loaded the level but
@@ -1357,6 +1358,7 @@ void D_DoomLoop ()
 				{
 					TryRunTics (); // will run at least one tic
 				}
+				I_UpdateSound();
 				// Update display, next frame, with current state.
 				I_StartTic ();
 				D_Display ();
@@ -1387,7 +1389,16 @@ void D_DoomLoop ()
 void D_PageTicker (void)
 {
 	if (--pagetic < 0)
-		D_AdvanceDemo ();
+	{
+		if (demosequence == 3 && gameinfo.titleMusic.IsNotEmpty() && S_MusicPlaying())
+		{
+			pagetic = 0;
+		}
+		else
+		{
+			D_AdvanceDemo ();
+		}
+	}
 }
 
 //==========================================================================

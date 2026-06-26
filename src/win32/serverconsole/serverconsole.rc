@@ -161,7 +161,7 @@ FONT 8, "Tahoma"
     DEFPUSHBUTTON   "OK", IDOK, 245, 241, 55, 14, 0, WS_EX_LEFT
     PUSHBUTTON      "Cancel", IDCANCEL, 307, 241, 50, 14, 0, WS_EX_LEFT
     LTEXT           "Configure flags", IDC_TITLE, 9, 8, 160, 15, SS_LEFT, WS_EX_LEFT
-    LTEXT           "Fine-tune your Zandronum server.", IDC_STATIC, 10, 26, 100, 8, SS_LEFT, WS_EX_LEFT
+    LTEXT           "Fine-tune your vDoom server.", IDC_STATIC, 10, 26, 100, 8, SS_LEFT, WS_EX_LEFT
     RTEXT           "compatflags:", IDC_STATIC, 100, 235, 51, 8, SS_RIGHT, WS_EX_LEFT
     RTEXT           "zacompatflags:", IDC_STATIC, 100, 249, 51, 8, SS_RIGHT, WS_EX_LEFT
     RTEXT           "dmflags:", IDC_STATIC, 10, 235, 32, 8, SS_RIGHT, WS_EX_LEFT

@@ -1212,7 +1212,10 @@ BOOL CALLBACK IWADBoxCallback(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
 		SetDlgItemText (hDlg, IDC_WELCOME_VERSION, szString);
 
 		// Check the current video settings.
-		SendDlgItemMessage( hDlg, vid_renderer ? IDC_WELCOME_OPENGL : IDC_WELCOME_SOFTWARE, BM_SETCHECK, BST_CHECKED, 0 );
+		if (vid_renderer == 0)
+			SendDlgItemMessage( hDlg, IDC_WELCOME_SOFTWARE, BM_SETCHECK, BST_CHECKED, 0 );
+		else if (vid_renderer == 1)
+			SendDlgItemMessage( hDlg, IDC_WELCOME_OPENGL, BM_SETCHECK, BST_CHECKED, 0 );
 		SendDlgItemMessage( hDlg, IDC_WELCOME_FULLSCREEN, BM_SETCHECK, fullscreen ? BST_CHECKED : BST_UNCHECKED, 0 );
 
 		// Set the state of the "Don't ask me again" checkbox.
@@ -1278,7 +1281,10 @@ BOOL CALLBACK IWADBoxCallback(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
 			/* [RC] No longer the primary control. > || (LOWORD(wParam) == IDC_IWADLIST && HIWORD(wParam) == LBN_DBLCLK)<*/)
 		{
 			SetQueryIWad(hDlg);
-			vid_renderer = SendDlgItemMessage( hDlg, IDC_WELCOME_OPENGL, BM_GETCHECK, 0, 0 ) == BST_CHECKED;
+			if (SendDlgItemMessage( hDlg, IDC_WELCOME_SOFTWARE, BM_GETCHECK, 0, 0 ) == BST_CHECKED)
+				vid_renderer = 0;
+			else if (SendDlgItemMessage( hDlg, IDC_WELCOME_OPENGL, BM_GETCHECK, 0, 0 ) == BST_CHECKED)
+				vid_renderer = 1;
 			fullscreen = SendDlgItemMessage( hDlg, IDC_WELCOME_FULLSCREEN, BM_GETCHECK, 0, 0 ) == BST_CHECKED;
 			ctrl = GetDlgItem (hDlg, IDC_IWADLIST);
 			EndDialog(hDlg, SendMessage (ctrl, LB_GETCURSEL, 0, 0));

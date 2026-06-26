@@ -169,7 +169,7 @@ static const char* const tableHeaders[NUM_COLUMNS] = { "IWAD", "Game" };
 	[window setTitle:windowTitle];
 
 	NSTextField *description = [[NSTextField alloc] initWithFrame:NSMakeRect(22, 379, 412, 50)];
-	[self makeLabel:description withString:"Zandronum found more than one IWAD\nSelect from the list below to determine which one to use:"];
+	[self makeLabel:description withString:"vDoom found more than one IWAD\nSelect from the list below to determine which one to use:"];
 	[[window contentView] addSubview:description];
 	[description release];
 

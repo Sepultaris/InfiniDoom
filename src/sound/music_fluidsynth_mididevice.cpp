@@ -78,6 +78,10 @@
 
 #endif
 
+#ifndef FLUID_CHORUS_DEFAULT_TYPE
+#define FLUID_CHORUS_DEFAULT_TYPE FLUID_CHORUS_MOD_SINE
+#endif
+
 // TYPES -------------------------------------------------------------------
 
 // EXTERNAL FUNCTION PROTOTYPES --------------------------------------------
@@ -92,7 +96,7 @@
 
 // PUBLIC DATA DEFINITIONS -------------------------------------------------
 
-CVAR(String, fluid_patchset, "", CVAR_ARCHIVE|CVAR_GLOBALCONFIG)
+CVAR(String, fluid_patchset, "soundfonts/FluidR3_GM.sf2", CVAR_ARCHIVE|CVAR_GLOBALCONFIG)
 
 CUSTOM_CVAR(Float, fluid_gain, 0.5, CVAR_ARCHIVE|CVAR_GLOBALCONFIG)
 {
@@ -475,27 +479,23 @@ int FluidSynthMIDIDevice::LoadPatchSets(const char *patches)
 	while (tok != NULL)
 	{
 		FString path;
-#ifdef _WIN32
-		// If the path does not contain any path separators, automatically
-		// prepend $PROGDIR to the path.
-		if (strcspn(tok, ":/\\") == strlen(tok))
+		if (!FileExists(tok))
 		{
 			path << "$PROGDIR/" << tok;
 			path = NicePath(path);
 		}
 		else
-#endif
 		{
 			path = NicePath(tok);
 		}
 		if (FLUID_FAILED != fluid_synth_sfload(FluidSynth, path, count == 0))
 		{
-			DPrintf("Loaded patch set %s.\n", tok);
+			Printf("FluidSynth: Loaded patch set %s.\n", path.GetChars());
 			count++;
 		}
 		else
 		{
-			DPrintf("Failed to load patch set %s.\n", tok);
+			Printf("FluidSynth: Failed to load patch set %s.\n", path.GetChars());
 		}
 		tok = strtok(NULL, delim);
 	}
@@ -613,10 +613,9 @@ FString FluidSynthMIDIDevice::GetStats()
 	int polyphony = fluid_synth_get_polyphony(FluidSynth);
 	int voices = fluid_synth_get_active_voice_count(FluidSynth);
 	double load = fluid_synth_get_cpu_load(FluidSynth);
-	char *chorus, *reverb;
-	int maxpoly;
-	fluid_settings_getstr(FluidSettings, "synth.chorus.active", &chorus);
-	fluid_settings_getstr(FluidSettings, "synth.reverb.active", &reverb);
+	int chorus, reverb, maxpoly;
+	fluid_settings_getint(FluidSettings, "synth.chorus.active", &chorus);
+	fluid_settings_getint(FluidSettings, "synth.reverb.active", &reverb);
 	fluid_settings_getint(FluidSettings, "synth.polyphony", &maxpoly);
 	CritSec.Leave();
 
@@ -624,7 +623,7 @@ FString FluidSynthMIDIDevice::GetStats()
 			   TEXTCOLOR_YELLOW "%6.2f" TEXTCOLOR_NORMAL "%% CPU   "
 			   "Reverb: " TEXTCOLOR_YELLOW "%3s" TEXTCOLOR_NORMAL
 			   " Chorus: " TEXTCOLOR_YELLOW "%3s",
-		voices, polyphony, maxpoly, load, reverb, chorus);
+		voices, polyphony, maxpoly, load, reverb ? "on" : "off", chorus ? "on" : "off");
 	return out;
 }
 

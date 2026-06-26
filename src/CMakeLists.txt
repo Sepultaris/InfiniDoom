@@ -35,6 +35,19 @@ if( "${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU" OR "${CMAKE_CXX_COMPILER_ID}" STRE
 endif( "${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU" OR "${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang" )
 
 option( DYN_FLUIDSYNTH "Dynamically load fluidsynth" ON )
+set( SOUND_BACKEND "FMOD" CACHE STRING "Sound backend to use: FMOD, OpenAL, or None" )
+set_property( CACHE SOUND_BACKEND PROPERTY STRINGS FMOD OpenAL None )
+string( TOUPPER "${SOUND_BACKEND}" SOUND_BACKEND_UPPER )
+
+if( SOUND_BACKEND_UPPER STREQUAL "NONE" )
+	set( NO_SOUND ON )
+elseif( SOUND_BACKEND_UPPER STREQUAL "OPENAL" )
+	set( USE_OPENAL_SOUND ON )
+elseif( SOUND_BACKEND_UPPER STREQUAL "FMOD" )
+	set( USE_FMOD_SOUND ON )
+else()
+	message( FATAL_ERROR "Unknown SOUND_BACKEND '${SOUND_BACKEND}'. Use FMOD, OpenAL, or None." )
+endif()
 
 if( CMAKE_SIZEOF_VOID_P MATCHES "8" )
 	set( X64 64 )
@@ -108,6 +121,7 @@ if( WIN32 )
 	add_definitions( -D_WIN32 )
 	
 	set( FMOD_SEARCH_PATHS
+		"${CMAKE_HOME_DIRECTORY}/fmod/api"
 		"C:/Program Files/FMOD SoundSystem/FMOD Programmers API ${WIN_TYPE}/api"
 		"C:/Program Files (x86)/FMOD SoundSystem/FMOD Programmers API ${WIN_TYPE}/api"
 		# This next one is for Randy.
@@ -308,67 +322,91 @@ endif( NOT NO_GL )
 
 # Decide on the name of the FMOD library we want to use.
 
-if( NOT FMOD_LIB_NAME AND MSVC )
+if( USE_FMOD_SOUND AND NOT FMOD_LIB_NAME AND MSVC )
 	set( FMOD_LIB_NAME fmodex${X64}_vc )
-endif( NOT FMOD_LIB_NAME AND MSVC )
+endif( USE_FMOD_SOUND AND NOT FMOD_LIB_NAME AND MSVC )
 
-if( NOT FMOD_LIB_NAME AND BORLAND )
+if( USE_FMOD_SOUND AND NOT FMOD_LIB_NAME AND BORLAND )
 	set( FMOD_LIB_NAME fmodex${X64}_bc )
-endif( NOT FMOD_LIB_NAME AND BORLAND )
+endif( USE_FMOD_SOUND AND NOT FMOD_LIB_NAME AND BORLAND )
 
-if( NOT FMOD_LIB_NAME )
+if( USE_FMOD_SOUND AND NOT FMOD_LIB_NAME )
 	set( FMOD_LIB_NAME fmodex${X64} )
-endif( NOT FMOD_LIB_NAME )
+endif( USE_FMOD_SOUND AND NOT FMOD_LIB_NAME )
 
 
 # Search for FMOD include files
 
-if( NOT WIN32 )
+if( USE_FMOD_SOUND AND NOT WIN32 )
 	find_path( FMOD_INCLUDE_DIR fmod.hpp
 		PATHS ${FMOD_LOCAL_INC_DIRS} )
-endif( NOT WIN32 )
+endif( USE_FMOD_SOUND AND NOT WIN32 )
 
-if( NOT FMOD_INCLUDE_DIR )
+if( USE_FMOD_SOUND AND NOT FMOD_INCLUDE_DIR )
 	find_path( FMOD_INCLUDE_DIR fmod.hpp
 		PATHS ${FMOD_SEARCH_PATHS}
 		${FMOD_INC_PATH_SUFFIXES} )
-endif( NOT FMOD_INCLUDE_DIR )
+endif( USE_FMOD_SOUND AND NOT FMOD_INCLUDE_DIR )
 
-if( FMOD_INCLUDE_DIR )
+if( USE_FMOD_SOUND AND FMOD_INCLUDE_DIR )
 	message( STATUS "FMOD include files found at ${FMOD_INCLUDE_DIR}" )
-else( FMOD_INCLUDE_DIR )
+elseif( USE_FMOD_SOUND )
 	# [BB] Without sound, we don't need FMOD.
 	if ( NOT NO_SOUND )
 		message( SEND_ERROR "Could not find FMOD include files" )
 	endif ( NOT NO_SOUND )
-endif( FMOD_INCLUDE_DIR )
+endif( USE_FMOD_SOUND AND FMOD_INCLUDE_DIR )
 
 
 # Search for FMOD library
 
-if( WIN32 OR APPLE )
+if( USE_FMOD_SOUND AND ( WIN32 OR APPLE ) )
 	find_library( FMOD_LIBRARY ${FMOD_LIB_NAME}
 		PATHS ${FMOD_SEARCH_PATHS}
 		${FMOD_LIB_PATH_SUFFIXES} )
-else( WIN32 OR APPLE )
+elseif( USE_FMOD_SOUND )
 	find_library( FMOD_LIBRARY
 		NAMES ${FMOD_VERSIONS}
 		PATHS ${FMOD_LOCAL_LIB_DIRS} )
-endif( WIN32 OR APPLE )
+endif( USE_FMOD_SOUND AND ( WIN32 OR APPLE ) )
 
-if( FMOD_LIBRARY )
+if( USE_FMOD_SOUND AND FMOD_LIBRARY )
 	message( STATUS "FMOD library found at ${FMOD_LIBRARY}" )
-else( FMOD_LIBRARY )
+elseif( USE_FMOD_SOUND )
 	# [BB] Without sound, we don't need FMOD.
 	if ( NOT NO_SOUND )
 		message( SEND_ERROR "Could not find FMOD library" )
 	endif ( NOT NO_SOUND )
-endif( FMOD_LIBRARY )
+endif( USE_FMOD_SOUND AND FMOD_LIBRARY )
+
+if( USE_OPENAL_SOUND )
+	find_path( OPENAL_INCLUDE_DIR AL/al.h )
+	find_library( OPENAL_LIBRARY NAMES OpenAL32 openal )
+	if( OPENAL_INCLUDE_DIR AND OPENAL_LIBRARY )
+		message( STATUS "OpenAL include files found at ${OPENAL_INCLUDE_DIR}" )
+		message( STATUS "OpenAL library found at ${OPENAL_LIBRARY}" )
+		set( OPENAL_HEADER_DIR "${OPENAL_INCLUDE_DIR}" )
+		if( EXISTS "${OPENAL_INCLUDE_DIR}/AL/al.h" )
+			set( OPENAL_HEADER_DIR "${OPENAL_INCLUDE_DIR}/AL" )
+		endif()
+		add_definitions( -DUSE_OPENAL_SOUND=1 )
+	else()
+		message( SEND_ERROR "Could not find OpenAL headers or library" )
+	endif()
+endif()
 
 
 # Search for FluidSynth
 
 find_package( FluidSynth )
+if( NOT FLUIDSYNTH_FOUND )
+	find_package( FluidSynth CONFIG QUIET )
+	if( TARGET FluidSynth::libfluidsynth )
+		set( FLUIDSYNTH_FOUND TRUE )
+		get_target_property( FLUIDSYNTH_INCLUDE_DIR FluidSynth::libfluidsynth INTERFACE_INCLUDE_DIRECTORIES )
+		set( FLUIDSYNTH_LIBRARIES FluidSynth::libfluidsynth )
+	endif()
+endif()
 
 # Search for NASM
 
@@ -591,7 +629,9 @@ endif( "${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU" OR "${CMAKE_CXX_COMPILER_ID}" S
 # MSVC Flags
 
 if( MSVC )
-	set( CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /DELAYLOAD:\"fmodex${X64}.dll\"" )
+	if( USE_FMOD_SOUND )
+		set( CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /DELAYLOAD:\"fmodex${X64}.dll\"" )
+	endif()
 	# [BB] Use object level parallelism for our main target.
 	set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /MP" )
 endif( MSVC )
@@ -674,12 +714,15 @@ add_custom_target( revision_check ALL
 message( STATUS "Fluid synth libs: ${FLUIDSYNTH_LIBRARIES}" )
 set( ZDOOM_LIBS ${ZDOOM_LIBS} "${ZLIB_LIBRARIES}" "${JPEG_LIBRARIES}" "${BZIP2_LIBRARIES}" "${GME_LIBRARIES}" )
 # [BB] Without sound, we don't need FMOD.
-if ( NOT NO_SOUND )
+if ( USE_FMOD_SOUND )
 	set( ZDOOM_LIBS ${ZDOOM_LIBS} "${FMOD_LIBRARY}" )
 	include_directories( "${ZLIB_INCLUDE_DIR}" "${FMOD_INCLUDE_DIR}" "${BZIP2_INCLUDE_DIR}" "${LZMA_INCLUDE_DIR}" "${JPEG_INCLUDE_DIR}" "${GME_INCLUDE_DIR}" )
-else ( NOT NO_SOUND )
+elseif( USE_OPENAL_SOUND )
+	set( ZDOOM_LIBS ${ZDOOM_LIBS} "${OPENAL_LIBRARY}" )
 	include_directories( "${ZLIB_INCLUDE_DIR}" "${BZIP2_INCLUDE_DIR}" "${LZMA_INCLUDE_DIR}" "${JPEG_INCLUDE_DIR}" "${GME_INCLUDE_DIR}" )
-endif ( NOT NO_SOUND )
+else()
+	include_directories( "${ZLIB_INCLUDE_DIR}" "${BZIP2_INCLUDE_DIR}" "${LZMA_INCLUDE_DIR}" "${JPEG_INCLUDE_DIR}" "${GME_INCLUDE_DIR}" )
+endif()
 
 # [BB] We need OpenSSL for csrp.
 FIND_PACKAGE ( OpenSSL REQUIRED )
@@ -915,6 +958,33 @@ else( NOT NO_GL )
 	set( GL_SOURCES sdl/glstubs.cpp )
 endif( NOT NO_GL )
 
+set( VULKAN_SOURCES
+	vulkan/vk_renderer.cpp
+)
+
+find_path( VULKAN_INCLUDE_DIR vulkan/vulkan.h
+	PATHS
+		ENV VULKAN_SDK
+		"C:/VulkanSDK/1.4.350.0"
+		"C:/VulkanSDK/1.4.321.1"
+		"C:/VulkanSDK/1.4.321.0"
+		"C:/VulkanSDK/1.3.296.0"
+		"C:/VulkanSDK/1.3.290.0"
+	PATH_SUFFIXES Include include )
+if( VULKAN_INCLUDE_DIR )
+	message( STATUS "Vulkan include files found at ${VULKAN_INCLUDE_DIR}" )
+else()
+	message( SEND_ERROR "Could not find Vulkan SDK headers. Install the Vulkan SDK or set VULKAN_SDK." )
+endif()
+
+if( USE_OPENAL_SOUND )
+	set( SOUND_BACKEND_SOURCES sound/oalsound.cpp )
+elseif( USE_FMOD_SOUND )
+	set( SOUND_BACKEND_SOURCES sound/fmodsound.cpp )
+else()
+	set( SOUND_BACKEND_SOURCES "" )
+endif()
+
 
 # Project files should be aware of the header files. We can GLOB these since
 # there's generally a new cpp for every header so this file will get changed
@@ -944,6 +1014,7 @@ file( GLOB HEADER_FILES
 	textures/*.h
 	thingdef/*.h
 	xlat/*.h
+	vulkan/*.h
 	gl/*.h
 	gl/api/*.h
 	gl/data/*.h
@@ -1353,6 +1424,7 @@ add_executable( zdoom WIN32
 	menu/readthis.cpp
 	menu/videomenu.cpp
 	${GL_SOURCES}
+	${VULKAN_SOURCES}
 	oplsynth/fmopl.cpp
 	oplsynth/mlopl.cpp
 	oplsynth/mlopl_io.cpp
@@ -1372,7 +1444,7 @@ add_executable( zdoom WIN32
 	resourcefiles/file_directory.cpp
 	resourcefiles/resourcefile.cpp
 	sfmt/SFMT.cpp
-	sound/fmodsound.cpp
+	${SOUND_BACKEND_SOURCES}
 	sound/i_music.cpp
 	sound/i_sound.cpp
 	sound/music_cd.cpp
@@ -1455,8 +1527,8 @@ add_executable( zdoom WIN32
 )
 
 # [BB] To keep the delta to ZDoom small, we keep the target name 'zdoom', but
-# change the label, so that it's displayed as 'Zandronum' in an IDE like VC++.
-SET_TARGET_PROPERTIES( zdoom PROPERTIES PROJECT_LABEL Zandronum )
+# change the label, so that it's displayed as 'vDoom' in an IDE like VC++.
+SET_TARGET_PROPERTIES( zdoom PROPERTIES PROJECT_LABEL vDoom )
 
 # [BB/RC] Added CREATE_PACKET_LOG
 OPTION( CREATE_PACKET_LOG "A security debug feature to catch malicious packets." OFF )
@@ -1524,9 +1596,17 @@ endif( NOT ZDOOM_OUTPUT_OLDSTYLE OR NO_GENERATOR_EXPRESSIONS )
 if( MSVC )
 	option( ZDOOM_GENERATE_MAPFILE "Generate .map file for debugging." OFF )
 	if( ZDOOM_GENERATE_MAPFILE )
-		set_target_properties(zdoom PROPERTIES LINK_FLAGS "/MANIFEST:NO /DELAYLOAD:\"fmodex${X64}.dll\" /MAP")
+		if( USE_FMOD_SOUND )
+			set_target_properties(zdoom PROPERTIES LINK_FLAGS "/MANIFEST:NO /DELAYLOAD:\"fmodex${X64}.dll\" /MAP")
+		else()
+			set_target_properties(zdoom PROPERTIES LINK_FLAGS "/MANIFEST:NO /MAP")
+		endif()
 	else( ZDOOM_GENERATE_MAPFILE )
-		set_target_properties(zdoom PROPERTIES LINK_FLAGS "/MANIFEST:NO /DELAYLOAD:\"fmodex${X64}.dll\"")
+		if( USE_FMOD_SOUND )
+			set_target_properties(zdoom PROPERTIES LINK_FLAGS "/MANIFEST:NO /DELAYLOAD:\"fmodex${X64}.dll\"")
+		else()
+			set_target_properties(zdoom PROPERTIES LINK_FLAGS "/MANIFEST:NO")
+		endif()
 	endif( ZDOOM_GENERATE_MAPFILE )
 
 	if( NO_GENERATOR_EXPRESSIONS )
@@ -1632,6 +1712,7 @@ source_group("OpenGL Renderer\\Shaders" REGULAR_EXPRESSION "^${CMAKE_CURRENT_SOU
 source_group("OpenGL Renderer\\System" REGULAR_EXPRESSION "^${CMAKE_CURRENT_SOURCE_DIR}/gl/system/.+")
 source_group("OpenGL Renderer\\Textures" REGULAR_EXPRESSION "^${CMAKE_CURRENT_SOURCE_DIR}/gl/textures/.+")
 source_group("OpenGL Renderer\\Utilities" REGULAR_EXPRESSION "^${CMAKE_CURRENT_SOURCE_DIR}/gl/utility/.+")
+source_group("Vulkan Renderer" REGULAR_EXPRESSION "^${CMAKE_CURRENT_SOURCE_DIR}/vulkan/.+")
 source_group("Render Core\\Render Headers" REGULAR_EXPRESSION "^${CMAKE_CURRENT_SOURCE_DIR}/r_.+\\.h$")
 source_group("Render Core\\Render Sources" REGULAR_EXPRESSION "^${CMAKE_CURRENT_SOURCE_DIR}/r_.+\\.cpp$")
 source_group("Render Data\\Resource Headers" REGULAR_EXPRESSION "^${CMAKE_CURRENT_SOURCE_DIR}/r_data/.+\\.h$")
@@ -1654,3 +1735,19 @@ source_group("Network\\Misc" REGULAR_EXPRESSION "^${CMAKE_CURRENT_SOURCE_DIR}/ne
 source_group("Network\\Server" REGULAR_EXPRESSION "^${CMAKE_CURRENT_SOURCE_DIR}/sv_.+")
 source_group("Network\\Protocol\\Specs" REGULAR_EXPRESSION "^${CMAKE_SOURCE_DIR}/protocolspec/.+\\.txt$")
 source_group("Network\\Protocol\\Generator" REGULAR_EXPRESSION "^${CMAKE_SOURCE_DIR}/protocolspec/generator/.+")
+
+if( USE_OPENAL_SOUND )
+	if( MSVC )
+		set_source_files_properties( sound/oalsound.cpp PROPERTIES COMPILE_FLAGS "/I\"${OPENAL_HEADER_DIR}\"" )
+	else()
+		set_source_files_properties( sound/oalsound.cpp PROPERTIES COMPILE_FLAGS "-I\"${OPENAL_HEADER_DIR}\"" )
+	endif()
+endif()
+
+if( VULKAN_INCLUDE_DIR )
+	if( MSVC )
+		set_source_files_properties( vulkan/vk_renderer.cpp PROPERTIES COMPILE_FLAGS "/I\"${VULKAN_INCLUDE_DIR}\"" )
+	else()
+		set_source_files_properties( vulkan/vk_renderer.cpp PROPERTIES COMPILE_FLAGS "-I\"${VULKAN_INCLUDE_DIR}\"" )
+	endif()
+endif()
