@@ -53,9 +53,9 @@ CUSTOM_CVAR(Int, vk_present_filter, 0, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_N
 	{
 		self = 0;
 	}
-	else if (self > 1)
+	else if (self > 2)
 	{
-		self = 1;
+		self = 2;
 	}
 }
 
@@ -198,7 +198,13 @@ namespace
 		float SourceOffset[2];
 		float SourceScale[2];
 		float BorderColor[4];
+		float FilterParams[4];
 	};
+
+	static int ClampPresentFilterMode()
+	{
+		return vk_present_filter < 0 ? 0 : (vk_present_filter > 2 ? 2 : vk_present_filter);
+	}
 
 	class VulkanRuntime
 	{
@@ -1500,8 +1506,8 @@ namespace
 			VkSamplerCreateInfo samplerInfo;
 			memset(&samplerInfo, 0, sizeof(samplerInfo));
 			samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-			PresentFilterMode = vk_present_filter != 0 ? 1 : 0;
-			VkFilter filter = PresentFilterMode != 0 ? VK_FILTER_LINEAR : VK_FILTER_NEAREST;
+			PresentFilterMode = ClampPresentFilterMode();
+			VkFilter filter = PresentFilterMode == 1 ? VK_FILTER_LINEAR : VK_FILTER_NEAREST;
 			samplerInfo.magFilter = filter;
 			samplerInfo.minFilter = filter;
 			samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
@@ -2077,7 +2083,7 @@ namespace
 			{
 				return false;
 			}
-			if (PresentFilterMode != -1 && PresentFilterMode != (vk_present_filter != 0 ? 1 : 0))
+			if (PresentFilterMode != -1 && PresentFilterMode != ClampPresentFilterMode())
 			{
 				DestroyPresentationResources();
 			}
@@ -2435,6 +2441,9 @@ namespace
 			constants.BorderColor[1] = 0.02f;
 			constants.BorderColor[2] = 0.05f;
 			constants.BorderColor[3] = 1.f;
+			constants.FilterParams[0] = (float)ClampPresentFilterMode();
+			constants.FilterParams[1] = (float)(sourceWidth > 0 ? sourceWidth : 1);
+			constants.FilterParams[2] = (float)(sourceHeight > 0 ? sourceHeight : 1);
 
 			PresentScaleMode = (unsigned int)(vk_present_scale_mode < 0 ? 0 : (vk_present_scale_mode > 2 ? 2 : vk_present_scale_mode));
 			PresentViewportX = 0;

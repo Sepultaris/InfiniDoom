@@ -1,5 +1,14 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.12 - 2026-06-26
+
+- Added `vk_present_filter 2`, a Vulkan palette-present smoothing mode that
+  blends final palette colors instead of raw 8-bit palette indices. This makes
+  smoothing changes more visible while preserving saner color behavior than the
+  experimental linear-index sampler.
+- Updated `stat renderer` to distinguish `nearest`, `linear index`, and
+  `sharp color` presentation filters.
+
 ## 3.3-alpha-vdoom.11 - 2026-06-26
 
 - Changed `vk_present_aspect` default to `0`, meaning source-framebuffer

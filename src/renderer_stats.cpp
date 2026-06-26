@@ -92,6 +92,21 @@ static const char *VulkanScaleModeName(unsigned int mode)
 	}
 }
 
+static const char *VulkanPresentFilterName(unsigned int mode)
+{
+	switch (mode)
+	{
+	case 0:
+		return "nearest";
+	case 1:
+		return "linear index";
+	case 2:
+		return "sharp color";
+	default:
+		return "unknown";
+	}
+}
+
 static FString FormatPresentAspect(float aspect)
 {
 	FString out;
@@ -161,7 +176,7 @@ ADD_STAT(renderer)
 				vk.WindowMinimized ? ", minimized" : "");
 			out.AppendFormat("Presentation: %s, %s filter, %s, aspect %s\n",
 				vk.GpuPresentationActive ? "GPU palette shader" : "transfer fallback",
-				vk.PresentFilterMode != 0 ? "linear" : "nearest",
+				VulkanPresentFilterName(vk.PresentFilterMode),
 				VulkanScaleModeName(vk.PresentScaleMode),
 				FormatPresentAspect(vk.PresentAspect).GetChars());
 			if (vk.GpuPresentationActive)

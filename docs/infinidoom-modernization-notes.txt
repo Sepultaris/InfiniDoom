@@ -57,9 +57,11 @@ Current Vulkan direction:
   triangle shader performs palette lookup and scaling into the swapchain. The
   previous CPU-expanded transfer copy remains as a fallback while the GPU path
   matures.
-- `vk_present_filter` controls the Vulkan palette present sampler. The default
-  value `0` keeps nearest filtering for the classic pixel look; value `1`
-  enables linear filtering for smoother scaling experiments.
+- `vk_present_filter` controls Vulkan palette presentation filtering. The
+  default value `0` keeps nearest filtering for the classic pixel look; value
+  `1` enables the old experimental linear sampling of palette indices; value
+  `2` keeps nearest index sampling and blends the final palette colors in the
+  shader for a more visible, less color-corrupting smoothing experiment.
 - `vk_present_scale_mode` controls how the Vulkan palette presenter maps the
   software framebuffer into the swapchain: `0` stretches to the full client
   size, `1` preserves aspect, and `2` uses integer scaling against a 320-wide
