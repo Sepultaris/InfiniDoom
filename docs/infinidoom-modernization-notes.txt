@@ -62,10 +62,11 @@ Current Vulkan direction:
   enables linear filtering for smoother scaling experiments.
 - `vk_present_scale_mode` controls how the Vulkan palette presenter maps the
   software framebuffer into the swapchain: `0` stretches to the full client
-  size, `1` preserves `vk_present_aspect`, and `2` uses integer scaling against
-  a 320-wide virtual canvas at that aspect. `vk_present_aspect` defaults to 4:3
-  so the modes remain visible even when the software framebuffer already
-  matches the window size.
+  size, `1` preserves aspect, and `2` uses integer scaling against a 320-wide
+  virtual canvas. `vk_present_aspect` defaults to `0`, which means use the
+  source framebuffer aspect. Explicit aspect overrides require
+  `vk_present_force_aspect 1` and are experimental because true classic 4:3
+  must be applied before the frame/menu is composed.
 - Next steps should be:
   1. add SDL surface creation for non-Windows targets;
   2. harden resize, alt-tab, and swapchain recreation;

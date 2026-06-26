@@ -92,6 +92,20 @@ static const char *VulkanScaleModeName(unsigned int mode)
 	}
 }
 
+static FString FormatPresentAspect(float aspect)
+{
+	FString out;
+	if (aspect > 0.f)
+	{
+		out.Format("%.3f", aspect);
+	}
+	else
+	{
+		out = "source";
+	}
+	return out;
+}
+
 static unsigned long long GetProcessRamBytes()
 {
 #ifdef _WIN32
@@ -145,11 +159,11 @@ ADD_STAT(renderer)
 				vk.SwapchainRecreateCount,
 				vk.OutOfDateCount,
 				vk.WindowMinimized ? ", minimized" : "");
-			out.AppendFormat("Presentation: %s, %s filter, %s, aspect %.3f\n",
+			out.AppendFormat("Presentation: %s, %s filter, %s, aspect %s\n",
 				vk.GpuPresentationActive ? "GPU palette shader" : "transfer fallback",
 				vk.PresentFilterMode != 0 ? "linear" : "nearest",
 				VulkanScaleModeName(vk.PresentScaleMode),
-				vk.PresentAspect);
+				FormatPresentAspect(vk.PresentAspect).GetChars());
 			if (vk.GpuPresentationActive)
 			{
 				out.AppendFormat("Present viewport: %ux%u at %u,%u\n",

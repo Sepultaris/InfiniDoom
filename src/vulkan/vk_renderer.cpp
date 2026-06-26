@@ -71,17 +71,19 @@ CUSTOM_CVAR(Int, vk_present_scale_mode, 1, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CV
 	}
 }
 
-CUSTOM_CVAR(Float, vk_present_aspect, 4.f / 3.f, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINITCALL)
+CUSTOM_CVAR(Float, vk_present_aspect, 0.f, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINITCALL)
 {
-	if (self < 0.25f)
+	if (self < 0.f)
 	{
-		self = 0.25f;
+		self = 0.f;
 	}
 	else if (self > 4.f)
 	{
 		self = 4.f;
 	}
 }
+
+CVAR(Bool, vk_present_force_aspect, false, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINITCALL)
 
 namespace
 {
@@ -494,7 +496,7 @@ namespace
 
 		float GetPresentAspect() const
 		{
-			return vk_present_aspect;
+			return vk_present_force_aspect && vk_present_aspect > 0.f ? vk_present_aspect : 0.f;
 		}
 
 		bool RecreateSwapchainForWindow()
@@ -2445,20 +2447,8 @@ namespace
 				return constants;
 			}
 
-			const double targetAspect = vk_present_aspect > 0.0f ? (double)vk_present_aspect : (4.0 / 3.0);
 			const double sourceAspect = (double)sourceWidth / (double)sourceHeight;
-			if (sourceAspect > targetAspect)
-			{
-				double cropWidth = targetAspect / sourceAspect;
-				constants.SourceOffset[0] = (float)((1.0 - cropWidth) * 0.5);
-				constants.SourceScale[0] = (float)cropWidth;
-			}
-			else if (sourceAspect < targetAspect)
-			{
-				double cropHeight = sourceAspect / targetAspect;
-				constants.SourceOffset[1] = (float)((1.0 - cropHeight) * 0.5);
-				constants.SourceScale[1] = (float)cropHeight;
-			}
+			const double targetAspect = vk_present_force_aspect && vk_present_aspect > 0.0f ? (double)vk_present_aspect : sourceAspect;
 
 			unsigned int targetWidth = SwapchainExtent.width;
 			unsigned int targetHeight = (unsigned int)((double)targetWidth / targetAspect + 0.5);

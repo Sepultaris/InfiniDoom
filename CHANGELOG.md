@@ -1,5 +1,13 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.11 - 2026-06-26
+
+- Changed `vk_present_aspect` default to `0`, meaning source-framebuffer
+  aspect. This avoids damaging/cropping already-composed widescreen menus at
+  the presentation layer. Explicit aspect overrides remain available for
+  experiments behind the new `vk_present_force_aspect` opt-in, so previously
+  archived 4:3 values do not silently keep breaking the menu.
+
 ## 3.3-alpha-vdoom.10 - 2026-06-26
 
 - Fixed Vulkan aspect/integer scale modes squeezing the full widescreen
