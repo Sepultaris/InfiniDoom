@@ -193,6 +193,8 @@ namespace
 	{
 		float UvOffset[2];
 		float UvScale[2];
+		float SourceOffset[2];
+		float SourceScale[2];
 		float BorderColor[4];
 	};
 
@@ -2425,6 +2427,8 @@ namespace
 			memset(&constants, 0, sizeof(constants));
 			constants.UvScale[0] = 1.f;
 			constants.UvScale[1] = 1.f;
+			constants.SourceScale[0] = 1.f;
+			constants.SourceScale[1] = 1.f;
 			constants.BorderColor[0] = 0.02f;
 			constants.BorderColor[1] = 0.02f;
 			constants.BorderColor[2] = 0.05f;
@@ -2442,6 +2446,20 @@ namespace
 			}
 
 			const double targetAspect = vk_present_aspect > 0.0f ? (double)vk_present_aspect : (4.0 / 3.0);
+			const double sourceAspect = (double)sourceWidth / (double)sourceHeight;
+			if (sourceAspect > targetAspect)
+			{
+				double cropWidth = targetAspect / sourceAspect;
+				constants.SourceOffset[0] = (float)((1.0 - cropWidth) * 0.5);
+				constants.SourceScale[0] = (float)cropWidth;
+			}
+			else if (sourceAspect < targetAspect)
+			{
+				double cropHeight = sourceAspect / targetAspect;
+				constants.SourceOffset[1] = (float)((1.0 - cropHeight) * 0.5);
+				constants.SourceScale[1] = (float)cropHeight;
+			}
+
 			unsigned int targetWidth = SwapchainExtent.width;
 			unsigned int targetHeight = (unsigned int)((double)targetWidth / targetAspect + 0.5);
 			if (targetHeight > SwapchainExtent.height)

@@ -7,6 +7,8 @@ layout(push_constant) uniform PresentConstants
 {
 	vec2 uvOffset;
 	vec2 uvScale;
+	vec2 sourceOffset;
+	vec2 sourceScale;
 	vec4 borderColor;
 } pc;
 
@@ -22,6 +24,7 @@ void main()
 		return;
 	}
 
+	sourceCoord = pc.sourceOffset + sourceCoord * pc.sourceScale;
 	float source = texture(SourceImage, sourceCoord).r;
 	int index = int(source * 255.0 + 0.5);
 	FragColor = texelFetch(PaletteImage, ivec2(index, 0), 0);

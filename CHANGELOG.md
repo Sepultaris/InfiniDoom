@@ -1,5 +1,12 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.10 - 2026-06-26
+
+- Fixed Vulkan aspect/integer scale modes squeezing the full widescreen
+  software framebuffer into a narrower output rectangle. The palette presenter
+  now uses a centered source crop that matches the requested presentation
+  aspect before scaling.
+
 ## 3.3-alpha-vdoom.9 - 2026-06-26
 
 - Changed Vulkan presentation scale modes to use an explicit configurable
