@@ -1,5 +1,10 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.6 - 2026-06-26
+
+- Fixed the Vulkan GPU palette presenter drawing the software framebuffer
+  upside-down by correcting the fullscreen shader texture coordinates.
+
 ## 3.3-alpha-vdoom.5 - 2026-06-26
 
 - Added the first Vulkan GPU presentation path: the software framebuffer is
