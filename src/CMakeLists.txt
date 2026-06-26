@@ -960,6 +960,9 @@ endif( NOT NO_GL )
 
 set( VULKAN_SOURCES
 	vulkan/vk_renderer.cpp
+	vulkan/vk_palette_present_shaders.h
+	vulkan/shaders/palette_present.frag
+	vulkan/shaders/palette_present.vert
 )
 
 find_path( VULKAN_INCLUDE_DIR vulkan/vulkan.h

@@ -130,6 +130,7 @@ ADD_STAT(renderer)
 				vk.SwapchainRecreateCount,
 				vk.OutOfDateCount,
 				vk.WindowMinimized ? ", minimized" : "");
+			out.AppendFormat("Presentation: %s\n", vk.GpuPresentationActive ? "GPU palette shader" : "transfer fallback");
 			out.AppendFormat("Queue: graphics/present family %u of %u device(s)\n",
 				vk.GraphicsQueueFamily,
 				vk.DeviceCount);

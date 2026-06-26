@@ -32,6 +32,7 @@
 #include "version.h"
 #include "v_text.h"
 #include "v_palette.h"
+#include "vulkan/vk_palette_present_shaders.h"
 #ifdef _WIN32
 #include "win32/i_system.h"
 #else
@@ -103,6 +104,35 @@ namespace
 		PFN_vkMapMemory MapMemory;
 		PFN_vkUnmapMemory UnmapMemory;
 		PFN_vkCmdCopyBufferToImage CmdCopyBufferToImage;
+		PFN_vkCreateImage CreateImage;
+		PFN_vkDestroyImage DestroyImage;
+		PFN_vkGetImageMemoryRequirements GetImageMemoryRequirements;
+		PFN_vkBindImageMemory BindImageMemory;
+		PFN_vkCreateSampler CreateSampler;
+		PFN_vkDestroySampler DestroySampler;
+		PFN_vkCreateDescriptorSetLayout CreateDescriptorSetLayout;
+		PFN_vkDestroyDescriptorSetLayout DestroyDescriptorSetLayout;
+		PFN_vkCreateDescriptorPool CreateDescriptorPool;
+		PFN_vkDestroyDescriptorPool DestroyDescriptorPool;
+		PFN_vkAllocateDescriptorSets AllocateDescriptorSets;
+		PFN_vkUpdateDescriptorSets UpdateDescriptorSets;
+		PFN_vkCreatePipelineLayout CreatePipelineLayout;
+		PFN_vkDestroyPipelineLayout DestroyPipelineLayout;
+		PFN_vkCreateRenderPass CreateRenderPass;
+		PFN_vkDestroyRenderPass DestroyRenderPass;
+		PFN_vkCreateFramebuffer CreateFramebuffer;
+		PFN_vkDestroyFramebuffer DestroyFramebuffer;
+		PFN_vkCreateShaderModule CreateShaderModule;
+		PFN_vkDestroyShaderModule DestroyShaderModule;
+		PFN_vkCreateGraphicsPipelines CreateGraphicsPipelines;
+		PFN_vkDestroyPipeline DestroyPipeline;
+		PFN_vkCmdBeginRenderPass CmdBeginRenderPass;
+		PFN_vkCmdEndRenderPass CmdEndRenderPass;
+		PFN_vkCmdBindPipeline CmdBindPipeline;
+		PFN_vkCmdBindDescriptorSets CmdBindDescriptorSets;
+		PFN_vkCmdDraw CmdDraw;
+		PFN_vkCmdSetViewport CmdSetViewport;
+		PFN_vkCmdSetScissor CmdSetScissor;
 #ifdef _WIN32
 		PFN_vkCreateWin32SurfaceKHR CreateWin32SurfaceKHR;
 #endif
@@ -122,6 +152,11 @@ namespace
 			  Swapchain(VK_NULL_HANDLE), CommandPool(VK_NULL_HANDLE), CommandBuffer(VK_NULL_HANDLE),
 			  ImageAvailableSemaphore(VK_NULL_HANDLE), RenderFinishedSemaphore(VK_NULL_HANDLE), RenderFence(VK_NULL_HANDLE),
 			  UploadBuffer(VK_NULL_HANDLE), UploadMemory(VK_NULL_HANDLE), UploadPtr(NULL), UploadSize(0),
+			  SourceImage(VK_NULL_HANDLE), SourceImageMemory(VK_NULL_HANDLE), SourceImageView(VK_NULL_HANDLE),
+			  PaletteImage(VK_NULL_HANDLE), PaletteImageMemory(VK_NULL_HANDLE), PaletteImageView(VK_NULL_HANDLE),
+			  NearestSampler(VK_NULL_HANDLE), DescriptorSetLayout(VK_NULL_HANDLE), DescriptorPool(VK_NULL_HANDLE),
+			  DescriptorSet(VK_NULL_HANDLE), PipelineLayout(VK_NULL_HANDLE), RenderPass(VK_NULL_HANDLE),
+			  GraphicsPipeline(VK_NULL_HANDLE), SourceImageWidth(0), SourceImageHeight(0), GpuPresentationReady(false),
 			  GraphicsQueueFamily(~0u), DeviceCount(0), SwapchainImageCount(0), SwapchainViewCount(0),
 			  SwapchainFormat(VK_FORMAT_UNDEFINED), SwapchainColorSpace(VK_COLOR_SPACE_SRGB_NONLINEAR_KHR),
 			  SwapchainRecreateCount(0), OutOfDateCount(0), WindowMinimized(false), Ready(false)
@@ -132,6 +167,7 @@ namespace
 			{
 				SwapchainImages[i] = VK_NULL_HANDLE;
 				SwapchainImageViews[i] = VK_NULL_HANDLE;
+				SwapchainFramebuffers[i] = VK_NULL_HANDLE;
 			}
 			memset(&Vk, 0, sizeof(Vk));
 			memset(&DeviceProperties, 0, sizeof(DeviceProperties));
@@ -215,36 +251,9 @@ namespace
 				}
 				CommandPool = VK_NULL_HANDLE;
 				CommandBuffer = VK_NULL_HANDLE;
-				if (UploadMemory != VK_NULL_HANDLE && UploadPtr != NULL && Vk.UnmapMemory != NULL)
-				{
-					Vk.UnmapMemory(Device, UploadMemory);
-				}
-				UploadPtr = NULL;
-				if (UploadBuffer != VK_NULL_HANDLE && Vk.DestroyBuffer != NULL)
-				{
-					Vk.DestroyBuffer(Device, UploadBuffer, NULL);
-				}
-				UploadBuffer = VK_NULL_HANDLE;
-				if (UploadMemory != VK_NULL_HANDLE && Vk.FreeMemory != NULL)
-				{
-					Vk.FreeMemory(Device, UploadMemory, NULL);
-				}
-				UploadMemory = VK_NULL_HANDLE;
-				UploadSize = 0;
-				for (unsigned int i = 0; i < SwapchainViewCount; ++i)
-				{
-					if (SwapchainImageViews[i] != VK_NULL_HANDLE && Vk.DestroyImageView != NULL)
-					{
-						Vk.DestroyImageView(Device, SwapchainImageViews[i], NULL);
-					}
-					SwapchainImageViews[i] = VK_NULL_HANDLE;
-				}
-				SwapchainViewCount = 0;
-				if (Swapchain != VK_NULL_HANDLE && Vk.DestroySwapchainKHR != NULL)
-				{
-					Vk.DestroySwapchainKHR(Device, Swapchain, NULL);
-				}
-				Swapchain = VK_NULL_HANDLE;
+				DestroyPresentationResources();
+				DestroyUploadBuffer();
+				DestroySwapchainResources();
 				Vk.DestroyDevice(Device, NULL);
 			}
 			Device = NULL;
@@ -357,6 +366,11 @@ namespace
 			return WindowMinimized;
 		}
 
+		bool IsGpuPresentationReady() const
+		{
+			return GpuPresentationReady;
+		}
+
 		bool RecreateSwapchainForWindow()
 		{
 			if (Device == NULL)
@@ -370,6 +384,7 @@ namespace
 				Vk.DeviceWaitIdle(Device);
 			}
 
+			DestroyPresentationResources();
 			DestroyUploadBuffer();
 			DestroySwapchainResources();
 
@@ -424,7 +439,12 @@ namespace
 				VulkanStats.LastPresentSucceeded = false;
 				return false;
 			}
-			if (!EnsureUploadBuffer(presentWidth, presentHeight))
+
+			bool useGpuPresentation = EnsureGpuPresentationResources(width, height);
+			VkDeviceSize uploadNeeded = useGpuPresentation ?
+				((VkDeviceSize)width * (VkDeviceSize)height + 256 * 4) :
+				((VkDeviceSize)presentWidth * (VkDeviceSize)presentHeight * 4);
+			if (!EnsureUploadBuffer(uploadNeeded))
 			{
 				VulkanStats.LastPresentSucceeded = false;
 				PublishVulkanStats(this);
@@ -432,17 +452,35 @@ namespace
 			}
 
 			BYTE *dst = reinterpret_cast<BYTE *>(UploadPtr);
-			for (int y = 0; y < presentHeight; ++y)
+			if (useGpuPresentation)
 			{
-				const BYTE *src = pixels + ((y * height) / presentHeight) * pitch;
-				for (int x = 0; x < presentWidth; ++x)
+				for (int y = 0; y < height; ++y)
 				{
-					PalEntry color = palette[src[(x * width) / presentWidth]];
-					dst[0] = color.b;
-					dst[1] = color.g;
-					dst[2] = color.r;
-					dst[3] = 255;
-					dst += 4;
+					memcpy(dst + y * width, pixels + y * pitch, width);
+				}
+				BYTE *paletteDst = dst + width * height;
+				for (int i = 0; i < 256; ++i)
+				{
+					paletteDst[i * 4 + 0] = palette[i].r;
+					paletteDst[i * 4 + 1] = palette[i].g;
+					paletteDst[i * 4 + 2] = palette[i].b;
+					paletteDst[i * 4 + 3] = 255;
+				}
+			}
+			else
+			{
+				for (int y = 0; y < presentHeight; ++y)
+				{
+					const BYTE *src = pixels + ((y * height) / presentHeight) * pitch;
+					for (int x = 0; x < presentWidth; ++x)
+					{
+						PalEntry color = palette[src[(x * width) / presentWidth]];
+						dst[0] = color.b;
+						dst[1] = color.g;
+						dst[2] = color.r;
+						dst[3] = 255;
+						dst += 4;
+					}
 				}
 			}
 
@@ -474,13 +512,21 @@ namespace
 				VulkanStats.LastPresentSucceeded = false;
 				return false;
 			}
-			if (!RecordUploadCommands(imageIndex, presentWidth, presentHeight))
+			if (useGpuPresentation)
+			{
+				if (!RecordGpuPresentationCommands(imageIndex, width, height))
+				{
+					VulkanStats.LastPresentSucceeded = false;
+					return false;
+				}
+			}
+			else if (!RecordUploadCommands(imageIndex, presentWidth, presentHeight))
 			{
 				VulkanStats.LastPresentSucceeded = false;
 				return false;
 			}
 
-			VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+			VkPipelineStageFlags waitStage = useGpuPresentation ? VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT : VK_PIPELINE_STAGE_TRANSFER_BIT;
 			VkSubmitInfo submitInfo;
 			memset(&submitInfo, 0, sizeof(submitInfo));
 			submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -650,6 +696,35 @@ namespace
 			Vk.MapMemory = reinterpret_cast<PFN_vkMapMemory>(Vk.GetDeviceProcAddr(Device, "vkMapMemory"));
 			Vk.UnmapMemory = reinterpret_cast<PFN_vkUnmapMemory>(Vk.GetDeviceProcAddr(Device, "vkUnmapMemory"));
 			Vk.CmdCopyBufferToImage = reinterpret_cast<PFN_vkCmdCopyBufferToImage>(Vk.GetDeviceProcAddr(Device, "vkCmdCopyBufferToImage"));
+			Vk.CreateImage = reinterpret_cast<PFN_vkCreateImage>(Vk.GetDeviceProcAddr(Device, "vkCreateImage"));
+			Vk.DestroyImage = reinterpret_cast<PFN_vkDestroyImage>(Vk.GetDeviceProcAddr(Device, "vkDestroyImage"));
+			Vk.GetImageMemoryRequirements = reinterpret_cast<PFN_vkGetImageMemoryRequirements>(Vk.GetDeviceProcAddr(Device, "vkGetImageMemoryRequirements"));
+			Vk.BindImageMemory = reinterpret_cast<PFN_vkBindImageMemory>(Vk.GetDeviceProcAddr(Device, "vkBindImageMemory"));
+			Vk.CreateSampler = reinterpret_cast<PFN_vkCreateSampler>(Vk.GetDeviceProcAddr(Device, "vkCreateSampler"));
+			Vk.DestroySampler = reinterpret_cast<PFN_vkDestroySampler>(Vk.GetDeviceProcAddr(Device, "vkDestroySampler"));
+			Vk.CreateDescriptorSetLayout = reinterpret_cast<PFN_vkCreateDescriptorSetLayout>(Vk.GetDeviceProcAddr(Device, "vkCreateDescriptorSetLayout"));
+			Vk.DestroyDescriptorSetLayout = reinterpret_cast<PFN_vkDestroyDescriptorSetLayout>(Vk.GetDeviceProcAddr(Device, "vkDestroyDescriptorSetLayout"));
+			Vk.CreateDescriptorPool = reinterpret_cast<PFN_vkCreateDescriptorPool>(Vk.GetDeviceProcAddr(Device, "vkCreateDescriptorPool"));
+			Vk.DestroyDescriptorPool = reinterpret_cast<PFN_vkDestroyDescriptorPool>(Vk.GetDeviceProcAddr(Device, "vkDestroyDescriptorPool"));
+			Vk.AllocateDescriptorSets = reinterpret_cast<PFN_vkAllocateDescriptorSets>(Vk.GetDeviceProcAddr(Device, "vkAllocateDescriptorSets"));
+			Vk.UpdateDescriptorSets = reinterpret_cast<PFN_vkUpdateDescriptorSets>(Vk.GetDeviceProcAddr(Device, "vkUpdateDescriptorSets"));
+			Vk.CreatePipelineLayout = reinterpret_cast<PFN_vkCreatePipelineLayout>(Vk.GetDeviceProcAddr(Device, "vkCreatePipelineLayout"));
+			Vk.DestroyPipelineLayout = reinterpret_cast<PFN_vkDestroyPipelineLayout>(Vk.GetDeviceProcAddr(Device, "vkDestroyPipelineLayout"));
+			Vk.CreateRenderPass = reinterpret_cast<PFN_vkCreateRenderPass>(Vk.GetDeviceProcAddr(Device, "vkCreateRenderPass"));
+			Vk.DestroyRenderPass = reinterpret_cast<PFN_vkDestroyRenderPass>(Vk.GetDeviceProcAddr(Device, "vkDestroyRenderPass"));
+			Vk.CreateFramebuffer = reinterpret_cast<PFN_vkCreateFramebuffer>(Vk.GetDeviceProcAddr(Device, "vkCreateFramebuffer"));
+			Vk.DestroyFramebuffer = reinterpret_cast<PFN_vkDestroyFramebuffer>(Vk.GetDeviceProcAddr(Device, "vkDestroyFramebuffer"));
+			Vk.CreateShaderModule = reinterpret_cast<PFN_vkCreateShaderModule>(Vk.GetDeviceProcAddr(Device, "vkCreateShaderModule"));
+			Vk.DestroyShaderModule = reinterpret_cast<PFN_vkDestroyShaderModule>(Vk.GetDeviceProcAddr(Device, "vkDestroyShaderModule"));
+			Vk.CreateGraphicsPipelines = reinterpret_cast<PFN_vkCreateGraphicsPipelines>(Vk.GetDeviceProcAddr(Device, "vkCreateGraphicsPipelines"));
+			Vk.DestroyPipeline = reinterpret_cast<PFN_vkDestroyPipeline>(Vk.GetDeviceProcAddr(Device, "vkDestroyPipeline"));
+			Vk.CmdBeginRenderPass = reinterpret_cast<PFN_vkCmdBeginRenderPass>(Vk.GetDeviceProcAddr(Device, "vkCmdBeginRenderPass"));
+			Vk.CmdEndRenderPass = reinterpret_cast<PFN_vkCmdEndRenderPass>(Vk.GetDeviceProcAddr(Device, "vkCmdEndRenderPass"));
+			Vk.CmdBindPipeline = reinterpret_cast<PFN_vkCmdBindPipeline>(Vk.GetDeviceProcAddr(Device, "vkCmdBindPipeline"));
+			Vk.CmdBindDescriptorSets = reinterpret_cast<PFN_vkCmdBindDescriptorSets>(Vk.GetDeviceProcAddr(Device, "vkCmdBindDescriptorSets"));
+			Vk.CmdDraw = reinterpret_cast<PFN_vkCmdDraw>(Vk.GetDeviceProcAddr(Device, "vkCmdDraw"));
+			Vk.CmdSetViewport = reinterpret_cast<PFN_vkCmdSetViewport>(Vk.GetDeviceProcAddr(Device, "vkCmdSetViewport"));
+			Vk.CmdSetScissor = reinterpret_cast<PFN_vkCmdSetScissor>(Vk.GetDeviceProcAddr(Device, "vkCmdSetScissor"));
 			return Vk.DestroyDevice != NULL &&
 				Vk.DeviceWaitIdle != NULL &&
 				Vk.GetDeviceQueue != NULL &&
@@ -683,7 +758,36 @@ namespace
 				Vk.BindBufferMemory != NULL &&
 				Vk.MapMemory != NULL &&
 				Vk.UnmapMemory != NULL &&
-				Vk.CmdCopyBufferToImage != NULL;
+				Vk.CmdCopyBufferToImage != NULL &&
+				Vk.CreateImage != NULL &&
+				Vk.DestroyImage != NULL &&
+				Vk.GetImageMemoryRequirements != NULL &&
+				Vk.BindImageMemory != NULL &&
+				Vk.CreateSampler != NULL &&
+				Vk.DestroySampler != NULL &&
+				Vk.CreateDescriptorSetLayout != NULL &&
+				Vk.DestroyDescriptorSetLayout != NULL &&
+				Vk.CreateDescriptorPool != NULL &&
+				Vk.DestroyDescriptorPool != NULL &&
+				Vk.AllocateDescriptorSets != NULL &&
+				Vk.UpdateDescriptorSets != NULL &&
+				Vk.CreatePipelineLayout != NULL &&
+				Vk.DestroyPipelineLayout != NULL &&
+				Vk.CreateRenderPass != NULL &&
+				Vk.DestroyRenderPass != NULL &&
+				Vk.CreateFramebuffer != NULL &&
+				Vk.DestroyFramebuffer != NULL &&
+				Vk.CreateShaderModule != NULL &&
+				Vk.DestroyShaderModule != NULL &&
+				Vk.CreateGraphicsPipelines != NULL &&
+				Vk.DestroyPipeline != NULL &&
+				Vk.CmdBeginRenderPass != NULL &&
+				Vk.CmdEndRenderPass != NULL &&
+				Vk.CmdBindPipeline != NULL &&
+				Vk.CmdBindDescriptorSets != NULL &&
+				Vk.CmdDraw != NULL &&
+				Vk.CmdSetViewport != NULL &&
+				Vk.CmdSetScissor != NULL;
 		}
 
 		bool CreateInstance()
@@ -1068,6 +1172,280 @@ namespace
 			return true;
 		}
 
+		bool CreateRenderPass()
+		{
+			VkAttachmentDescription colorAttachment;
+			memset(&colorAttachment, 0, sizeof(colorAttachment));
+			colorAttachment.format = SwapchainFormat;
+			colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+			colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+			colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+			colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+			colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+			colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+			colorAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+
+			VkAttachmentReference colorRef;
+			memset(&colorRef, 0, sizeof(colorRef));
+			colorRef.attachment = 0;
+			colorRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+			VkSubpassDescription subpass;
+			memset(&subpass, 0, sizeof(subpass));
+			subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+			subpass.colorAttachmentCount = 1;
+			subpass.pColorAttachments = &colorRef;
+
+			VkRenderPassCreateInfo createInfo;
+			memset(&createInfo, 0, sizeof(createInfo));
+			createInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+			createInfo.attachmentCount = 1;
+			createInfo.pAttachments = &colorAttachment;
+			createInfo.subpassCount = 1;
+			createInfo.pSubpasses = &subpass;
+
+			VkResult result = Vk.CreateRenderPass(Device, &createInfo, NULL, &RenderPass);
+			if (result != VK_SUCCESS)
+			{
+				Printf(TEXTCOLOR_RED "Vulkan: vkCreateRenderPass failed (%d).\n", (int)result);
+				return false;
+			}
+			return true;
+		}
+
+		bool CreateSwapchainFramebuffers()
+		{
+			for (unsigned int i = 0; i < SwapchainImageCount; ++i)
+			{
+				VkImageView attachments[] = { SwapchainImageViews[i] };
+				VkFramebufferCreateInfo createInfo;
+				memset(&createInfo, 0, sizeof(createInfo));
+				createInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+				createInfo.renderPass = RenderPass;
+				createInfo.attachmentCount = 1;
+				createInfo.pAttachments = attachments;
+				createInfo.width = SwapchainExtent.width;
+				createInfo.height = SwapchainExtent.height;
+				createInfo.layers = 1;
+				VkResult result = Vk.CreateFramebuffer(Device, &createInfo, NULL, &SwapchainFramebuffers[i]);
+				if (result != VK_SUCCESS)
+				{
+					Printf(TEXTCOLOR_RED "Vulkan: vkCreateFramebuffer failed (%d).\n", (int)result);
+					return false;
+				}
+			}
+			return true;
+		}
+
+		VkShaderModule CreateShaderModule(const unsigned int *code, unsigned int size)
+		{
+			VkShaderModuleCreateInfo createInfo;
+			memset(&createInfo, 0, sizeof(createInfo));
+			createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+			createInfo.codeSize = size;
+			createInfo.pCode = code;
+
+			VkShaderModule module = VK_NULL_HANDLE;
+			VkResult result = Vk.CreateShaderModule(Device, &createInfo, NULL, &module);
+			if (result != VK_SUCCESS)
+			{
+				Printf(TEXTCOLOR_RED "Vulkan: vkCreateShaderModule failed (%d).\n", (int)result);
+				return VK_NULL_HANDLE;
+			}
+			return module;
+		}
+
+		bool CreateDescriptorResources()
+		{
+			VkDescriptorSetLayoutBinding bindings[2];
+			memset(bindings, 0, sizeof(bindings));
+			for (unsigned int i = 0; i < 2; ++i)
+			{
+				bindings[i].binding = i;
+				bindings[i].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+				bindings[i].descriptorCount = 1;
+				bindings[i].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+			}
+
+			VkDescriptorSetLayoutCreateInfo layoutInfo;
+			memset(&layoutInfo, 0, sizeof(layoutInfo));
+			layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+			layoutInfo.bindingCount = 2;
+			layoutInfo.pBindings = bindings;
+			VkResult result = Vk.CreateDescriptorSetLayout(Device, &layoutInfo, NULL, &DescriptorSetLayout);
+			if (result != VK_SUCCESS)
+			{
+				Printf(TEXTCOLOR_RED "Vulkan: vkCreateDescriptorSetLayout failed (%d).\n", (int)result);
+				return false;
+			}
+
+			VkDescriptorPoolSize poolSize;
+			memset(&poolSize, 0, sizeof(poolSize));
+			poolSize.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+			poolSize.descriptorCount = 2;
+
+			VkDescriptorPoolCreateInfo poolInfo;
+			memset(&poolInfo, 0, sizeof(poolInfo));
+			poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+			poolInfo.maxSets = 1;
+			poolInfo.poolSizeCount = 1;
+			poolInfo.pPoolSizes = &poolSize;
+			result = Vk.CreateDescriptorPool(Device, &poolInfo, NULL, &DescriptorPool);
+			if (result != VK_SUCCESS)
+			{
+				Printf(TEXTCOLOR_RED "Vulkan: vkCreateDescriptorPool failed (%d).\n", (int)result);
+				return false;
+			}
+
+			VkDescriptorSetAllocateInfo allocInfo;
+			memset(&allocInfo, 0, sizeof(allocInfo));
+			allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+			allocInfo.descriptorPool = DescriptorPool;
+			allocInfo.descriptorSetCount = 1;
+			allocInfo.pSetLayouts = &DescriptorSetLayout;
+			result = Vk.AllocateDescriptorSets(Device, &allocInfo, &DescriptorSet);
+			if (result != VK_SUCCESS)
+			{
+				Printf(TEXTCOLOR_RED "Vulkan: vkAllocateDescriptorSets failed (%d).\n", (int)result);
+				return false;
+			}
+
+			VkSamplerCreateInfo samplerInfo;
+			memset(&samplerInfo, 0, sizeof(samplerInfo));
+			samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+			samplerInfo.magFilter = VK_FILTER_NEAREST;
+			samplerInfo.minFilter = VK_FILTER_NEAREST;
+			samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+			samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+			samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+			samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+			samplerInfo.maxLod = 0.f;
+			result = Vk.CreateSampler(Device, &samplerInfo, NULL, &NearestSampler);
+			if (result != VK_SUCCESS)
+			{
+				Printf(TEXTCOLOR_RED "Vulkan: vkCreateSampler failed (%d).\n", (int)result);
+				return false;
+			}
+			return true;
+		}
+
+		bool CreateGraphicsPipeline()
+		{
+			if (RenderPass == VK_NULL_HANDLE && !CreateRenderPass())
+			{
+				return false;
+			}
+			if (DescriptorSetLayout == VK_NULL_HANDLE && !CreateDescriptorResources())
+			{
+				return false;
+			}
+
+			VkShaderModule vert = CreateShaderModule(PalettePresentVertSpv, PalettePresentVertSpvSize);
+			VkShaderModule frag = CreateShaderModule(PalettePresentFragSpv, PalettePresentFragSpvSize);
+			if (vert == VK_NULL_HANDLE || frag == VK_NULL_HANDLE)
+			{
+				if (vert != VK_NULL_HANDLE) Vk.DestroyShaderModule(Device, vert, NULL);
+				if (frag != VK_NULL_HANDLE) Vk.DestroyShaderModule(Device, frag, NULL);
+				return false;
+			}
+
+			VkPipelineShaderStageCreateInfo stages[2];
+			memset(stages, 0, sizeof(stages));
+			stages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+			stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
+			stages[0].module = vert;
+			stages[0].pName = "main";
+			stages[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+			stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+			stages[1].module = frag;
+			stages[1].pName = "main";
+
+			VkPipelineVertexInputStateCreateInfo vertexInput;
+			memset(&vertexInput, 0, sizeof(vertexInput));
+			vertexInput.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+
+			VkPipelineInputAssemblyStateCreateInfo inputAssembly;
+			memset(&inputAssembly, 0, sizeof(inputAssembly));
+			inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+			inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+
+			VkPipelineViewportStateCreateInfo viewportState;
+			memset(&viewportState, 0, sizeof(viewportState));
+			viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+			viewportState.viewportCount = 1;
+			viewportState.scissorCount = 1;
+
+			VkPipelineRasterizationStateCreateInfo rasterizer;
+			memset(&rasterizer, 0, sizeof(rasterizer));
+			rasterizer.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+			rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
+			rasterizer.cullMode = VK_CULL_MODE_NONE;
+			rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+			rasterizer.lineWidth = 1.f;
+
+			VkPipelineMultisampleStateCreateInfo multisampling;
+			memset(&multisampling, 0, sizeof(multisampling));
+			multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+			multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+
+			VkPipelineColorBlendAttachmentState blendAttachment;
+			memset(&blendAttachment, 0, sizeof(blendAttachment));
+			blendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+
+			VkPipelineColorBlendStateCreateInfo blending;
+			memset(&blending, 0, sizeof(blending));
+			blending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+			blending.attachmentCount = 1;
+			blending.pAttachments = &blendAttachment;
+
+			VkDynamicState dynamicStates[2] = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
+			VkPipelineDynamicStateCreateInfo dynamicState;
+			memset(&dynamicState, 0, sizeof(dynamicState));
+			dynamicState.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+			dynamicState.dynamicStateCount = 2;
+			dynamicState.pDynamicStates = dynamicStates;
+
+			VkPipelineLayoutCreateInfo pipelineLayoutInfo;
+			memset(&pipelineLayoutInfo, 0, sizeof(pipelineLayoutInfo));
+			pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+			pipelineLayoutInfo.setLayoutCount = 1;
+			pipelineLayoutInfo.pSetLayouts = &DescriptorSetLayout;
+			VkResult result = Vk.CreatePipelineLayout(Device, &pipelineLayoutInfo, NULL, &PipelineLayout);
+			if (result != VK_SUCCESS)
+			{
+				Printf(TEXTCOLOR_RED "Vulkan: vkCreatePipelineLayout failed (%d).\n", (int)result);
+				Vk.DestroyShaderModule(Device, vert, NULL);
+				Vk.DestroyShaderModule(Device, frag, NULL);
+				return false;
+			}
+
+			VkGraphicsPipelineCreateInfo pipelineInfo;
+			memset(&pipelineInfo, 0, sizeof(pipelineInfo));
+			pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+			pipelineInfo.stageCount = 2;
+			pipelineInfo.pStages = stages;
+			pipelineInfo.pVertexInputState = &vertexInput;
+			pipelineInfo.pInputAssemblyState = &inputAssembly;
+			pipelineInfo.pViewportState = &viewportState;
+			pipelineInfo.pRasterizationState = &rasterizer;
+			pipelineInfo.pMultisampleState = &multisampling;
+			pipelineInfo.pColorBlendState = &blending;
+			pipelineInfo.pDynamicState = &dynamicState;
+			pipelineInfo.layout = PipelineLayout;
+			pipelineInfo.renderPass = RenderPass;
+			pipelineInfo.subpass = 0;
+			result = Vk.CreateGraphicsPipelines(Device, VK_NULL_HANDLE, 1, &pipelineInfo, NULL, &GraphicsPipeline);
+
+			Vk.DestroyShaderModule(Device, vert, NULL);
+			Vk.DestroyShaderModule(Device, frag, NULL);
+			if (result != VK_SUCCESS)
+			{
+				Printf(TEXTCOLOR_RED "Vulkan: vkCreateGraphicsPipelines failed (%d).\n", (int)result);
+				return false;
+			}
+			return true;
+		}
+
 		void DestroyUploadBuffer()
 		{
 			if (Device == NULL)
@@ -1105,6 +1483,14 @@ namespace
 				SwapchainViewCount = 0;
 				return;
 			}
+			for (unsigned int i = 0; i < MaxSwapchainImages; ++i)
+			{
+				if (SwapchainFramebuffers[i] != VK_NULL_HANDLE && Vk.DestroyFramebuffer != NULL)
+				{
+					Vk.DestroyFramebuffer(Device, SwapchainFramebuffers[i], NULL);
+				}
+				SwapchainFramebuffers[i] = VK_NULL_HANDLE;
+			}
 			for (unsigned int i = 0; i < SwapchainViewCount; ++i)
 			{
 				if (SwapchainImageViews[i] != VK_NULL_HANDLE && Vk.DestroyImageView != NULL)
@@ -1128,6 +1514,51 @@ namespace
 			SwapchainColorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
 			SwapchainExtent.width = 0;
 			SwapchainExtent.height = 0;
+		}
+
+		void DestroyPresentationResources()
+		{
+			DestroySourceImages();
+			for (unsigned int i = 0; i < MaxSwapchainImages; ++i)
+			{
+				if (SwapchainFramebuffers[i] != VK_NULL_HANDLE && Vk.DestroyFramebuffer != NULL)
+				{
+					Vk.DestroyFramebuffer(Device, SwapchainFramebuffers[i], NULL);
+				}
+				SwapchainFramebuffers[i] = VK_NULL_HANDLE;
+			}
+			if (GraphicsPipeline != VK_NULL_HANDLE && Vk.DestroyPipeline != NULL)
+			{
+				Vk.DestroyPipeline(Device, GraphicsPipeline, NULL);
+			}
+			GraphicsPipeline = VK_NULL_HANDLE;
+			if (PipelineLayout != VK_NULL_HANDLE && Vk.DestroyPipelineLayout != NULL)
+			{
+				Vk.DestroyPipelineLayout(Device, PipelineLayout, NULL);
+			}
+			PipelineLayout = VK_NULL_HANDLE;
+			if (RenderPass != VK_NULL_HANDLE && Vk.DestroyRenderPass != NULL)
+			{
+				Vk.DestroyRenderPass(Device, RenderPass, NULL);
+			}
+			RenderPass = VK_NULL_HANDLE;
+			if (DescriptorPool != VK_NULL_HANDLE && Vk.DestroyDescriptorPool != NULL)
+			{
+				Vk.DestroyDescriptorPool(Device, DescriptorPool, NULL);
+			}
+			DescriptorPool = VK_NULL_HANDLE;
+			DescriptorSet = VK_NULL_HANDLE;
+			if (DescriptorSetLayout != VK_NULL_HANDLE && Vk.DestroyDescriptorSetLayout != NULL)
+			{
+				Vk.DestroyDescriptorSetLayout(Device, DescriptorSetLayout, NULL);
+			}
+			DescriptorSetLayout = VK_NULL_HANDLE;
+			if (NearestSampler != VK_NULL_HANDLE && Vk.DestroySampler != NULL)
+			{
+				Vk.DestroySampler(Device, NearestSampler, NULL);
+			}
+			NearestSampler = VK_NULL_HANDLE;
+			GpuPresentationReady = false;
 		}
 
 		bool GetClientExtent(unsigned int &width, unsigned int &height) const
@@ -1268,9 +1699,186 @@ namespace
 			return ~0u;
 		}
 
-		bool EnsureUploadBuffer(int width, int height)
+		bool CreateSampledImage(unsigned int width, unsigned int height, VkFormat format, VkImage &image, VkDeviceMemory &memory)
 		{
-			VkDeviceSize needed = (VkDeviceSize)width * (VkDeviceSize)height * 4;
+			VkImageCreateInfo imageInfo;
+			memset(&imageInfo, 0, sizeof(imageInfo));
+			imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+			imageInfo.imageType = VK_IMAGE_TYPE_2D;
+			imageInfo.format = format;
+			imageInfo.extent.width = width;
+			imageInfo.extent.height = height;
+			imageInfo.extent.depth = 1;
+			imageInfo.mipLevels = 1;
+			imageInfo.arrayLayers = 1;
+			imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+			imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+			imageInfo.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+			imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+			imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+			VkResult result = Vk.CreateImage(Device, &imageInfo, NULL, &image);
+			if (result != VK_SUCCESS)
+			{
+				Printf(TEXTCOLOR_RED "Vulkan: vkCreateImage failed (%d).\n", (int)result);
+				return false;
+			}
+
+			VkMemoryRequirements requirements;
+			Vk.GetImageMemoryRequirements(Device, image, &requirements);
+			unsigned int memoryType = FindMemoryType(requirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+			if (memoryType == ~0u)
+			{
+				Printf(TEXTCOLOR_RED "Vulkan: no device-local image memory type found.\n");
+				return false;
+			}
+
+			VkMemoryAllocateInfo allocInfo;
+			memset(&allocInfo, 0, sizeof(allocInfo));
+			allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+			allocInfo.allocationSize = requirements.size;
+			allocInfo.memoryTypeIndex = memoryType;
+			result = Vk.AllocateMemory(Device, &allocInfo, NULL, &memory);
+			if (result != VK_SUCCESS)
+			{
+				Printf(TEXTCOLOR_RED "Vulkan: vkAllocateMemory image failed (%d).\n", (int)result);
+				return false;
+			}
+			result = Vk.BindImageMemory(Device, image, memory, 0);
+			if (result != VK_SUCCESS)
+			{
+				Printf(TEXTCOLOR_RED "Vulkan: vkBindImageMemory failed (%d).\n", (int)result);
+				return false;
+			}
+			return true;
+		}
+
+		bool CreateSampledImageView(VkImage image, VkFormat format, VkImageView &view)
+		{
+			VkImageViewCreateInfo viewInfo;
+			memset(&viewInfo, 0, sizeof(viewInfo));
+			viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+			viewInfo.image = image;
+			viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+			viewInfo.format = format;
+			viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+			viewInfo.subresourceRange.baseMipLevel = 0;
+			viewInfo.subresourceRange.levelCount = 1;
+			viewInfo.subresourceRange.baseArrayLayer = 0;
+			viewInfo.subresourceRange.layerCount = 1;
+			VkResult result = Vk.CreateImageView(Device, &viewInfo, NULL, &view);
+			if (result != VK_SUCCESS)
+			{
+				Printf(TEXTCOLOR_RED "Vulkan: vkCreateImageView sampled failed (%d).\n", (int)result);
+				return false;
+			}
+			return true;
+		}
+
+		void DestroySourceImages()
+		{
+			if (SourceImageView != VK_NULL_HANDLE && Vk.DestroyImageView != NULL)
+			{
+				Vk.DestroyImageView(Device, SourceImageView, NULL);
+			}
+			SourceImageView = VK_NULL_HANDLE;
+			if (SourceImage != VK_NULL_HANDLE && Vk.DestroyImage != NULL)
+			{
+				Vk.DestroyImage(Device, SourceImage, NULL);
+			}
+			SourceImage = VK_NULL_HANDLE;
+			if (SourceImageMemory != VK_NULL_HANDLE && Vk.FreeMemory != NULL)
+			{
+				Vk.FreeMemory(Device, SourceImageMemory, NULL);
+			}
+			SourceImageMemory = VK_NULL_HANDLE;
+			if (PaletteImageView != VK_NULL_HANDLE && Vk.DestroyImageView != NULL)
+			{
+				Vk.DestroyImageView(Device, PaletteImageView, NULL);
+			}
+			PaletteImageView = VK_NULL_HANDLE;
+			if (PaletteImage != VK_NULL_HANDLE && Vk.DestroyImage != NULL)
+			{
+				Vk.DestroyImage(Device, PaletteImage, NULL);
+			}
+			PaletteImage = VK_NULL_HANDLE;
+			if (PaletteImageMemory != VK_NULL_HANDLE && Vk.FreeMemory != NULL)
+			{
+				Vk.FreeMemory(Device, PaletteImageMemory, NULL);
+			}
+			PaletteImageMemory = VK_NULL_HANDLE;
+			SourceImageWidth = 0;
+			SourceImageHeight = 0;
+			GpuPresentationReady = false;
+		}
+
+		void UpdateDescriptorSet()
+		{
+			VkDescriptorImageInfo imageInfos[2];
+			memset(imageInfos, 0, sizeof(imageInfos));
+			imageInfos[0].sampler = NearestSampler;
+			imageInfos[0].imageView = SourceImageView;
+			imageInfos[0].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+			imageInfos[1].sampler = NearestSampler;
+			imageInfos[1].imageView = PaletteImageView;
+			imageInfos[1].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+			VkWriteDescriptorSet writes[2];
+			memset(writes, 0, sizeof(writes));
+			for (unsigned int i = 0; i < 2; ++i)
+			{
+				writes[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+				writes[i].dstSet = DescriptorSet;
+				writes[i].dstBinding = i;
+				writes[i].descriptorCount = 1;
+				writes[i].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+				writes[i].pImageInfo = &imageInfos[i];
+			}
+			Vk.UpdateDescriptorSets(Device, 2, writes, 0, NULL);
+		}
+
+		bool EnsureGpuPresentationResources(int width, int height)
+		{
+			if (width <= 0 || height <= 0)
+			{
+				return false;
+			}
+			if (RenderPass == VK_NULL_HANDLE && !CreateRenderPass())
+			{
+				return false;
+			}
+			if (GraphicsPipeline == VK_NULL_HANDLE && !CreateGraphicsPipeline())
+			{
+				return false;
+			}
+			if (SwapchainFramebuffers[0] == VK_NULL_HANDLE && !CreateSwapchainFramebuffers())
+			{
+				return false;
+			}
+			if (SourceImage != VK_NULL_HANDLE && SourceImageWidth == (unsigned int)width && SourceImageHeight == (unsigned int)height)
+			{
+				GpuPresentationReady = true;
+				return true;
+			}
+
+			DestroySourceImages();
+			if (!CreateSampledImage((unsigned int)width, (unsigned int)height, VK_FORMAT_R8_UNORM, SourceImage, SourceImageMemory) ||
+				!CreateSampledImage(256, 1, VK_FORMAT_R8G8B8A8_UNORM, PaletteImage, PaletteImageMemory) ||
+				!CreateSampledImageView(SourceImage, VK_FORMAT_R8_UNORM, SourceImageView) ||
+				!CreateSampledImageView(PaletteImage, VK_FORMAT_R8G8B8A8_UNORM, PaletteImageView))
+			{
+				DestroySourceImages();
+				return false;
+			}
+			SourceImageWidth = (unsigned int)width;
+			SourceImageHeight = (unsigned int)height;
+			UpdateDescriptorSet();
+			GpuPresentationReady = true;
+			return true;
+		}
+
+		bool EnsureUploadBuffer(VkDeviceSize needed)
+		{
 			if (UploadBuffer != VK_NULL_HANDLE && UploadSize >= needed)
 			{
 				return true;
@@ -1480,6 +2088,97 @@ namespace
 			return Vk.EndCommandBuffer(CommandBuffer) == VK_SUCCESS;
 		}
 
+		bool RecordGpuPresentationCommands(unsigned int imageIndex, int width, int height)
+		{
+			VkCommandBufferBeginInfo beginInfo;
+			memset(&beginInfo, 0, sizeof(beginInfo));
+			beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+			beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+			VkResult result = Vk.BeginCommandBuffer(CommandBuffer, &beginInfo);
+			if (result != VK_SUCCESS)
+			{
+				return false;
+			}
+
+			VkImageSubresourceRange colorRange;
+			memset(&colorRange, 0, sizeof(colorRange));
+			colorRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+			colorRange.baseMipLevel = 0;
+			colorRange.levelCount = 1;
+			colorRange.baseArrayLayer = 0;
+			colorRange.layerCount = 1;
+
+			VkImageMemoryBarrier imageBarriers[2];
+			memset(imageBarriers, 0, sizeof(imageBarriers));
+			imageBarriers[0].sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+			imageBarriers[0].oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+			imageBarriers[0].newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+			imageBarriers[0].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+			imageBarriers[0].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+			imageBarriers[0].image = SourceImage;
+			imageBarriers[0].subresourceRange = colorRange;
+			imageBarriers[0].dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+			imageBarriers[1] = imageBarriers[0];
+			imageBarriers[1].image = PaletteImage;
+			Vk.CmdPipelineBarrier(CommandBuffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 0, NULL, 2, imageBarriers);
+
+			VkBufferImageCopy copyRegions[2];
+			memset(copyRegions, 0, sizeof(copyRegions));
+			copyRegions[0].bufferOffset = 0;
+			copyRegions[0].bufferRowLength = (unsigned int)width;
+			copyRegions[0].bufferImageHeight = (unsigned int)height;
+			copyRegions[0].imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+			copyRegions[0].imageSubresource.layerCount = 1;
+			copyRegions[0].imageExtent.width = (unsigned int)width;
+			copyRegions[0].imageExtent.height = (unsigned int)height;
+			copyRegions[0].imageExtent.depth = 1;
+			copyRegions[1].bufferOffset = (VkDeviceSize)width * (VkDeviceSize)height;
+			copyRegions[1].bufferRowLength = 256;
+			copyRegions[1].bufferImageHeight = 1;
+			copyRegions[1].imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+			copyRegions[1].imageSubresource.layerCount = 1;
+			copyRegions[1].imageExtent.width = 256;
+			copyRegions[1].imageExtent.height = 1;
+			copyRegions[1].imageExtent.depth = 1;
+			Vk.CmdCopyBufferToImage(CommandBuffer, UploadBuffer, SourceImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copyRegions[0]);
+			Vk.CmdCopyBufferToImage(CommandBuffer, UploadBuffer, PaletteImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copyRegions[1]);
+
+			imageBarriers[0].oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+			imageBarriers[0].newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+			imageBarriers[0].srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+			imageBarriers[0].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+			imageBarriers[1] = imageBarriers[0];
+			imageBarriers[1].image = PaletteImage;
+			Vk.CmdPipelineBarrier(CommandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, NULL, 0, NULL, 2, imageBarriers);
+
+			VkRenderPassBeginInfo renderPassInfo;
+			memset(&renderPassInfo, 0, sizeof(renderPassInfo));
+			renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+			renderPassInfo.renderPass = RenderPass;
+			renderPassInfo.framebuffer = SwapchainFramebuffers[imageIndex];
+			renderPassInfo.renderArea.extent = SwapchainExtent;
+			Vk.CmdBeginRenderPass(CommandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+			VkViewport viewport;
+			memset(&viewport, 0, sizeof(viewport));
+			viewport.width = (float)SwapchainExtent.width;
+			viewport.height = (float)SwapchainExtent.height;
+			viewport.minDepth = 0.f;
+			viewport.maxDepth = 1.f;
+			VkRect2D scissor;
+			memset(&scissor, 0, sizeof(scissor));
+			scissor.extent = SwapchainExtent;
+			Vk.CmdSetViewport(CommandBuffer, 0, 1, &viewport);
+			Vk.CmdSetScissor(CommandBuffer, 0, 1, &scissor);
+			Vk.CmdBindPipeline(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, GraphicsPipeline);
+			Vk.CmdBindDescriptorSets(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, PipelineLayout, 0, 1, &DescriptorSet, 0, NULL);
+			Vk.CmdDraw(CommandBuffer, 3, 1, 0, 0);
+			Vk.CmdEndRenderPass(CommandBuffer);
+
+			return Vk.EndCommandBuffer(CommandBuffer) == VK_SUCCESS;
+		}
+
 		bool PresentStartupFrame()
 		{
 			unsigned int imageIndex = 0;
@@ -1553,6 +2252,7 @@ namespace
 		VkSwapchainKHR Swapchain;
 		VkImage SwapchainImages[MaxSwapchainImages];
 		VkImageView SwapchainImageViews[MaxSwapchainImages];
+		VkFramebuffer SwapchainFramebuffers[MaxSwapchainImages];
 		VkCommandPool CommandPool;
 		VkCommandBuffer CommandBuffer;
 		VkSemaphore ImageAvailableSemaphore;
@@ -1562,6 +2262,22 @@ namespace
 		VkDeviceMemory UploadMemory;
 		void *UploadPtr;
 		VkDeviceSize UploadSize;
+		VkImage SourceImage;
+		VkDeviceMemory SourceImageMemory;
+		VkImageView SourceImageView;
+		VkImage PaletteImage;
+		VkDeviceMemory PaletteImageMemory;
+		VkImageView PaletteImageView;
+		VkSampler NearestSampler;
+		VkDescriptorSetLayout DescriptorSetLayout;
+		VkDescriptorPool DescriptorPool;
+		VkDescriptorSet DescriptorSet;
+		VkPipelineLayout PipelineLayout;
+		VkRenderPass RenderPass;
+		VkPipeline GraphicsPipeline;
+		unsigned int SourceImageWidth;
+		unsigned int SourceImageHeight;
+		bool GpuPresentationReady;
 		unsigned int GraphicsQueueFamily;
 		unsigned int DeviceCount;
 		unsigned int SwapchainImageCount;
@@ -1610,6 +2326,7 @@ namespace
 		VulkanStats.UploadBufferBytes = (unsigned long long)runtime->GetUploadSize();
 		VulkanStats.SwapchainRecreateCount = runtime->GetSwapchainRecreateCount();
 		VulkanStats.OutOfDateCount = runtime->GetOutOfDateCount();
+		VulkanStats.GpuPresentationActive = runtime->IsGpuPresentationReady();
 		VulkanStats.WindowMinimized = runtime->IsWindowMinimized();
 
 		const VkPhysicalDeviceProperties &properties = runtime->GetDeviceProperties();

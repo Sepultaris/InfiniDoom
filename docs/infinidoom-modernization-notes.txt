@@ -51,6 +51,11 @@ Current Vulkan direction:
   swapchain authority. Logical software framebuffer size can differ from the
   swapchain in borderless fullscreen, so presentation must scale into the
   current swapchain extent and recreate when the client extent changes.
+- The first GPU presentation path uploads the existing software renderer's
+  8-bit framebuffer and active palette to sampled Vulkan images. A fullscreen
+  triangle shader performs palette lookup and scaling into the swapchain. The
+  previous CPU-expanded transfer copy remains as a fallback while the GPU path
+  matures.
 - Next steps should be:
   1. add SDL surface creation for non-Windows targets;
   2. harden resize, alt-tab, and swapchain recreation;

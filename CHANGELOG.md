@@ -1,5 +1,17 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.5 - 2026-06-26
+
+- Added the first Vulkan GPU presentation path: the software framebuffer is
+  uploaded as an 8-bit source image plus RGBA palette image, then presented by
+  a fullscreen Vulkan shader.
+- Kept the previous CPU-expanded transfer presenter as a fallback if shader
+  presentation resources cannot be created.
+- Added readable GLSL shader sources and embedded SPIR-V for the Vulkan palette
+  presenter.
+- `stat renderer` now reports whether Vulkan presentation is using the GPU
+  palette shader or the transfer fallback.
+
 ## 3.3-alpha-vdoom.4 - 2026-06-26
 
 - Fixed Vulkan framebuffer creation so fresh modes preserve the requested

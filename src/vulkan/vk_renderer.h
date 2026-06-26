@@ -27,6 +27,7 @@ struct FVulkanBackendStats
 	unsigned int LastPresentMS;
 	unsigned int SwapchainRecreateCount;
 	unsigned int OutOfDateCount;
+	bool GpuPresentationActive;
 	bool LastPresentSucceeded;
 	bool WindowMinimized;
 };
