@@ -36,6 +36,7 @@ struct FVulkanBackendStats
 	unsigned int PresentViewportY;
 	unsigned int PresentViewportWidth;
 	unsigned int PresentViewportHeight;
+	float PresentAspect;
 	bool GpuPresentationActive;
 	bool TimestampQueriesAvailable;
 	bool MemoryBudgetAvailable;

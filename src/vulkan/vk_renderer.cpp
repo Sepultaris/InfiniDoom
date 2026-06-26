@@ -71,6 +71,18 @@ CUSTOM_CVAR(Int, vk_present_scale_mode, 1, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CV
 	}
 }
 
+CUSTOM_CVAR(Float, vk_present_aspect, 4.f / 3.f, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINITCALL)
+{
+	if (self < 0.25f)
+	{
+		self = 0.25f;
+	}
+	else if (self > 4.f)
+	{
+		self = 4.f;
+	}
+}
+
 namespace
 {
 #ifdef _WIN32
@@ -476,6 +488,11 @@ namespace
 		unsigned int GetPresentViewportHeight() const
 		{
 			return PresentViewportHeight;
+		}
+
+		float GetPresentAspect() const
+		{
+			return vk_present_aspect;
 		}
 
 		bool RecreateSwapchainForWindow()
@@ -2424,17 +2441,36 @@ namespace
 				return constants;
 			}
 
-			double scaleX = (double)SwapchainExtent.width / (double)sourceWidth;
-			double scaleY = (double)SwapchainExtent.height / (double)sourceHeight;
-			double scale = scaleX < scaleY ? scaleX : scaleY;
-			if (PresentScaleMode == 2 && scale >= 1.0)
+			const double targetAspect = vk_present_aspect > 0.0f ? (double)vk_present_aspect : (4.0 / 3.0);
+			unsigned int targetWidth = SwapchainExtent.width;
+			unsigned int targetHeight = (unsigned int)((double)targetWidth / targetAspect + 0.5);
+			if (targetHeight > SwapchainExtent.height)
 			{
-				unsigned int integerScale = (unsigned int)scale;
-				scale = (double)integerScale;
+				targetHeight = SwapchainExtent.height;
+				targetWidth = (unsigned int)((double)targetHeight * targetAspect + 0.5);
 			}
 
-			unsigned int displayWidth = (unsigned int)((double)sourceWidth * scale + 0.5);
-			unsigned int displayHeight = (unsigned int)((double)sourceHeight * scale + 0.5);
+			unsigned int displayWidth = targetWidth;
+			unsigned int displayHeight = targetHeight;
+			if (PresentScaleMode == 2)
+			{
+				const unsigned int virtualWidth = 320;
+				unsigned int virtualHeight = (unsigned int)((double)virtualWidth / targetAspect + 0.5);
+				if (virtualHeight == 0)
+				{
+					virtualHeight = 1;
+				}
+				unsigned int scaleX = SwapchainExtent.width / virtualWidth;
+				unsigned int scaleY = SwapchainExtent.height / virtualHeight;
+				unsigned int integerScale = scaleX < scaleY ? scaleX : scaleY;
+				if (integerScale == 0)
+				{
+					integerScale = 1;
+				}
+				displayWidth = virtualWidth * integerScale;
+				displayHeight = virtualHeight * integerScale;
+			}
+
 			if (displayWidth > SwapchainExtent.width)
 			{
 				displayWidth = SwapchainExtent.width;
@@ -2699,6 +2735,7 @@ namespace
 		VulkanStats.PresentViewportY = runtime->GetPresentViewportY();
 		VulkanStats.PresentViewportWidth = runtime->GetPresentViewportWidth();
 		VulkanStats.PresentViewportHeight = runtime->GetPresentViewportHeight();
+		VulkanStats.PresentAspect = runtime->GetPresentAspect();
 
 		const VkPhysicalDeviceProperties &properties = runtime->GetDeviceProperties();
 		CopyVulkanString(VulkanStats.DeviceName, sizeof(VulkanStats.DeviceName), properties.deviceName);

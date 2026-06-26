@@ -1,5 +1,13 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.9 - 2026-06-26
+
+- Changed Vulkan presentation scale modes to use an explicit configurable
+  presentation aspect instead of the already-window-sized software framebuffer.
+  This makes `vk_present_scale_mode` visibly affect normal Vulkan fullscreen
+  and windowed modes.
+- Added `vk_present_aspect`, defaulting to classic 4:3 presentation.
+
 ## 3.3-alpha-vdoom.8 - 2026-06-26
 
 - Added aspect-aware Vulkan presentation scaling through

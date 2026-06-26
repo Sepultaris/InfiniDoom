@@ -145,10 +145,11 @@ ADD_STAT(renderer)
 				vk.SwapchainRecreateCount,
 				vk.OutOfDateCount,
 				vk.WindowMinimized ? ", minimized" : "");
-			out.AppendFormat("Presentation: %s, %s filter, %s\n",
+			out.AppendFormat("Presentation: %s, %s filter, %s, aspect %.3f\n",
 				vk.GpuPresentationActive ? "GPU palette shader" : "transfer fallback",
 				vk.PresentFilterMode != 0 ? "linear" : "nearest",
-				VulkanScaleModeName(vk.PresentScaleMode));
+				VulkanScaleModeName(vk.PresentScaleMode),
+				vk.PresentAspect);
 			if (vk.GpuPresentationActive)
 			{
 				out.AppendFormat("Present viewport: %ux%u at %u,%u\n",
