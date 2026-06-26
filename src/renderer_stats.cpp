@@ -181,6 +181,9 @@ ADD_STAT(renderer)
 				FormatPresentAspect(vk.PresentAspect).GetChars());
 			if (vk.GpuPresentationActive)
 			{
+				out.AppendFormat("Present source: %ux%u\n",
+					vk.PresentSourceWidth,
+					vk.PresentSourceHeight);
 				out.AppendFormat("Present viewport: %ux%u at %u,%u\n",
 					vk.PresentViewportWidth,
 					vk.PresentViewportHeight,

@@ -62,6 +62,12 @@ Current Vulkan direction:
   `1` enables the old experimental linear sampling of palette indices; value
   `2` keeps nearest index sampling and blends the final palette colors in the
   shader for a more visible, less color-corrupting smoothing experiment.
+- `vk_render_scale` currently controls the Vulkan presentation source scale for
+  quality testing. Values below `1.0` downsample the completed software frame
+  before uploading it to Vulkan, then the palette presenter upscales it to the
+  swapchain. This proves and tunes the presentation/upscale path; a later pass
+  should separate true internal render resolution from logical UI and output
+  resolution.
 - `vk_present_scale_mode` controls how the Vulkan palette presenter maps the
   software framebuffer into the swapchain: `0` stretches to the full client
   size, `1` preserves aspect, and `2` uses integer scaling against a 320-wide

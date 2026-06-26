@@ -1,5 +1,15 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.13 - 2026-06-26
+
+- Added `vk_render_scale`, a Vulkan presentation-source scale control for
+  testing upscale quality. Values below `1.0` downsample the completed
+  software frame before the Vulkan palette presenter upscales it to the
+  swapchain, making `vk_present_filter` differences visible without changing
+  the selected window/output resolution.
+- Updated `stat renderer` to show the Vulkan present source dimensions in
+  addition to the framebuffer, swapchain, and viewport sizes.
+
 ## 3.3-alpha-vdoom.12 - 2026-06-26
 
 - Added `vk_present_filter 2`, a Vulkan palette-present smoothing mode that

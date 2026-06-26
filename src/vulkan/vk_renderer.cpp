@@ -59,6 +59,18 @@ CUSTOM_CVAR(Int, vk_present_filter, 0, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_N
 	}
 }
 
+CUSTOM_CVAR(Float, vk_render_scale, 1.f, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINITCALL)
+{
+	if (self < 0.25f)
+	{
+		self = 0.25f;
+	}
+	else if (self > 1.f)
+	{
+		self = 1.f;
+	}
+}
+
 CUSTOM_CVAR(Int, vk_present_scale_mode, 1, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINITCALL)
 {
 	if (self < 0)
@@ -204,6 +216,11 @@ namespace
 	static int ClampPresentFilterMode()
 	{
 		return vk_present_filter < 0 ? 0 : (vk_present_filter > 2 ? 2 : vk_present_filter);
+	}
+
+	static float ClampRenderScale()
+	{
+		return vk_render_scale < 0.25f ? 0.25f : (vk_render_scale > 1.f ? 1.f : vk_render_scale);
 	}
 
 	class VulkanRuntime
@@ -498,6 +515,16 @@ namespace
 		unsigned int GetPresentViewportHeight() const
 		{
 			return PresentViewportHeight;
+		}
+
+		unsigned int GetPresentSourceWidth() const
+		{
+			return SourceImageWidth;
+		}
+
+		unsigned int GetPresentSourceHeight() const
+		{
+			return SourceImageHeight;
 		}
 
 		float GetPresentAspect() const
@@ -2752,6 +2779,8 @@ namespace
 		VulkanStats.PresentViewportY = runtime->GetPresentViewportY();
 		VulkanStats.PresentViewportWidth = runtime->GetPresentViewportWidth();
 		VulkanStats.PresentViewportHeight = runtime->GetPresentViewportHeight();
+		VulkanStats.PresentSourceWidth = runtime->GetPresentSourceWidth();
+		VulkanStats.PresentSourceHeight = runtime->GetPresentSourceHeight();
 		VulkanStats.PresentAspect = runtime->GetPresentAspect();
 
 		const VkPhysicalDeviceProperties &properties = runtime->GetDeviceProperties();
@@ -2845,13 +2874,14 @@ class VulkanFrameBuffer : public DFrameBuffer
 	DECLARE_CLASS(VulkanFrameBuffer, DFrameBuffer)
 public:
 	VulkanFrameBuffer()
-		: Runtime(NULL), Fullscreen(false), GammaValue(1.f), FlashColor(0), FlashAmount(0)
+		: Runtime(NULL), Fullscreen(false), PresentBuffer(NULL), PresentBufferSize(0),
+		  GammaValue(1.f), FlashColor(0), FlashAmount(0)
 	{
 	}
 
 	VulkanFrameBuffer(int width, int height, bool fullscreen)
 		: DFrameBuffer(width, height), Runtime(NULL), Fullscreen(fullscreen),
-		  GammaValue(1.f), FlashColor(0), FlashAmount(0)
+		  PresentBuffer(NULL), PresentBufferSize(0), GammaValue(1.f), FlashColor(0), FlashAmount(0)
 	{
 		memcpy(SourcePalette, GPalette.BaseColors, sizeof(SourcePalette));
 		ResizeVulkanWindow(width, height, fullscreen);
@@ -2877,6 +2907,9 @@ public:
 	{
 		delete Runtime;
 		Runtime = NULL;
+		delete[] PresentBuffer;
+		PresentBuffer = NULL;
+		PresentBufferSize = 0;
 	}
 
 	bool IsValid()
@@ -2909,7 +2942,12 @@ public:
 
 		PalEntry palette[256];
 		GetFlashedPalette(palette);
-		Runtime->PresentPalettedFrame(MemBuffer, Pitch, Width, Height, palette);
+		const BYTE *presentSource = MemBuffer;
+		int presentPitch = Pitch;
+		int presentWidth = Width;
+		int presentHeight = Height;
+		BuildPresentSource(presentSource, presentPitch, presentWidth, presentHeight);
+		Runtime->PresentPalettedFrame(presentSource, presentPitch, presentWidth, presentHeight, palette);
 
 		LockCount = 0;
 		Buffer = NULL;
@@ -2992,8 +3030,46 @@ public:
 	}
 
 private:
+	void BuildPresentSource(const BYTE *&source, int &pitch, int &width, int &height)
+	{
+		const float scale = ClampRenderScale();
+		if (scale >= 0.999f)
+		{
+			return;
+		}
+
+		const int scaledWidth = MAX(1, (int)((float)Width * scale + 0.5f));
+		const int scaledHeight = MAX(1, (int)((float)Height * scale + 0.5f));
+		const unsigned int needed = (unsigned int)(scaledWidth * scaledHeight);
+		if (PresentBufferSize < needed)
+		{
+			delete[] PresentBuffer;
+			PresentBuffer = new BYTE[needed];
+			PresentBufferSize = needed;
+		}
+
+		for (int y = 0; y < scaledHeight; ++y)
+		{
+			const int srcY = (int)(((long long)y * Height) / scaledHeight);
+			const BYTE *srcRow = MemBuffer + srcY * Pitch;
+			BYTE *dstRow = PresentBuffer + y * scaledWidth;
+			for (int x = 0; x < scaledWidth; ++x)
+			{
+				const int srcX = (int)(((long long)x * Width) / scaledWidth);
+				dstRow[x] = srcRow[srcX];
+			}
+		}
+
+		source = PresentBuffer;
+		pitch = scaledWidth;
+		width = scaledWidth;
+		height = scaledHeight;
+	}
+
 	VulkanRuntime *Runtime;
 	bool Fullscreen;
+	BYTE *PresentBuffer;
+	unsigned int PresentBufferSize;
 	float GammaValue;
 	PalEntry SourcePalette[256];
 	PalEntry FlashColor;
