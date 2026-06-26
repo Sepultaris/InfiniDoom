@@ -31,6 +31,11 @@ struct FVulkanBackendStats
 	unsigned int SwapchainRecreateCount;
 	unsigned int OutOfDateCount;
 	unsigned int PresentFilterMode;
+	unsigned int PresentScaleMode;
+	unsigned int PresentViewportX;
+	unsigned int PresentViewportY;
+	unsigned int PresentViewportWidth;
+	unsigned int PresentViewportHeight;
 	bool GpuPresentationActive;
 	bool TimestampQueriesAvailable;
 	bool MemoryBudgetAvailable;

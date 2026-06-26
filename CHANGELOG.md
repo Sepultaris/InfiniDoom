@@ -1,5 +1,15 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.8 - 2026-06-26
+
+- Added aspect-aware Vulkan presentation scaling through
+  `vk_present_scale_mode`: `0` stretches, `1` preserves aspect ratio, and `2`
+  uses integer scaling when possible.
+- Updated the Vulkan palette presenter shader to use push constants for
+  source-to-swapchain mapping and border fill.
+- Expanded `stat renderer` with the active Vulkan scale mode and presentation
+  viewport.
+
 ## 3.3-alpha-vdoom.7 - 2026-06-26
 
 - Added Vulkan timestamp-query instrumentation so `stat renderer` can report

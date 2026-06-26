@@ -77,6 +77,21 @@ static FString FormatVulkanVersion(unsigned int version)
 	return out;
 }
 
+static const char *VulkanScaleModeName(unsigned int mode)
+{
+	switch (mode)
+	{
+	case 0:
+		return "stretch";
+	case 1:
+		return "preserve aspect";
+	case 2:
+		return "integer scale";
+	default:
+		return "unknown";
+	}
+}
+
 static unsigned long long GetProcessRamBytes()
 {
 #ifdef _WIN32
@@ -130,9 +145,18 @@ ADD_STAT(renderer)
 				vk.SwapchainRecreateCount,
 				vk.OutOfDateCount,
 				vk.WindowMinimized ? ", minimized" : "");
-			out.AppendFormat("Presentation: %s, %s filter\n",
+			out.AppendFormat("Presentation: %s, %s filter, %s\n",
 				vk.GpuPresentationActive ? "GPU palette shader" : "transfer fallback",
-				vk.PresentFilterMode != 0 ? "linear" : "nearest");
+				vk.PresentFilterMode != 0 ? "linear" : "nearest",
+				VulkanScaleModeName(vk.PresentScaleMode));
+			if (vk.GpuPresentationActive)
+			{
+				out.AppendFormat("Present viewport: %ux%u at %u,%u\n",
+					vk.PresentViewportWidth,
+					vk.PresentViewportHeight,
+					vk.PresentViewportX,
+					vk.PresentViewportY);
+			}
 			out.AppendFormat("Queue: graphics/present family %u of %u device(s)\n",
 				vk.GraphicsQueueFamily,
 				vk.DeviceCount);

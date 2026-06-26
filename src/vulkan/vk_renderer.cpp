@@ -59,6 +59,18 @@ CUSTOM_CVAR(Int, vk_present_filter, 0, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_N
 	}
 }
 
+CUSTOM_CVAR(Int, vk_present_scale_mode, 1, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINITCALL)
+{
+	if (self < 0)
+	{
+		self = 0;
+	}
+	else if (self > 2)
+	{
+		self = 2;
+	}
+}
+
 namespace
 {
 #ifdef _WIN32
@@ -148,6 +160,7 @@ namespace
 		PFN_vkCmdDraw CmdDraw;
 		PFN_vkCmdSetViewport CmdSetViewport;
 		PFN_vkCmdSetScissor CmdSetScissor;
+		PFN_vkCmdPushConstants CmdPushConstants;
 		PFN_vkCreateQueryPool CreateQueryPool;
 		PFN_vkDestroyQueryPool DestroyQueryPool;
 		PFN_vkCmdResetQueryPool CmdResetQueryPool;
@@ -163,6 +176,13 @@ namespace
 	static void ResetVulkanStats();
 	static void PublishVulkanStats(const VulkanRuntime *runtime);
 	static const char *CopyVulkanString(char *to, unsigned int toSize, const char *from);
+
+	struct PresentPushConstants
+	{
+		float UvOffset[2];
+		float UvScale[2];
+		float BorderColor[4];
+	};
 
 	class VulkanRuntime
 	{
@@ -180,6 +200,7 @@ namespace
 			  PresentFilterMode(-1), TimestampQueryPool(VK_NULL_HANDLE), TimestampQueriesSupported(false),
 			  TimestampQueryPending(false), TimestampPeriod(0.0), LastGpuFrameMS(0.0), MemoryBudgetSupported(false),
 			  DeviceLocalMemoryBudgetBytes(0), DeviceLocalMemoryUsageBytes(0),
+			  PresentScaleMode(1), PresentViewportX(0), PresentViewportY(0), PresentViewportWidth(0), PresentViewportHeight(0),
 			  GraphicsQueueFamily(~0u), DeviceCount(0), SwapchainImageCount(0), SwapchainViewCount(0),
 			  SwapchainFormat(VK_FORMAT_UNDEFINED), SwapchainColorSpace(VK_COLOR_SPACE_SRGB_NONLINEAR_KHR),
 			  SwapchainRecreateCount(0), OutOfDateCount(0), WindowMinimized(false), Ready(false)
@@ -430,6 +451,31 @@ namespace
 		unsigned int GetPresentFilterMode() const
 		{
 			return (unsigned int)(PresentFilterMode < 0 ? 0 : PresentFilterMode);
+		}
+
+		unsigned int GetPresentScaleMode() const
+		{
+			return PresentScaleMode;
+		}
+
+		unsigned int GetPresentViewportX() const
+		{
+			return PresentViewportX;
+		}
+
+		unsigned int GetPresentViewportY() const
+		{
+			return PresentViewportY;
+		}
+
+		unsigned int GetPresentViewportWidth() const
+		{
+			return PresentViewportWidth;
+		}
+
+		unsigned int GetPresentViewportHeight() const
+		{
+			return PresentViewportHeight;
 		}
 
 		bool RecreateSwapchainForWindow()
@@ -797,6 +843,7 @@ namespace
 			Vk.CmdDraw = reinterpret_cast<PFN_vkCmdDraw>(Vk.GetDeviceProcAddr(Device, "vkCmdDraw"));
 			Vk.CmdSetViewport = reinterpret_cast<PFN_vkCmdSetViewport>(Vk.GetDeviceProcAddr(Device, "vkCmdSetViewport"));
 			Vk.CmdSetScissor = reinterpret_cast<PFN_vkCmdSetScissor>(Vk.GetDeviceProcAddr(Device, "vkCmdSetScissor"));
+			Vk.CmdPushConstants = reinterpret_cast<PFN_vkCmdPushConstants>(Vk.GetDeviceProcAddr(Device, "vkCmdPushConstants"));
 			Vk.CreateQueryPool = reinterpret_cast<PFN_vkCreateQueryPool>(Vk.GetDeviceProcAddr(Device, "vkCreateQueryPool"));
 			Vk.DestroyQueryPool = reinterpret_cast<PFN_vkDestroyQueryPool>(Vk.GetDeviceProcAddr(Device, "vkDestroyQueryPool"));
 			Vk.CmdResetQueryPool = reinterpret_cast<PFN_vkCmdResetQueryPool>(Vk.GetDeviceProcAddr(Device, "vkCmdResetQueryPool"));
@@ -864,7 +911,8 @@ namespace
 				Vk.CmdBindDescriptorSets != NULL &&
 				Vk.CmdDraw != NULL &&
 				Vk.CmdSetViewport != NULL &&
-				Vk.CmdSetScissor != NULL;
+				Vk.CmdSetScissor != NULL &&
+				Vk.CmdPushConstants != NULL;
 		}
 
 		bool CreateInstance()
@@ -1530,6 +1578,15 @@ namespace
 			pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
 			pipelineLayoutInfo.setLayoutCount = 1;
 			pipelineLayoutInfo.pSetLayouts = &DescriptorSetLayout;
+
+			VkPushConstantRange pushConstantRange;
+			memset(&pushConstantRange, 0, sizeof(pushConstantRange));
+			pushConstantRange.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+			pushConstantRange.offset = 0;
+			pushConstantRange.size = sizeof(PresentPushConstants);
+			pipelineLayoutInfo.pushConstantRangeCount = 1;
+			pipelineLayoutInfo.pPushConstantRanges = &pushConstantRange;
+
 			VkResult result = Vk.CreatePipelineLayout(Device, &pipelineLayoutInfo, NULL, &PipelineLayout);
 			if (result != VK_SUCCESS)
 			{
@@ -2336,11 +2393,71 @@ namespace
 			Vk.CmdSetScissor(CommandBuffer, 0, 1, &scissor);
 			Vk.CmdBindPipeline(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, GraphicsPipeline);
 			Vk.CmdBindDescriptorSets(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, PipelineLayout, 0, 1, &DescriptorSet, 0, NULL);
+			PresentPushConstants constants = BuildPresentPushConstants(width, height);
+			Vk.CmdPushConstants(CommandBuffer, PipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(constants), &constants);
 			Vk.CmdDraw(CommandBuffer, 3, 1, 0, 0);
 			Vk.CmdEndRenderPass(CommandBuffer);
 
 			WriteTimestampEnd();
 			return Vk.EndCommandBuffer(CommandBuffer) == VK_SUCCESS;
+		}
+
+		PresentPushConstants BuildPresentPushConstants(int sourceWidth, int sourceHeight)
+		{
+			PresentPushConstants constants;
+			memset(&constants, 0, sizeof(constants));
+			constants.UvScale[0] = 1.f;
+			constants.UvScale[1] = 1.f;
+			constants.BorderColor[0] = 0.02f;
+			constants.BorderColor[1] = 0.02f;
+			constants.BorderColor[2] = 0.05f;
+			constants.BorderColor[3] = 1.f;
+
+			PresentScaleMode = (unsigned int)(vk_present_scale_mode < 0 ? 0 : (vk_present_scale_mode > 2 ? 2 : vk_present_scale_mode));
+			PresentViewportX = 0;
+			PresentViewportY = 0;
+			PresentViewportWidth = SwapchainExtent.width;
+			PresentViewportHeight = SwapchainExtent.height;
+
+			if (PresentScaleMode == 0 || sourceWidth <= 0 || sourceHeight <= 0 || SwapchainExtent.width == 0 || SwapchainExtent.height == 0)
+			{
+				return constants;
+			}
+
+			double scaleX = (double)SwapchainExtent.width / (double)sourceWidth;
+			double scaleY = (double)SwapchainExtent.height / (double)sourceHeight;
+			double scale = scaleX < scaleY ? scaleX : scaleY;
+			if (PresentScaleMode == 2 && scale >= 1.0)
+			{
+				unsigned int integerScale = (unsigned int)scale;
+				scale = (double)integerScale;
+			}
+
+			unsigned int displayWidth = (unsigned int)((double)sourceWidth * scale + 0.5);
+			unsigned int displayHeight = (unsigned int)((double)sourceHeight * scale + 0.5);
+			if (displayWidth > SwapchainExtent.width)
+			{
+				displayWidth = SwapchainExtent.width;
+			}
+			if (displayHeight > SwapchainExtent.height)
+			{
+				displayHeight = SwapchainExtent.height;
+			}
+			if (displayWidth == 0 || displayHeight == 0)
+			{
+				return constants;
+			}
+
+			PresentViewportWidth = displayWidth;
+			PresentViewportHeight = displayHeight;
+			PresentViewportX = (SwapchainExtent.width - displayWidth) / 2;
+			PresentViewportY = (SwapchainExtent.height - displayHeight) / 2;
+
+			constants.UvOffset[0] = (float)((double)PresentViewportX / (double)SwapchainExtent.width);
+			constants.UvOffset[1] = (float)((double)PresentViewportY / (double)SwapchainExtent.height);
+			constants.UvScale[0] = (float)((double)SwapchainExtent.width / (double)displayWidth);
+			constants.UvScale[1] = (float)((double)SwapchainExtent.height / (double)displayHeight);
+			return constants;
 		}
 
 		void WriteTimestampStart()
@@ -2516,6 +2633,11 @@ namespace
 		bool MemoryBudgetSupported;
 		unsigned long long DeviceLocalMemoryBudgetBytes;
 		unsigned long long DeviceLocalMemoryUsageBytes;
+		unsigned int PresentScaleMode;
+		unsigned int PresentViewportX;
+		unsigned int PresentViewportY;
+		unsigned int PresentViewportWidth;
+		unsigned int PresentViewportHeight;
 		unsigned int GraphicsQueueFamily;
 		unsigned int DeviceCount;
 		unsigned int SwapchainImageCount;
@@ -2572,6 +2694,11 @@ namespace
 		VulkanStats.DeviceLocalMemoryBudgetBytes = runtime->GetDeviceLocalMemoryBudgetBytes();
 		VulkanStats.DeviceLocalMemoryUsageBytes = runtime->GetDeviceLocalMemoryUsageBytes();
 		VulkanStats.PresentFilterMode = runtime->GetPresentFilterMode();
+		VulkanStats.PresentScaleMode = runtime->GetPresentScaleMode();
+		VulkanStats.PresentViewportX = runtime->GetPresentViewportX();
+		VulkanStats.PresentViewportY = runtime->GetPresentViewportY();
+		VulkanStats.PresentViewportWidth = runtime->GetPresentViewportWidth();
+		VulkanStats.PresentViewportHeight = runtime->GetPresentViewportHeight();
 
 		const VkPhysicalDeviceProperties &properties = runtime->GetDeviceProperties();
 		CopyVulkanString(VulkanStats.DeviceName, sizeof(VulkanStats.DeviceName), properties.deviceName);

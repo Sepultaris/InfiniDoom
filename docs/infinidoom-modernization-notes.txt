@@ -60,6 +60,9 @@ Current Vulkan direction:
 - `vk_present_filter` controls the Vulkan palette present sampler. The default
   value `0` keeps nearest filtering for the classic pixel look; value `1`
   enables linear filtering for smoother scaling experiments.
+- `vk_present_scale_mode` controls how the Vulkan palette presenter maps the
+  software framebuffer into the swapchain: `0` stretches to the full client
+  size, `1` preserves aspect ratio, and `2` uses integer scaling when possible.
 - Next steps should be:
   1. add SDL surface creation for non-Windows targets;
   2. harden resize, alt-tab, and swapchain recreation;
