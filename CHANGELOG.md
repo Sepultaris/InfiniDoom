@@ -1,5 +1,14 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.3 - 2026-06-26
+
+- Added `stat renderer`, a backend-neutral renderer diagnostics overlay.
+- The renderer overlay reports the selected renderer, engine version,
+  framebuffer mode, process RAM, and Vulkan device/swapchain/upload-buffer
+  details when Vulkan is active.
+- Vulkan true GPU frame time and live VRAM usage are documented as future
+  instrumentation work rather than estimated values.
+
 ## 3.3-alpha-vdoom.2 - 2026-06-26
 
 - Fixed Vulkan fullscreen state drift where the menu/config could report

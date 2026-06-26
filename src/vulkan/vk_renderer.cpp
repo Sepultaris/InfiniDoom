@@ -32,6 +32,11 @@
 #include "version.h"
 #include "v_text.h"
 #include "v_palette.h"
+#ifdef _WIN32
+#include "win32/i_system.h"
+#else
+#include "sdl/i_system.h"
+#endif
 
 void DoBlending(const PalEntry *from, PalEntry *to, int count, int r, int g, int b, int a);
 
@@ -56,6 +61,7 @@ namespace
 		PFN_vkDestroyInstance DestroyInstance;
 		PFN_vkEnumeratePhysicalDevices EnumeratePhysicalDevices;
 		PFN_vkGetPhysicalDeviceQueueFamilyProperties GetPhysicalDeviceQueueFamilyProperties;
+		PFN_vkGetPhysicalDeviceProperties GetPhysicalDeviceProperties;
 		PFN_vkCreateDevice CreateDevice;
 		PFN_vkGetPhysicalDeviceMemoryProperties GetPhysicalDeviceMemoryProperties;
 		PFN_vkDestroyDevice DestroyDevice;
@@ -102,6 +108,12 @@ namespace
 #endif
 	};
 
+	class VulkanRuntime;
+	static FVulkanBackendStats VulkanStats;
+	static void ResetVulkanStats();
+	static void PublishVulkanStats(const VulkanRuntime *runtime);
+	static const char *CopyVulkanString(char *to, unsigned int toSize, const char *from);
+
 	class VulkanRuntime
 	{
 	public:
@@ -121,6 +133,8 @@ namespace
 				SwapchainImageViews[i] = VK_NULL_HANDLE;
 			}
 			memset(&Vk, 0, sizeof(Vk));
+			memset(&DeviceProperties, 0, sizeof(DeviceProperties));
+			memset(&MemoryProperties, 0, sizeof(MemoryProperties));
 		}
 
 		~VulkanRuntime()
@@ -167,6 +181,7 @@ namespace
 				return false;
 			}
 			Ready = true;
+			PublishVulkanStats(this);
 			return true;
 		}
 
@@ -257,6 +272,8 @@ namespace
 			GraphicsQueueFamily = ~0u;
 			DeviceCount = 0;
 			Ready = false;
+			memset(&DeviceProperties, 0, sizeof(DeviceProperties));
+			memset(&MemoryProperties, 0, sizeof(MemoryProperties));
 
 #ifdef _WIN32
 			if (Module != NULL)
@@ -271,11 +288,22 @@ namespace
 #endif
 			Module = NULL;
 			memset(&Vk, 0, sizeof(Vk));
+			ResetVulkanStats();
 		}
 
 		bool IsReady() const
 		{
 			return Ready;
+		}
+
+		const VkPhysicalDeviceProperties &GetDeviceProperties() const
+		{
+			return DeviceProperties;
+		}
+
+		const VkPhysicalDeviceMemoryProperties &GetMemoryProperties() const
+		{
+			return MemoryProperties;
 		}
 
 		unsigned int GetDeviceCount() const
@@ -301,6 +329,16 @@ namespace
 		VkExtent2D GetSwapchainExtent() const
 		{
 			return SwapchainExtent;
+		}
+
+		VkColorSpaceKHR GetSwapchainColorSpace() const
+		{
+			return SwapchainColorSpace;
+		}
+
+		VkDeviceSize GetUploadSize() const
+		{
+			return UploadSize;
 		}
 
 		bool RecreateSwapchainForWindow()
@@ -349,16 +387,20 @@ namespace
 
 			if (!CreateSwapchain() || !CreateImageViews())
 			{
+				PublishVulkanStats(this);
 				return false;
 			}
 			Ready = true;
+			PublishVulkanStats(this);
 			return true;
 		}
 
 		bool PresentPalettedFrame(const BYTE *pixels, int pitch, int width, int height, const PalEntry *palette)
 		{
+			unsigned int startMS = I_FPSTime();
 			if (!Ready || pixels == NULL || palette == NULL || width <= 0 || height <= 0)
 			{
+				VulkanStats.LastPresentSucceeded = false;
 				return false;
 			}
 
@@ -366,10 +408,13 @@ namespace
 			const int presentHeight = (int)SwapchainExtent.height;
 			if (presentWidth <= 0 || presentHeight <= 0)
 			{
+				VulkanStats.LastPresentSucceeded = false;
 				return false;
 			}
 			if (!EnsureUploadBuffer(presentWidth, presentHeight))
 			{
+				VulkanStats.LastPresentSucceeded = false;
+				PublishVulkanStats(this);
 				return false;
 			}
 
@@ -441,7 +486,10 @@ namespace
 			presentInfo.pImageIndices = &imageIndex;
 
 			result = Vk.QueuePresentKHR(GraphicsQueue, &presentInfo);
-			return result == VK_SUCCESS || result == VK_SUBOPTIMAL_KHR;
+			PublishVulkanStats(this);
+			VulkanStats.LastPresentMS = I_FPSTime() - startMS;
+			VulkanStats.LastPresentSucceeded = result == VK_SUCCESS || result == VK_SUBOPTIMAL_KHR;
+			return VulkanStats.LastPresentSucceeded;
 		}
 
 	private:
@@ -500,6 +548,7 @@ namespace
 			Vk.DestroyInstance = reinterpret_cast<PFN_vkDestroyInstance>(Vk.GetInstanceProcAddr(Instance, "vkDestroyInstance"));
 			Vk.EnumeratePhysicalDevices = reinterpret_cast<PFN_vkEnumeratePhysicalDevices>(Vk.GetInstanceProcAddr(Instance, "vkEnumeratePhysicalDevices"));
 			Vk.GetPhysicalDeviceQueueFamilyProperties = reinterpret_cast<PFN_vkGetPhysicalDeviceQueueFamilyProperties>(Vk.GetInstanceProcAddr(Instance, "vkGetPhysicalDeviceQueueFamilyProperties"));
+			Vk.GetPhysicalDeviceProperties = reinterpret_cast<PFN_vkGetPhysicalDeviceProperties>(Vk.GetInstanceProcAddr(Instance, "vkGetPhysicalDeviceProperties"));
 			Vk.GetPhysicalDeviceMemoryProperties = reinterpret_cast<PFN_vkGetPhysicalDeviceMemoryProperties>(Vk.GetInstanceProcAddr(Instance, "vkGetPhysicalDeviceMemoryProperties"));
 			Vk.CreateDevice = reinterpret_cast<PFN_vkCreateDevice>(Vk.GetInstanceProcAddr(Instance, "vkCreateDevice"));
 			Vk.GetDeviceProcAddr = reinterpret_cast<PFN_vkGetDeviceProcAddr>(Vk.GetInstanceProcAddr(Instance, "vkGetDeviceProcAddr"));
@@ -514,6 +563,7 @@ namespace
 			return Vk.DestroyInstance != NULL &&
 				Vk.EnumeratePhysicalDevices != NULL &&
 				Vk.GetPhysicalDeviceQueueFamilyProperties != NULL &&
+				Vk.GetPhysicalDeviceProperties != NULL &&
 				Vk.GetPhysicalDeviceMemoryProperties != NULL &&
 				Vk.CreateDevice != NULL &&
 				Vk.GetDeviceProcAddr != NULL &&
@@ -719,6 +769,9 @@ namespace
 					{
 						PhysicalDevice = devices[i];
 						GraphicsQueueFamily = q;
+						Vk.GetPhysicalDeviceProperties(PhysicalDevice, &DeviceProperties);
+						Vk.GetPhysicalDeviceMemoryProperties(PhysicalDevice, &MemoryProperties);
+						PublishVulkanStats(this);
 						return true;
 					}
 				}
@@ -1120,6 +1173,7 @@ namespace
 				return false;
 			}
 			UploadSize = needed;
+			PublishVulkanStats(this);
 			return true;
 		}
 
@@ -1347,8 +1401,70 @@ namespace
 		VkFormat SwapchainFormat;
 		VkColorSpaceKHR SwapchainColorSpace;
 		VkExtent2D SwapchainExtent;
+		VkPhysicalDeviceProperties DeviceProperties;
+		VkPhysicalDeviceMemoryProperties MemoryProperties;
 		bool Ready;
 	};
+
+	static void ResetVulkanStats()
+	{
+		memset(&VulkanStats, 0, sizeof(VulkanStats));
+		VulkanStats.GraphicsQueueFamily = ~0u;
+		VulkanStats.LastPresentSucceeded = false;
+	}
+
+	static void PublishVulkanStats(const VulkanRuntime *runtime)
+	{
+		unsigned int lastPresentMS = VulkanStats.LastPresentMS;
+		bool lastPresentSucceeded = VulkanStats.LastPresentSucceeded;
+
+		ResetVulkanStats();
+		VulkanStats.LastPresentMS = lastPresentMS;
+		VulkanStats.LastPresentSucceeded = lastPresentSucceeded;
+		if (runtime == NULL)
+		{
+			return;
+		}
+
+		VulkanStats.Available = true;
+		VulkanStats.Ready = runtime->IsReady();
+		VulkanStats.DeviceCount = runtime->GetDeviceCount();
+		VulkanStats.GraphicsQueueFamily = runtime->GetGraphicsQueueFamily();
+		VulkanStats.SwapchainImageCount = runtime->GetSwapchainImageCount();
+		VulkanStats.SwapchainFormat = (unsigned int)runtime->GetSwapchainFormat();
+		VulkanStats.SwapchainColorSpace = (unsigned int)runtime->GetSwapchainColorSpace();
+		VkExtent2D extent = runtime->GetSwapchainExtent();
+		VulkanStats.SwapchainWidth = extent.width;
+		VulkanStats.SwapchainHeight = extent.height;
+		VulkanStats.UploadBufferBytes = (unsigned long long)runtime->GetUploadSize();
+
+		const VkPhysicalDeviceProperties &properties = runtime->GetDeviceProperties();
+		CopyVulkanString(VulkanStats.DeviceName, sizeof(VulkanStats.DeviceName), properties.deviceName);
+		VulkanStats.ApiVersion = properties.apiVersion;
+		VulkanStats.DriverVersion = properties.driverVersion;
+		VulkanStats.VendorID = properties.vendorID;
+		VulkanStats.DeviceID = properties.deviceID;
+
+		const VkPhysicalDeviceMemoryProperties &memory = runtime->GetMemoryProperties();
+		for (unsigned int i = 0; i < memory.memoryHeapCount; ++i)
+		{
+			if (memory.memoryHeaps[i].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT)
+			{
+				VulkanStats.DeviceLocalMemoryBytes += (unsigned long long)memory.memoryHeaps[i].size;
+			}
+		}
+	}
+
+	static const char *CopyVulkanString(char *to, unsigned int toSize, const char *from)
+	{
+		if (toSize == 0)
+		{
+			return to;
+		}
+		strncpy(to, from != NULL ? from : "", toSize - 1);
+		to[toSize - 1] = 0;
+		return to;
+	}
 }
 
 #ifdef _WIN32
@@ -1735,4 +1851,9 @@ IVideo *vk_CreateVideo()
 #else
 	return NULL;
 #endif
+}
+
+const FVulkanBackendStats &vk_GetBackendStats()
+{
+	return VulkanStats;
 }

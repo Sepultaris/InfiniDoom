@@ -1306,6 +1306,7 @@ add_executable( zdoom WIN32
 	r_main.cpp
 	r_plane.cpp
 	r_polymost.cpp
+	renderer_stats.cpp
 	r_segs.cpp
 	r_sky.cpp
 	r_things.cpp

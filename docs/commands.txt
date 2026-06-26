@@ -1467,6 +1467,7 @@ stat [page]
  available displays. Use one of those as the page parameter to toggle
  the display on and off.
     stat fps : Time spent rendering the scene (not the same as vid_fps 1)
+    stat renderer : Renderer/backend information, memory, and Vulkan diagnostics
     stat bots : Time spent doing bot-related activities
     stat think : Time spent running all thinkers
 

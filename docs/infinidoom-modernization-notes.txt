@@ -42,6 +42,11 @@ Current Vulkan direction:
 - The Vulkan renderer should not present from renderer initialization because
   that can obscure the framebuffer path. Presentation belongs in the video /
   framebuffer backend.
+- Renderer diagnostics are exposed through the existing stat overlay system as
+  "stat renderer". The first pass reports selected renderer, engine version,
+  framebuffer mode, process RAM, and Vulkan device/swapchain/upload-buffer
+  data. True GPU frame time and live VRAM usage should be added with Vulkan
+  timestamp queries and VK_EXT_memory_budget rather than estimated.
 - Next steps should be:
   1. add SDL surface creation for non-Windows targets;
   2. harden resize, alt-tab, and swapchain recreation;
