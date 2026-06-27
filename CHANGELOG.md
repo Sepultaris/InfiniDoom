@@ -1,5 +1,17 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.35 - 2026-06-27
+
+- Changed `vk_draw_world` from CPU-colored wall cells to a sampled Vulkan wall
+  texture path backed by a temporary texture atlas.
+- Added a dedicated wall-texture shader pair, descriptor set, atlas image
+  upload, and depth-tested draw pipeline separate from the green
+  `vk_world_probe` diagnostic path.
+- Kept the first atlas milestone intentionally simple: nearby one-sided wall
+  mid textures are packed into 128x128 slots each frame, with repeated UVs
+  approximated through subdivided wall cells while the renderer grows toward a
+  persistent material cache.
+
 ## 3.3-alpha-vdoom.32 - 2026-06-27
 
 - Removed the remaining live Vulkan world-basis calibration CVars after

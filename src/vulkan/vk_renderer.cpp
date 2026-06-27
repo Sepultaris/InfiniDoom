@@ -238,6 +238,7 @@ namespace
 	{
 		float Position[3];
 		float Color[3];
+		float TexCoord[2];
 	};
 
 	struct SceneProbePushConstants
@@ -253,10 +254,26 @@ namespace
 		SceneProbeVertexCount = 3,
 		WorldProbeMaxWalls = 96,
 		WorldDrawMaxWalls = 192,
-		WorldDrawTextureColumns = 8,
-		WorldDrawTextureRows = 4,
+		WorldDrawTextureColumns = 16,
+		WorldDrawTextureRows = 8,
 		WorldDrawTextureVerticesPerWall = WorldDrawTextureColumns * WorldDrawTextureRows * 6,
-		ProbeVertexMaxCount = SceneProbeVertexCount + WorldProbeMaxWalls * 6 + WorldDrawMaxWalls * WorldDrawTextureVerticesPerWall
+		ProbeVertexMaxCount = SceneProbeVertexCount + WorldProbeMaxWalls * 6 + WorldDrawMaxWalls * WorldDrawTextureVerticesPerWall,
+		WorldAtlasTileSize = 128,
+		WorldAtlasTilesPerRow = 8,
+		WorldAtlasMaxTiles = 64,
+		WorldAtlasSize = WorldAtlasTileSize * WorldAtlasTilesPerRow,
+		WorldAtlasBytes = WorldAtlasSize * WorldAtlasSize * 4
+	};
+
+	struct WorldAtlasTile
+	{
+		int TextureIndex;
+		int Width;
+		int Height;
+		float U0;
+		float V0;
+		float U1;
+		float V1;
 	};
 
 	static int ClampPresentFilterMode()
@@ -286,11 +303,15 @@ namespace
 			  ProbeVertexDrawCount(0), WorldDrawFirstVertex(0), WorldDrawDrawCount(0), SceneProbeFirstVertex(0), SceneProbeDrawCount(0), WorldProbeFirstVertex(0), WorldProbeDrawCount(0),
 			  SourceImage(VK_NULL_HANDLE), SourceImageMemory(VK_NULL_HANDLE), SourceImageView(VK_NULL_HANDLE),
 			  PaletteImage(VK_NULL_HANDLE), PaletteImageMemory(VK_NULL_HANDLE), PaletteImageView(VK_NULL_HANDLE),
+			  WallAtlasImage(VK_NULL_HANDLE), WallAtlasImageMemory(VK_NULL_HANDLE), WallAtlasImageView(VK_NULL_HANDLE),
+			  WallAtlasPixels(NULL), WallAtlasTileCount(0), WallAtlasDirty(false),
 			  DepthImage(VK_NULL_HANDLE), DepthImageMemory(VK_NULL_HANDLE), DepthImageView(VK_NULL_HANDLE),
 			  NearestSampler(VK_NULL_HANDLE), DescriptorSetLayout(VK_NULL_HANDLE), DescriptorPool(VK_NULL_HANDLE),
 			  DescriptorSet(VK_NULL_HANDLE), PipelineLayout(VK_NULL_HANDLE), RenderPass(VK_NULL_HANDLE),
 			  GraphicsPipeline(VK_NULL_HANDLE), ProbePipelineLayout(VK_NULL_HANDLE), ProbePipeline(VK_NULL_HANDLE),
 			  WorldProbePipelineLayout(VK_NULL_HANDLE), WorldProbePipeline(VK_NULL_HANDLE),
+			  WallTextureDescriptorSetLayout(VK_NULL_HANDLE), WallTextureDescriptorPool(VK_NULL_HANDLE),
+			  WallTextureDescriptorSet(VK_NULL_HANDLE), WallTexturePipelineLayout(VK_NULL_HANDLE), WallTexturePipeline(VK_NULL_HANDLE),
 			  SourceImageWidth(0), SourceImageHeight(0), GpuPresentationReady(false),
 			  PresentFilterMode(-1), TimestampQueryPool(VK_NULL_HANDLE), TimestampQueriesSupported(false),
 			  TimestampQueryPending(false), TimestampPeriod(0.0), LastGpuFrameMS(0.0), MemoryBudgetSupported(false),
@@ -311,6 +332,16 @@ namespace
 			memset(&Vk, 0, sizeof(Vk));
 			memset(&DeviceProperties, 0, sizeof(DeviceProperties));
 			memset(&MemoryProperties, 0, sizeof(MemoryProperties));
+			for (unsigned int i = 0; i < WorldAtlasMaxTiles; ++i)
+			{
+				WallAtlasTiles[i].TextureIndex = -1;
+				WallAtlasTiles[i].Width = 0;
+				WallAtlasTiles[i].Height = 0;
+				WallAtlasTiles[i].U0 = 0.f;
+				WallAtlasTiles[i].V0 = 0.f;
+				WallAtlasTiles[i].U1 = 0.f;
+				WallAtlasTiles[i].V1 = 0.f;
+			}
 		}
 
 		~VulkanRuntime()
@@ -397,6 +428,10 @@ namespace
 				DestroySwapchainResources();
 				Vk.DestroyDevice(Device, NULL);
 			}
+			delete[] WallAtlasPixels;
+			WallAtlasPixels = NULL;
+			WallAtlasTileCount = 0;
+			WallAtlasDirty = false;
 			Device = NULL;
 			GraphicsQueue = NULL;
 			SwapchainImageCount = 0;
@@ -541,7 +576,7 @@ namespace
 
 		bool IsWorldDrawActive() const
 		{
-			return vk_draw_world && WorldProbePipeline != VK_NULL_HANDLE && ProbeVertexBuffer != VK_NULL_HANDLE && WorldDrawDrawCount > 0;
+			return vk_draw_world && WallTexturePipeline != VK_NULL_HANDLE && ProbeVertexBuffer != VK_NULL_HANDLE && WorldDrawDrawCount > 0;
 		}
 
 		unsigned int GetWorldDrawVertexCount() const
@@ -702,6 +737,10 @@ namespace
 			VkDeviceSize uploadNeeded = useGpuPresentation ?
 				((VkDeviceSize)width * (VkDeviceSize)height + 256 * 4) :
 				((VkDeviceSize)presentWidth * (VkDeviceSize)presentHeight * 4);
+			if (useGpuPresentation && vk_draw_world)
+			{
+				uploadNeeded += WorldAtlasBytes;
+			}
 			if (!EnsureUploadBuffer(uploadNeeded))
 			{
 				VulkanStats.LastPresentSucceeded = false;
@@ -723,6 +762,10 @@ namespace
 					paletteDst[i * 4 + 1] = palette[i].g;
 					paletteDst[i * 4 + 2] = palette[i].b;
 					paletteDst[i * 4 + 3] = 255;
+				}
+				if (vk_draw_world && WallAtlasPixels != NULL)
+				{
+					memcpy(dst + WallAtlasUploadOffset(width, height), WallAtlasPixels, WorldAtlasBytes);
 				}
 			}
 			else
@@ -1973,6 +2016,243 @@ namespace
 			return CreateProbePipeline(WorldProbePipelineLayout, WorldProbePipeline, false, true, true, "world probe");
 		}
 
+		bool CreateWallTextureDescriptorResources()
+		{
+			VkDescriptorSetLayoutBinding binding;
+			memset(&binding, 0, sizeof(binding));
+			binding.binding = 0;
+			binding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+			binding.descriptorCount = 1;
+			binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+			VkDescriptorSetLayoutCreateInfo layoutInfo;
+			memset(&layoutInfo, 0, sizeof(layoutInfo));
+			layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+			layoutInfo.bindingCount = 1;
+			layoutInfo.pBindings = &binding;
+			VkResult result = Vk.CreateDescriptorSetLayout(Device, &layoutInfo, NULL, &WallTextureDescriptorSetLayout);
+			if (result != VK_SUCCESS)
+			{
+				Printf(TEXTCOLOR_RED "Vulkan: wall texture vkCreateDescriptorSetLayout failed (%d).\n", (int)result);
+				return false;
+			}
+
+			VkDescriptorPoolSize poolSize;
+			memset(&poolSize, 0, sizeof(poolSize));
+			poolSize.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+			poolSize.descriptorCount = 1;
+
+			VkDescriptorPoolCreateInfo poolInfo;
+			memset(&poolInfo, 0, sizeof(poolInfo));
+			poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+			poolInfo.maxSets = 1;
+			poolInfo.poolSizeCount = 1;
+			poolInfo.pPoolSizes = &poolSize;
+			result = Vk.CreateDescriptorPool(Device, &poolInfo, NULL, &WallTextureDescriptorPool);
+			if (result != VK_SUCCESS)
+			{
+				Printf(TEXTCOLOR_RED "Vulkan: wall texture vkCreateDescriptorPool failed (%d).\n", (int)result);
+				return false;
+			}
+
+			VkDescriptorSetAllocateInfo allocInfo;
+			memset(&allocInfo, 0, sizeof(allocInfo));
+			allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+			allocInfo.descriptorPool = WallTextureDescriptorPool;
+			allocInfo.descriptorSetCount = 1;
+			allocInfo.pSetLayouts = &WallTextureDescriptorSetLayout;
+			result = Vk.AllocateDescriptorSets(Device, &allocInfo, &WallTextureDescriptorSet);
+			if (result != VK_SUCCESS)
+			{
+				Printf(TEXTCOLOR_RED "Vulkan: wall texture vkAllocateDescriptorSets failed (%d).\n", (int)result);
+				return false;
+			}
+			UpdateWallTextureDescriptorSet();
+			return true;
+		}
+
+		void UpdateWallTextureDescriptorSet()
+		{
+			if (WallTextureDescriptorSet == VK_NULL_HANDLE || WallAtlasImageView == VK_NULL_HANDLE || NearestSampler == VK_NULL_HANDLE)
+			{
+				return;
+			}
+
+			VkDescriptorImageInfo imageInfo;
+			memset(&imageInfo, 0, sizeof(imageInfo));
+			imageInfo.sampler = NearestSampler;
+			imageInfo.imageView = WallAtlasImageView;
+			imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+			VkWriteDescriptorSet write;
+			memset(&write, 0, sizeof(write));
+			write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+			write.dstSet = WallTextureDescriptorSet;
+			write.dstBinding = 0;
+			write.descriptorCount = 1;
+			write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+			write.pImageInfo = &imageInfo;
+			Vk.UpdateDescriptorSets(Device, 1, &write, 0, NULL);
+		}
+
+		bool CreateWallTexturePipeline()
+		{
+			if (RenderPass == VK_NULL_HANDLE && !CreateRenderPass())
+			{
+				return false;
+			}
+			if (WallTextureDescriptorSetLayout == VK_NULL_HANDLE && !CreateWallTextureDescriptorResources())
+			{
+				return false;
+			}
+
+			VkShaderModule vert = CreateShaderModule(WorldTextureVertSpv, WorldTextureVertSpvSize);
+			VkShaderModule frag = CreateShaderModule(WorldTextureFragSpv, WorldTextureFragSpvSize);
+			if (vert == VK_NULL_HANDLE || frag == VK_NULL_HANDLE)
+			{
+				if (vert != VK_NULL_HANDLE) Vk.DestroyShaderModule(Device, vert, NULL);
+				if (frag != VK_NULL_HANDLE) Vk.DestroyShaderModule(Device, frag, NULL);
+				return false;
+			}
+
+			VkPipelineShaderStageCreateInfo stages[2];
+			memset(stages, 0, sizeof(stages));
+			stages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+			stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
+			stages[0].module = vert;
+			stages[0].pName = "main";
+			stages[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+			stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+			stages[1].module = frag;
+			stages[1].pName = "main";
+
+			VkPipelineVertexInputStateCreateInfo vertexInput;
+			memset(&vertexInput, 0, sizeof(vertexInput));
+			vertexInput.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+			VkVertexInputBindingDescription vertexBinding;
+			memset(&vertexBinding, 0, sizeof(vertexBinding));
+			vertexBinding.binding = 0;
+			vertexBinding.stride = sizeof(SceneProbeVertex);
+			vertexBinding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+			VkVertexInputAttributeDescription vertexAttributes[3];
+			memset(vertexAttributes, 0, sizeof(vertexAttributes));
+			vertexAttributes[0].location = 0;
+			vertexAttributes[0].binding = 0;
+			vertexAttributes[0].format = VK_FORMAT_R32G32B32_SFLOAT;
+			vertexAttributes[0].offset = offsetof(SceneProbeVertex, Position);
+			vertexAttributes[1].location = 1;
+			vertexAttributes[1].binding = 0;
+			vertexAttributes[1].format = VK_FORMAT_R32G32B32_SFLOAT;
+			vertexAttributes[1].offset = offsetof(SceneProbeVertex, Color);
+			vertexAttributes[2].location = 2;
+			vertexAttributes[2].binding = 0;
+			vertexAttributes[2].format = VK_FORMAT_R32G32_SFLOAT;
+			vertexAttributes[2].offset = offsetof(SceneProbeVertex, TexCoord);
+			vertexInput.vertexBindingDescriptionCount = 1;
+			vertexInput.pVertexBindingDescriptions = &vertexBinding;
+			vertexInput.vertexAttributeDescriptionCount = 3;
+			vertexInput.pVertexAttributeDescriptions = vertexAttributes;
+
+			VkPipelineInputAssemblyStateCreateInfo inputAssembly;
+			memset(&inputAssembly, 0, sizeof(inputAssembly));
+			inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+			inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+
+			VkPipelineViewportStateCreateInfo viewportState;
+			memset(&viewportState, 0, sizeof(viewportState));
+			viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+			viewportState.viewportCount = 1;
+			viewportState.scissorCount = 1;
+
+			VkPipelineRasterizationStateCreateInfo rasterizer;
+			memset(&rasterizer, 0, sizeof(rasterizer));
+			rasterizer.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+			rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
+			rasterizer.cullMode = VK_CULL_MODE_NONE;
+			rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+			rasterizer.lineWidth = 1.f;
+
+			VkPipelineMultisampleStateCreateInfo multisampling;
+			memset(&multisampling, 0, sizeof(multisampling));
+			multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+			multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+
+			VkPipelineColorBlendAttachmentState blendAttachment;
+			memset(&blendAttachment, 0, sizeof(blendAttachment));
+			blendAttachment.blendEnable = VK_FALSE;
+			blendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+
+			VkPipelineColorBlendStateCreateInfo blending;
+			memset(&blending, 0, sizeof(blending));
+			blending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+			blending.attachmentCount = 1;
+			blending.pAttachments = &blendAttachment;
+
+			VkPipelineDepthStencilStateCreateInfo depthStencil;
+			memset(&depthStencil, 0, sizeof(depthStencil));
+			depthStencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+			depthStencil.depthTestEnable = VK_TRUE;
+			depthStencil.depthWriteEnable = VK_TRUE;
+			depthStencil.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
+
+			VkDynamicState dynamicStates[2] = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
+			VkPipelineDynamicStateCreateInfo dynamicState;
+			memset(&dynamicState, 0, sizeof(dynamicState));
+			dynamicState.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+			dynamicState.dynamicStateCount = 2;
+			dynamicState.pDynamicStates = dynamicStates;
+
+			VkPipelineLayoutCreateInfo layoutInfo;
+			memset(&layoutInfo, 0, sizeof(layoutInfo));
+			layoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+			layoutInfo.setLayoutCount = 1;
+			layoutInfo.pSetLayouts = &WallTextureDescriptorSetLayout;
+			VkPushConstantRange pushConstantRange;
+			memset(&pushConstantRange, 0, sizeof(pushConstantRange));
+			pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+			pushConstantRange.offset = 0;
+			pushConstantRange.size = sizeof(SceneProbePushConstants);
+			layoutInfo.pushConstantRangeCount = 1;
+			layoutInfo.pPushConstantRanges = &pushConstantRange;
+
+			VkResult result = Vk.CreatePipelineLayout(Device, &layoutInfo, NULL, &WallTexturePipelineLayout);
+			if (result != VK_SUCCESS)
+			{
+				Printf(TEXTCOLOR_RED "Vulkan: wall texture vkCreatePipelineLayout failed (%d).\n", (int)result);
+				Vk.DestroyShaderModule(Device, vert, NULL);
+				Vk.DestroyShaderModule(Device, frag, NULL);
+				return false;
+			}
+
+			VkGraphicsPipelineCreateInfo pipelineInfo;
+			memset(&pipelineInfo, 0, sizeof(pipelineInfo));
+			pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+			pipelineInfo.stageCount = 2;
+			pipelineInfo.pStages = stages;
+			pipelineInfo.pVertexInputState = &vertexInput;
+			pipelineInfo.pInputAssemblyState = &inputAssembly;
+			pipelineInfo.pViewportState = &viewportState;
+			pipelineInfo.pRasterizationState = &rasterizer;
+			pipelineInfo.pMultisampleState = &multisampling;
+			pipelineInfo.pDepthStencilState = &depthStencil;
+			pipelineInfo.pColorBlendState = &blending;
+			pipelineInfo.pDynamicState = &dynamicState;
+			pipelineInfo.layout = WallTexturePipelineLayout;
+			pipelineInfo.renderPass = RenderPass;
+			pipelineInfo.subpass = 0;
+			result = Vk.CreateGraphicsPipelines(Device, VK_NULL_HANDLE, 1, &pipelineInfo, NULL, &WallTexturePipeline);
+
+			Vk.DestroyShaderModule(Device, vert, NULL);
+			Vk.DestroyShaderModule(Device, frag, NULL);
+			if (result != VK_SUCCESS)
+			{
+				Printf(TEXTCOLOR_RED "Vulkan: wall texture vkCreateGraphicsPipelines failed (%d).\n", (int)result);
+				return false;
+			}
+			Printf(TEXTCOLOR_GREEN "Vulkan wall texture pipeline active.\n");
+			return true;
+		}
+
 		void DestroyProbeVertexBuffer()
 		{
 			if (Device == NULL)
@@ -2027,6 +2307,8 @@ namespace
 			vertices[count].Color[0] = r;
 			vertices[count].Color[1] = g;
 			vertices[count].Color[2] = b;
+			vertices[count].TexCoord[0] = 0.f;
+			vertices[count].TexCoord[1] = 0.f;
 			++count;
 		}
 
@@ -2167,52 +2449,139 @@ namespace
 			return true;
 		}
 
-		void SampleWallTexture(FTexture *texture, const BYTE *pixels, double u, double v, float light, float &r, float &g, float &b)
+		float WrapTextureCoord(double value, int size) const
 		{
-			if (texture == NULL || pixels == NULL || texture->GetWidth() <= 0 || texture->GetHeight() <= 0)
+			if (size <= 0)
 			{
-				r = 0.50f * light;
-				g = 0.43f * light;
-				b = 0.32f * light;
+				return 0.f;
+			}
+			double wrapped = fmod(value, (double)size);
+			if (wrapped < 0.0)
+			{
+				wrapped += (double)size;
+			}
+			return (float)(wrapped / (double)size);
+		}
+
+		float AtlasU(const WorldAtlasTile &tile, double u) const
+		{
+			return tile.U0 + WrapTextureCoord(u, tile.Width) * (tile.U1 - tile.U0);
+		}
+
+		float AtlasV(const WorldAtlasTile &tile, double v) const
+		{
+			return tile.V0 + WrapTextureCoord(v, tile.Height) * (tile.V1 - tile.V0);
+		}
+
+		void AppendTexturedVertex(SceneProbeVertex *vertices, unsigned int &count,
+			double x, double y, double z, float u, float v, float light)
+		{
+			if (count >= ProbeVertexMaxCount)
+			{
 				return;
 			}
-
-			const int width = texture->GetWidth();
-			const int height = texture->GetHeight();
-			int x = (int)floor(u);
-			int y = (int)floor(v);
-			x %= width;
-			y %= height;
-			if (x < 0)
-			{
-				x += width;
-			}
-			if (y < 0)
-			{
-				y += height;
-			}
-
-			const BYTE colorIndex = pixels[x * height + y];
-			const PalEntry color = GPalette.BaseColors[colorIndex];
-			r = ((float)color.r / 255.0f) * light;
-			g = ((float)color.g / 255.0f) * light;
-			b = ((float)color.b / 255.0f) * light;
+			vertices[count].Position[0] = (float)x;
+			vertices[count].Position[1] = (float)y;
+			vertices[count].Position[2] = (float)z;
+			vertices[count].Color[0] = light;
+			vertices[count].Color[1] = light;
+			vertices[count].Color[2] = light;
+			vertices[count].TexCoord[0] = u;
+			vertices[count].TexCoord[1] = v;
+			++count;
 		}
 
 		void AppendTexturedCell(SceneProbeVertex *vertices, unsigned int &count,
-			double x1, double y1, double x2, double y2, double zTop, double zBottom,
-			float r, float g, float b)
+			double x1, double y1, double x2, double y2,
+			double zTopA, double zTopB, double zBottomA, double zBottomB,
+			float uTopA, float vTopA, float uTopB, float vTopB,
+			float uBottomA, float vBottomA, float uBottomB, float vBottomB,
+			float light)
 		{
 			if (count + 6 > ProbeVertexMaxCount)
 			{
 				return;
 			}
-			AppendProbeVertex(vertices, count, (float)x1, (float)y1, (float)zTop, r, g, b);
-			AppendProbeVertex(vertices, count, (float)x2, (float)y2, (float)zTop, r, g, b);
-			AppendProbeVertex(vertices, count, (float)x2, (float)y2, (float)zBottom, r, g, b);
-			AppendProbeVertex(vertices, count, (float)x1, (float)y1, (float)zTop, r, g, b);
-			AppendProbeVertex(vertices, count, (float)x2, (float)y2, (float)zBottom, r, g, b);
-			AppendProbeVertex(vertices, count, (float)x1, (float)y1, (float)zBottom, r, g, b);
+			AppendTexturedVertex(vertices, count, x1, y1, zTopA, uTopA, vTopA, light);
+			AppendTexturedVertex(vertices, count, x2, y2, zTopB, uTopB, vTopB, light);
+			AppendTexturedVertex(vertices, count, x2, y2, zBottomB, uBottomB, vBottomB, light);
+			AppendTexturedVertex(vertices, count, x1, y1, zTopA, uTopA, vTopA, light);
+			AppendTexturedVertex(vertices, count, x2, y2, zBottomB, uBottomB, vBottomB, light);
+			AppendTexturedVertex(vertices, count, x1, y1, zBottomA, uBottomA, vBottomA, light);
+		}
+
+		void ResetWorldAtlas()
+		{
+			if (WallAtlasPixels == NULL)
+			{
+				return;
+			}
+			memset(WallAtlasPixels, 0, WorldAtlasBytes);
+			WallAtlasTileCount = 0;
+			WallAtlasDirty = true;
+			for (unsigned int i = 0; i < WorldAtlasMaxTiles; ++i)
+			{
+				WallAtlasTiles[i].TextureIndex = -1;
+				WallAtlasTiles[i].Width = 0;
+				WallAtlasTiles[i].Height = 0;
+				WallAtlasTiles[i].U0 = 0.f;
+				WallAtlasTiles[i].V0 = 0.f;
+				WallAtlasTiles[i].U1 = 0.f;
+				WallAtlasTiles[i].V1 = 0.f;
+			}
+		}
+
+		const WorldAtlasTile *GetWorldAtlasTile(FTextureID textureId, FTexture *texture, const BYTE *pixels)
+		{
+			if (WallAtlasPixels == NULL || texture == NULL || pixels == NULL || texture->GetWidth() <= 0 || texture->GetHeight() <= 0)
+			{
+				return NULL;
+			}
+			const int textureIndex = textureId.isValid() ? textureId.GetIndex() : TexMan.GetDefaultTexture().GetIndex();
+			for (unsigned int i = 0; i < WallAtlasTileCount; ++i)
+			{
+				if (WallAtlasTiles[i].TextureIndex == textureIndex)
+				{
+					return &WallAtlasTiles[i];
+				}
+			}
+			if (WallAtlasTileCount >= WorldAtlasMaxTiles)
+			{
+				return NULL;
+			}
+
+			const unsigned int tileIndex = WallAtlasTileCount++;
+			const unsigned int tileX = (tileIndex % WorldAtlasTilesPerRow) * WorldAtlasTileSize;
+			const unsigned int tileY = (tileIndex / WorldAtlasTilesPerRow) * WorldAtlasTileSize;
+			const int width = texture->GetWidth();
+			const int height = texture->GetHeight();
+
+			for (unsigned int y = 0; y < WorldAtlasTileSize; ++y)
+			{
+				const int srcY = (int)((y * (unsigned int)height) / WorldAtlasTileSize);
+				for (unsigned int x = 0; x < WorldAtlasTileSize; ++x)
+				{
+					const int srcX = (int)((x * (unsigned int)width) / WorldAtlasTileSize);
+					const BYTE colorIndex = pixels[srcX * height + srcY];
+					const PalEntry color = GPalette.BaseColors[colorIndex];
+					BYTE *dst = WallAtlasPixels + (((tileY + y) * WorldAtlasSize + tileX + x) * 4);
+					dst[0] = color.r;
+					dst[1] = color.g;
+					dst[2] = color.b;
+					dst[3] = 255;
+				}
+			}
+
+			WorldAtlasTile &tile = WallAtlasTiles[tileIndex];
+			tile.TextureIndex = textureIndex;
+			tile.Width = width;
+			tile.Height = height;
+			tile.U0 = ((float)tileX + 0.5f) / (float)WorldAtlasSize;
+			tile.V0 = ((float)tileY + 0.5f) / (float)WorldAtlasSize;
+			tile.U1 = ((float)(tileX + WorldAtlasTileSize) - 0.5f) / (float)WorldAtlasSize;
+			tile.V1 = ((float)(tileY + WorldAtlasTileSize) - 0.5f) / (float)WorldAtlasSize;
+			WallAtlasDirty = true;
+			return &tile;
 		}
 
 		bool AppendTexturedWorldWall(SceneProbeVertex *vertices, unsigned int &count, const line_t *line)
@@ -2231,8 +2600,14 @@ namespace
 			const BYTE *pixels = texture != NULL && texture->UseType != FTexture::TEX_Null ? texture->GetPixels() : NULL;
 			if (texture == NULL || pixels == NULL)
 			{
-				texture = TexMan[TexMan.GetDefaultTexture()];
+				textureId = TexMan.GetDefaultTexture();
+				texture = TexMan[textureId];
 				pixels = texture != NULL ? texture->GetPixels() : NULL;
+			}
+			const WorldAtlasTile *tile = GetWorldAtlasTile(textureId, texture, pixels);
+			if (tile == NULL)
+			{
+				return false;
 			}
 
 			float x1 = FIXED2FLOAT(line->v1->x);
@@ -2374,7 +2749,6 @@ namespace
 				const double topB = ceiling1 + (ceiling2 - ceiling1) * columnB;
 				const double bottomA = floor1 + (floor2 - floor1) * columnA;
 				const double bottomB = floor1 + (floor2 - floor1) * columnB;
-				const double uMid = xOffset + clippedU1 + (clippedU2 - clippedU1) * ((double)column + 0.5) / (double)WorldDrawTextureColumns;
 
 				for (int row = 0; row < WorldDrawTextureRows; ++row)
 				{
@@ -2384,13 +2758,21 @@ namespace
 					const double zTopB = topB + (bottomB - topB) * rowA;
 					const double zBottomA = topA + (bottomA - topA) * rowB;
 					const double zBottomB = topB + (bottomB - topB) * rowB;
-					const double zTop = (zTopA + zTopB) * 0.5;
-					const double zBottom = (zBottomA + zBottomB) * 0.5;
-					const double wallHeight = ((topA - bottomA) + (topB - bottomB)) * 0.5;
-					const double vMid = yOffset + wallHeight * ((double)row + 0.5) / (double)WorldDrawTextureRows;
-					float r, g, b;
-					SampleWallTexture(texture, pixels, uMid, vMid, light, r, g, b);
-					AppendTexturedCell(vertices, count, ax, ay, bx, by, zTop, zBottom, r, g, b);
+					const double wallHeightA = topA - bottomA;
+					const double wallHeightB = topB - bottomB;
+					const double vTopA = yOffset + wallHeightA * rowA;
+					const double vTopB = yOffset + wallHeightB * rowA;
+					const double vBottomA = yOffset + wallHeightA * rowB;
+					const double vBottomB = yOffset + wallHeightB * rowB;
+					const double uA = xOffset + clippedU1 + (clippedU2 - clippedU1) * columnA;
+					const double uB = xOffset + clippedU1 + (clippedU2 - clippedU1) * columnB;
+					AppendTexturedCell(vertices, count, ax, ay, bx, by,
+						zTopA, zTopB, zBottomA, zBottomB,
+						AtlasU(*tile, uA), AtlasV(*tile, vTopA),
+						AtlasU(*tile, uB), AtlasV(*tile, vTopB),
+						AtlasU(*tile, uA), AtlasV(*tile, vBottomA),
+						AtlasU(*tile, uB), AtlasV(*tile, vBottomB),
+						light);
 				}
 			}
 			return true;
@@ -2487,9 +2869,9 @@ namespace
 			const double centerY = camY + forwardY * centerForward + rightY * centerRight;
 			SceneProbeVertex sceneVertices[SceneProbeVertexCount] =
 			{
-				{ { (float)centerX, (float)centerY, (float)topZ }, { 1.0f, 0.0f, 1.0f } },
-				{ { (float)(centerX - rightX * halfWidth), (float)(centerY - rightY * halfWidth), (float)baseZ }, { 0.0f, 1.0f, 1.0f } },
-				{ { (float)(centerX + rightX * halfWidth), (float)(centerY + rightY * halfWidth), (float)baseZ }, { 1.0f, 1.0f, 0.0f } }
+				{ { (float)centerX, (float)centerY, (float)topZ }, { 1.0f, 0.0f, 1.0f }, { 0.f, 0.f } },
+				{ { (float)(centerX - rightX * halfWidth), (float)(centerY - rightY * halfWidth), (float)baseZ }, { 0.0f, 1.0f, 1.0f }, { 0.f, 0.f } },
+				{ { (float)(centerX + rightX * halfWidth), (float)(centerY + rightY * halfWidth), (float)baseZ }, { 1.0f, 1.0f, 0.0f }, { 0.f, 0.f } }
 			};
 			memcpy(&vertices[count], sceneVertices, sizeof(sceneVertices));
 			count += SceneProbeVertexCount;
@@ -2519,6 +2901,7 @@ namespace
 			WorldProbeDrawCount = 0;
 			if (vk_draw_world)
 			{
+				ResetWorldAtlas();
 				WorldDrawFirstVertex = count;
 				AppendWorldDrawVertices(vertices, count);
 				WorldDrawDrawCount = count - WorldDrawFirstVertex;
@@ -2680,6 +3063,7 @@ namespace
 		void DestroyPresentationResources()
 		{
 			DestroySourceImages();
+			DestroyWallTextureResources();
 			for (unsigned int i = 0; i < MaxSwapchainImages; ++i)
 			{
 				if (SwapchainFramebuffers[i] != VK_NULL_HANDLE && Vk.DestroyFramebuffer != NULL)
@@ -3131,6 +3515,58 @@ namespace
 			GpuPresentationReady = false;
 		}
 
+		void DestroyWallTextureResources()
+		{
+			if (WallTexturePipeline != VK_NULL_HANDLE && Vk.DestroyPipeline != NULL)
+			{
+				Vk.DestroyPipeline(Device, WallTexturePipeline, NULL);
+			}
+			WallTexturePipeline = VK_NULL_HANDLE;
+			if (WallTexturePipelineLayout != VK_NULL_HANDLE && Vk.DestroyPipelineLayout != NULL)
+			{
+				Vk.DestroyPipelineLayout(Device, WallTexturePipelineLayout, NULL);
+			}
+			WallTexturePipelineLayout = VK_NULL_HANDLE;
+			if (WallTextureDescriptorPool != VK_NULL_HANDLE && Vk.DestroyDescriptorPool != NULL)
+			{
+				Vk.DestroyDescriptorPool(Device, WallTextureDescriptorPool, NULL);
+			}
+			WallTextureDescriptorPool = VK_NULL_HANDLE;
+			WallTextureDescriptorSet = VK_NULL_HANDLE;
+			if (WallTextureDescriptorSetLayout != VK_NULL_HANDLE && Vk.DestroyDescriptorSetLayout != NULL)
+			{
+				Vk.DestroyDescriptorSetLayout(Device, WallTextureDescriptorSetLayout, NULL);
+			}
+			WallTextureDescriptorSetLayout = VK_NULL_HANDLE;
+			if (WallAtlasImageView != VK_NULL_HANDLE && Vk.DestroyImageView != NULL)
+			{
+				Vk.DestroyImageView(Device, WallAtlasImageView, NULL);
+			}
+			WallAtlasImageView = VK_NULL_HANDLE;
+			if (WallAtlasImage != VK_NULL_HANDLE && Vk.DestroyImage != NULL)
+			{
+				Vk.DestroyImage(Device, WallAtlasImage, NULL);
+			}
+			WallAtlasImage = VK_NULL_HANDLE;
+			if (WallAtlasImageMemory != VK_NULL_HANDLE && Vk.FreeMemory != NULL)
+			{
+				Vk.FreeMemory(Device, WallAtlasImageMemory, NULL);
+			}
+			WallAtlasImageMemory = VK_NULL_HANDLE;
+			WallAtlasTileCount = 0;
+			WallAtlasDirty = false;
+			for (unsigned int i = 0; i < WorldAtlasMaxTiles; ++i)
+			{
+				WallAtlasTiles[i].TextureIndex = -1;
+				WallAtlasTiles[i].Width = 0;
+				WallAtlasTiles[i].Height = 0;
+				WallAtlasTiles[i].U0 = 0.f;
+				WallAtlasTiles[i].V0 = 0.f;
+				WallAtlasTiles[i].U1 = 0.f;
+				WallAtlasTiles[i].V1 = 0.f;
+			}
+		}
+
 		void UpdateDescriptorSet()
 		{
 			VkDescriptorImageInfo imageInfos[2];
@@ -3156,6 +3592,40 @@ namespace
 			Vk.UpdateDescriptorSets(Device, 2, writes, 0, NULL);
 		}
 
+		VkDeviceSize WallAtlasUploadOffset(int width, int height) const
+		{
+			return (VkDeviceSize)width * (VkDeviceSize)height + 256 * 4;
+		}
+
+		bool EnsureWallTextureResources()
+		{
+			if (WallAtlasPixels == NULL)
+			{
+				WallAtlasPixels = new BYTE[WorldAtlasBytes];
+				memset(WallAtlasPixels, 0, WorldAtlasBytes);
+				WallAtlasDirty = true;
+			}
+			if (WallAtlasImage == VK_NULL_HANDLE)
+			{
+				if (!CreateSampledImage(WorldAtlasSize, WorldAtlasSize, VK_FORMAT_R8G8B8A8_UNORM, WallAtlasImage, WallAtlasImageMemory) ||
+					!CreateSampledImageView(WallAtlasImage, VK_FORMAT_R8G8B8A8_UNORM, WallAtlasImageView))
+				{
+					DestroyWallTextureResources();
+					return false;
+				}
+			}
+			if (WallTextureDescriptorSetLayout == VK_NULL_HANDLE && !CreateWallTextureDescriptorResources())
+			{
+				return false;
+			}
+			UpdateWallTextureDescriptorSet();
+			if (WallTexturePipeline == VK_NULL_HANDLE && !CreateWallTexturePipeline())
+			{
+				return false;
+			}
+			return true;
+		}
+
 		bool EnsureGpuPresentationResources(int width, int height)
 		{
 			if (width <= 0 || height <= 0)
@@ -3178,7 +3648,11 @@ namespace
 			{
 				return false;
 			}
-			if ((vk_draw_world || vk_world_probe) && WorldProbePipeline == VK_NULL_HANDLE && !CreateWorldProbePipeline())
+			if (vk_world_probe && WorldProbePipeline == VK_NULL_HANDLE && !CreateWorldProbePipeline())
+			{
+				return false;
+			}
+			if (vk_draw_world && !EnsureWallTextureResources())
 			{
 				return false;
 			}
@@ -3447,7 +3921,10 @@ namespace
 			colorRange.baseArrayLayer = 0;
 			colorRange.layerCount = 1;
 
-			VkImageMemoryBarrier imageBarriers[2];
+			const bool uploadWallAtlas = vk_draw_world && WallAtlasImage != VK_NULL_HANDLE && WallAtlasImageView != VK_NULL_HANDLE;
+			const unsigned int imageBarrierCount = uploadWallAtlas ? 3 : 2;
+
+			VkImageMemoryBarrier imageBarriers[3];
 			memset(imageBarriers, 0, sizeof(imageBarriers));
 			imageBarriers[0].sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
 			imageBarriers[0].oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
@@ -3459,9 +3936,14 @@ namespace
 			imageBarriers[0].dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
 			imageBarriers[1] = imageBarriers[0];
 			imageBarriers[1].image = PaletteImage;
-			Vk.CmdPipelineBarrier(CommandBuffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 0, NULL, 2, imageBarriers);
+			if (uploadWallAtlas)
+			{
+				imageBarriers[2] = imageBarriers[0];
+				imageBarriers[2].image = WallAtlasImage;
+			}
+			Vk.CmdPipelineBarrier(CommandBuffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 0, NULL, imageBarrierCount, imageBarriers);
 
-			VkBufferImageCopy copyRegions[2];
+			VkBufferImageCopy copyRegions[3];
 			memset(copyRegions, 0, sizeof(copyRegions));
 			copyRegions[0].bufferOffset = 0;
 			copyRegions[0].bufferRowLength = (unsigned int)width;
@@ -3481,6 +3963,18 @@ namespace
 			copyRegions[1].imageExtent.depth = 1;
 			Vk.CmdCopyBufferToImage(CommandBuffer, UploadBuffer, SourceImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copyRegions[0]);
 			Vk.CmdCopyBufferToImage(CommandBuffer, UploadBuffer, PaletteImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copyRegions[1]);
+			if (uploadWallAtlas)
+			{
+				copyRegions[2].bufferOffset = WallAtlasUploadOffset(width, height);
+				copyRegions[2].bufferRowLength = WorldAtlasSize;
+				copyRegions[2].bufferImageHeight = WorldAtlasSize;
+				copyRegions[2].imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+				copyRegions[2].imageSubresource.layerCount = 1;
+				copyRegions[2].imageExtent.width = WorldAtlasSize;
+				copyRegions[2].imageExtent.height = WorldAtlasSize;
+				copyRegions[2].imageExtent.depth = 1;
+				Vk.CmdCopyBufferToImage(CommandBuffer, UploadBuffer, WallAtlasImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copyRegions[2]);
+			}
 
 			imageBarriers[0].oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
 			imageBarriers[0].newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
@@ -3488,7 +3982,12 @@ namespace
 			imageBarriers[0].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
 			imageBarriers[1] = imageBarriers[0];
 			imageBarriers[1].image = PaletteImage;
-			Vk.CmdPipelineBarrier(CommandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, NULL, 0, NULL, 2, imageBarriers);
+			if (uploadWallAtlas)
+			{
+				imageBarriers[2] = imageBarriers[0];
+				imageBarriers[2].image = WallAtlasImage;
+			}
+			Vk.CmdPipelineBarrier(CommandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, NULL, 0, NULL, imageBarrierCount, imageBarriers);
 
 			VkRenderPassBeginInfo renderPassInfo;
 			memset(&renderPassInfo, 0, sizeof(renderPassInfo));
@@ -3520,18 +4019,15 @@ namespace
 			PresentPushConstants constants = BuildPresentPushConstants(width, height);
 			Vk.CmdPushConstants(CommandBuffer, PipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(constants), &constants);
 			Vk.CmdDraw(CommandBuffer, 3, 1, 0, 0);
-			if (WantsProbeDraw())
-			{
-				UpdateProbeVertices();
-			}
 			if (ProbeVertexBuffer != VK_NULL_HANDLE && ProbeVertexDrawCount > 0)
 			{
 				VkDeviceSize vertexOffsets[1] = { 0 };
 				SceneProbePushConstants probeConstants = BuildSceneProbePushConstants();
-				if (vk_draw_world && WorldProbePipeline != VK_NULL_HANDLE && WorldDrawDrawCount > 0)
+				if (vk_draw_world && WallTexturePipeline != VK_NULL_HANDLE && WallTextureDescriptorSet != VK_NULL_HANDLE && WorldDrawDrawCount > 0)
 				{
-					Vk.CmdBindPipeline(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, WorldProbePipeline);
-					Vk.CmdPushConstants(CommandBuffer, WorldProbePipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(probeConstants), &probeConstants);
+					Vk.CmdBindPipeline(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, WallTexturePipeline);
+					Vk.CmdBindDescriptorSets(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, WallTexturePipelineLayout, 0, 1, &WallTextureDescriptorSet, 0, NULL);
+					Vk.CmdPushConstants(CommandBuffer, WallTexturePipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(probeConstants), &probeConstants);
 					Vk.CmdBindVertexBuffers(CommandBuffer, 0, 1, &ProbeVertexBuffer, vertexOffsets);
 					Vk.CmdDraw(CommandBuffer, WorldDrawDrawCount, 1, WorldDrawFirstVertex, 0);
 				}
@@ -3882,6 +4378,13 @@ namespace
 		VkImage PaletteImage;
 		VkDeviceMemory PaletteImageMemory;
 		VkImageView PaletteImageView;
+		VkImage WallAtlasImage;
+		VkDeviceMemory WallAtlasImageMemory;
+		VkImageView WallAtlasImageView;
+		BYTE *WallAtlasPixels;
+		WorldAtlasTile WallAtlasTiles[WorldAtlasMaxTiles];
+		unsigned int WallAtlasTileCount;
+		bool WallAtlasDirty;
 		VkImage DepthImage;
 		VkDeviceMemory DepthImageMemory;
 		VkImageView DepthImageView;
@@ -3896,6 +4399,11 @@ namespace
 		VkPipeline ProbePipeline;
 		VkPipelineLayout WorldProbePipelineLayout;
 		VkPipeline WorldProbePipeline;
+		VkDescriptorSetLayout WallTextureDescriptorSetLayout;
+		VkDescriptorPool WallTextureDescriptorPool;
+		VkDescriptorSet WallTextureDescriptorSet;
+		VkPipelineLayout WallTexturePipelineLayout;
+		VkPipeline WallTexturePipeline;
 		unsigned int SourceImageWidth;
 		unsigned int SourceImageHeight;
 		bool GpuPresentationReady;

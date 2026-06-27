@@ -965,6 +965,8 @@ set( VULKAN_SOURCES
 	vulkan/shaders/palette_present.vert
 	vulkan/shaders/scene_probe.frag
 	vulkan/shaders/scene_probe.vert
+	vulkan/shaders/world_texture.frag
+	vulkan/shaders/world_texture.vert
 )
 
 find_path( VULKAN_INCLUDE_DIR vulkan/vulkan.h
