@@ -38,7 +38,6 @@ extern "C"
 EXTERN_CVAR(Int, vid_renderer)
 EXTERN_CVAR(Int, vk_world_yaw_sign)
 EXTERN_CVAR(Int, vk_clip_yaw_sign)
-EXTERN_CVAR(Int, vk_clip_side_sign)
 
 static const char *RendererName(int renderer)
 {
@@ -220,10 +219,9 @@ ADD_STAT(renderer)
 				{
 					out.AppendFormat("GPU world probe: off\n");
 				}
-				out.AppendFormat("GPU basis signs: world yaw %d, clip yaw %d, clip side %d\n",
+				out.AppendFormat("GPU basis signs: world yaw %d, clip yaw %d\n",
 					(int)vk_world_yaw_sign,
-					(int)vk_clip_yaw_sign,
-					(int)vk_clip_side_sign);
+					(int)vk_clip_yaw_sign);
 			}
 			out.AppendFormat("Queue: graphics/present family %u of %u device(s)\n",
 				vk.GraphicsQueueFamily,

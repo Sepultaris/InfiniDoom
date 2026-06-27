@@ -1,5 +1,12 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.31 - 2026-06-27
+
+- Removed the live `vk_clip_side_sign` calibration CVar after it could crash
+  the Vulkan diagnostic world path when changed in-game.
+- Restored the projection side row to a fixed value and left only the safer
+  yaw-sign controls exposed through `stat renderer`.
+
 ## 3.3-alpha-vdoom.30 - 2026-06-27
 
 - Added temporary Vulkan world-basis calibration CVars:

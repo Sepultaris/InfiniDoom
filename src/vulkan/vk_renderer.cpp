@@ -137,17 +137,6 @@ CUSTOM_CVAR(Int, vk_clip_yaw_sign, -1, CVAR_NOINITCALL)
 		self = 1;
 	}
 }
-CUSTOM_CVAR(Int, vk_clip_side_sign, 1, CVAR_NOINITCALL)
-{
-	if (self < 0)
-	{
-		self = -1;
-	}
-	else
-	{
-		self = 1;
-	}
-}
 
 namespace
 {
@@ -3417,11 +3406,10 @@ namespace
 				-camZ
 			};
 
-			const double sideSign = (double)vk_clip_side_sign;
-			constants.Row0[0] = (float)(sideSign * yawSin * invTanX);
-			constants.Row0[1] = (float)(sideSign * -yawCos * invTanX);
+			constants.Row0[0] = (float)(yawSin * invTanX);
+			constants.Row0[1] = (float)(-yawCos * invTanX);
 			constants.Row0[2] = 0.0f;
-			constants.Row0[3] = (float)(sideSign * (-yawSin * camX + yawCos * camY) * invTanX);
+			constants.Row0[3] = (float)((-yawSin * camX + yawCos * camY) * invTanX);
 
 			const double nearDepth = 4.0;
 			for (unsigned int i = 0; i < 4; ++i)
