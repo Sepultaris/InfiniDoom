@@ -1,5 +1,14 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.20 - 2026-06-27
+
+- Added a Vulkan depth attachment to the GPU presentation render pass and
+  swapchain framebuffers.
+- Enabled depth testing and depth writes for the Vulkan probe/world geometry
+  pipeline while keeping the fullscreen palette presenter depth-neutral.
+- Updated the probe projection to emit camera-distance depth values so debug
+  wall batches can be depth-tested against each other.
+
 ## 3.3-alpha-vdoom.19 - 2026-06-27
 
 - Added `vk_world_probe`, an opt-in Vulkan debug draw that extracts nearby
