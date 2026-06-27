@@ -1,5 +1,12 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.24 - 2026-06-27
+
+- Flipped the Vulkan probe yaw convention to match Doom's camera turn
+  direction.
+- Applied the corrected yaw consistently to world-probe culling, scene-probe
+  marker placement, and the probe world-to-clip transform.
+
 ## 3.3-alpha-vdoom.23 - 2026-06-27
 
 - Clipped `vk_world_probe` wall segments against the left and right view
