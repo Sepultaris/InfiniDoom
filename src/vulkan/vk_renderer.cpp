@@ -2010,29 +2010,101 @@ namespace
 			++count;
 		}
 
-		void AppendWorldProbeWall(SceneProbeVertex *vertices, unsigned int &count, const line_t *line, float r, float g, float b)
+		bool AppendWorldProbeWall(SceneProbeVertex *vertices, unsigned int &count, const line_t *line, float r, float g, float b)
 		{
 			if (line == NULL || line->v1 == NULL || line->v2 == NULL || line->frontsector == NULL)
 			{
-				return;
+				return false;
 			}
 			if (line->backsector != NULL)
 			{
-				return;
+				return false;
 			}
 			if (count + 6 > ProbeVertexMaxCount)
 			{
-				return;
+				return false;
 			}
 
-			const float x1 = FIXED2FLOAT(line->v1->x);
-			const float y1 = FIXED2FLOAT(line->v1->y);
-			const float x2 = FIXED2FLOAT(line->v2->x);
-			const float y2 = FIXED2FLOAT(line->v2->y);
-			const float floor1 = FIXED2FLOAT(line->frontsector->floorplane.ZatPoint(line->v1));
-			const float floor2 = FIXED2FLOAT(line->frontsector->floorplane.ZatPoint(line->v2));
-			const float ceiling1 = FIXED2FLOAT(line->frontsector->ceilingplane.ZatPoint(line->v1));
-			const float ceiling2 = FIXED2FLOAT(line->frontsector->ceilingplane.ZatPoint(line->v2));
+			float x1 = FIXED2FLOAT(line->v1->x);
+			float y1 = FIXED2FLOAT(line->v1->y);
+			float x2 = FIXED2FLOAT(line->v2->x);
+			float y2 = FIXED2FLOAT(line->v2->y);
+			float floor1 = FIXED2FLOAT(line->frontsector->floorplane.ZatPoint(line->v1));
+			float floor2 = FIXED2FLOAT(line->frontsector->floorplane.ZatPoint(line->v2));
+			float ceiling1 = FIXED2FLOAT(line->frontsector->ceilingplane.ZatPoint(line->v1));
+			float ceiling2 = FIXED2FLOAT(line->frontsector->ceilingplane.ZatPoint(line->v2));
+
+			const double pi = 3.14159265358979323846;
+			const double yawRadians = ANGLE2DBL(viewangle) * (pi / 180.0);
+			const double forwardX = cos(yawRadians);
+			const double forwardY = sin(yawRadians);
+			const double rightX = -forwardY;
+			const double rightY = forwardX;
+			const double camX = FIXED2FLOAT(viewx);
+			const double camY = FIXED2FLOAT(viewy);
+			const double nearDepth = 8.0;
+
+			double relX1 = x1 - camX;
+			double relY1 = y1 - camY;
+			double relX2 = x2 - camX;
+			double relY2 = y2 - camY;
+			double depth1 = relX1 * forwardX + relY1 * forwardY;
+			double depth2 = relX2 * forwardX + relY2 * forwardY;
+			if (depth1 <= nearDepth && depth2 <= nearDepth)
+			{
+				return false;
+			}
+			if (depth1 <= nearDepth || depth2 <= nearDepth)
+			{
+				const double denom = depth2 - depth1;
+				if (fabs(denom) < 0.0001)
+				{
+					return false;
+				}
+				const float t = (float)((nearDepth - depth1) / denom);
+				if (depth1 <= nearDepth)
+				{
+					x1 += (x2 - x1) * t;
+					y1 += (y2 - y1) * t;
+					floor1 += (floor2 - floor1) * t;
+					ceiling1 += (ceiling2 - ceiling1) * t;
+				}
+				else
+				{
+					x2 = x1 + (x2 - x1) * t;
+					y2 = y1 + (y2 - y1) * t;
+					floor2 = floor1 + (floor2 - floor1) * t;
+					ceiling2 = ceiling1 + (ceiling2 - ceiling1) * t;
+				}
+				relX1 = x1 - camX;
+				relY1 = y1 - camY;
+				relX2 = x2 - camX;
+				relY2 = y2 - camY;
+				depth1 = relX1 * forwardX + relY1 * forwardY;
+				depth2 = relX2 * forwardX + relY2 * forwardY;
+			}
+
+			double fovDegrees = (double)R_GetFOV();
+			if (fovDegrees < 5.0)
+			{
+				fovDegrees = 5.0;
+			}
+			else if (fovDegrees > 170.0)
+			{
+				fovDegrees = 170.0;
+			}
+			const double side1 = relX1 * rightX + relY1 * rightY;
+			const double side2 = relX2 * rightX + relY2 * rightY;
+			const double tanX = tan(fovDegrees * (pi / 360.0));
+			const double padding = 32.0;
+			const double left1 = -depth1 * tanX - padding;
+			const double left2 = -depth2 * tanX - padding;
+			const double right1 = depth1 * tanX + padding;
+			const double right2 = depth2 * tanX + padding;
+			if ((side1 < left1 && side2 < left2) || (side1 > right1 && side2 > right2))
+			{
+				return false;
+			}
 
 			AppendProbeVertex(vertices, count, x1, y1, ceiling1, r, g, b);
 			AppendProbeVertex(vertices, count, x2, y2, ceiling2, r, g, b);
@@ -2040,6 +2112,7 @@ namespace
 			AppendProbeVertex(vertices, count, x1, y1, ceiling1, r, g, b);
 			AppendProbeVertex(vertices, count, x2, y2, floor2, r * 0.65f, g * 0.65f, b * 0.65f);
 			AppendProbeVertex(vertices, count, x1, y1, floor1, r * 0.65f, g * 0.65f, b * 0.65f);
+			return true;
 		}
 
 		void AppendWorldProbeVertices(SceneProbeVertex *vertices, unsigned int &count)
@@ -2069,8 +2142,10 @@ namespace
 					continue;
 				}
 				const float tint = (walls & 1) ? 0.85f : 1.0f;
-				AppendWorldProbeWall(vertices, count, line, 0.05f * tint, 0.90f * tint, 0.35f * tint);
-				++walls;
+				if (AppendWorldProbeWall(vertices, count, line, 0.05f * tint, 0.90f * tint, 0.35f * tint))
+				{
+					++walls;
+				}
 			}
 		}
 

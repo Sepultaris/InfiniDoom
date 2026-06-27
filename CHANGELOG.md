@@ -1,5 +1,13 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.22 - 2026-06-27
+
+- Clipped `vk_world_probe` wall segments against the camera near plane before
+  submitting Vulkan debug geometry.
+- Added conservative horizontal FOV rejection so off-screen world-probe walls
+  do not become giant foreground slabs.
+- Counted only emitted world-probe walls toward the debug wall budget.
+
 ## 3.3-alpha-vdoom.21 - 2026-06-27
 
 - Split Vulkan debug geometry into separate scene-marker and world-wall probe
