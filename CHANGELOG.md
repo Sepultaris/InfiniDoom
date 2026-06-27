@@ -1,5 +1,12 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.26 - 2026-06-27
+
+- Rotated the Vulkan world/probe yaw basis by 180 degrees so GPU world
+  geometry renders in front of the player instead of behind the camera.
+- Applied the corrected basis to world draw, world probe, scene probe, and the
+  shared probe world-to-clip transform.
+
 ## 3.3-alpha-vdoom.25 - 2026-06-27
 
 - Added `vk_draw_world`, an opt-in Vulkan world-wall batch separate from the
