@@ -37,6 +37,7 @@
 #include "v_palette.h"
 #include "m_fixed.h"
 #include "r_utility.h"
+#include "textures/textures.h"
 #include "vulkan/vk_palette_present_shaders.h"
 #ifdef _WIN32
 #include "win32/i_system.h"
@@ -252,7 +253,10 @@ namespace
 		SceneProbeVertexCount = 3,
 		WorldProbeMaxWalls = 96,
 		WorldDrawMaxWalls = 192,
-		ProbeVertexMaxCount = SceneProbeVertexCount + (WorldProbeMaxWalls + WorldDrawMaxWalls) * 6
+		WorldDrawTextureColumns = 8,
+		WorldDrawTextureRows = 4,
+		WorldDrawTextureVerticesPerWall = WorldDrawTextureColumns * WorldDrawTextureRows * 6,
+		ProbeVertexMaxCount = SceneProbeVertexCount + WorldProbeMaxWalls * 6 + WorldDrawMaxWalls * WorldDrawTextureVerticesPerWall
 	};
 
 	static int ClampPresentFilterMode()
@@ -2163,6 +2167,235 @@ namespace
 			return true;
 		}
 
+		void SampleWallTexture(FTexture *texture, const BYTE *pixels, double u, double v, float light, float &r, float &g, float &b)
+		{
+			if (texture == NULL || pixels == NULL || texture->GetWidth() <= 0 || texture->GetHeight() <= 0)
+			{
+				r = 0.50f * light;
+				g = 0.43f * light;
+				b = 0.32f * light;
+				return;
+			}
+
+			const int width = texture->GetWidth();
+			const int height = texture->GetHeight();
+			int x = (int)floor(u);
+			int y = (int)floor(v);
+			x %= width;
+			y %= height;
+			if (x < 0)
+			{
+				x += width;
+			}
+			if (y < 0)
+			{
+				y += height;
+			}
+
+			const BYTE colorIndex = pixels[x * height + y];
+			const PalEntry color = GPalette.BaseColors[colorIndex];
+			r = ((float)color.r / 255.0f) * light;
+			g = ((float)color.g / 255.0f) * light;
+			b = ((float)color.b / 255.0f) * light;
+		}
+
+		void AppendTexturedCell(SceneProbeVertex *vertices, unsigned int &count,
+			double x1, double y1, double x2, double y2, double zTop, double zBottom,
+			float r, float g, float b)
+		{
+			if (count + 6 > ProbeVertexMaxCount)
+			{
+				return;
+			}
+			AppendProbeVertex(vertices, count, (float)x1, (float)y1, (float)zTop, r, g, b);
+			AppendProbeVertex(vertices, count, (float)x2, (float)y2, (float)zTop, r, g, b);
+			AppendProbeVertex(vertices, count, (float)x2, (float)y2, (float)zBottom, r, g, b);
+			AppendProbeVertex(vertices, count, (float)x1, (float)y1, (float)zTop, r, g, b);
+			AppendProbeVertex(vertices, count, (float)x2, (float)y2, (float)zBottom, r, g, b);
+			AppendProbeVertex(vertices, count, (float)x1, (float)y1, (float)zBottom, r, g, b);
+		}
+
+		bool AppendTexturedWorldWall(SceneProbeVertex *vertices, unsigned int &count, const line_t *line)
+		{
+			if (line == NULL || line->v1 == NULL || line->v2 == NULL || line->frontsector == NULL || line->backsector != NULL || line->sidedef[0] == NULL)
+			{
+				return false;
+			}
+			if (count + WorldDrawTextureVerticesPerWall > ProbeVertexMaxCount)
+			{
+				return false;
+			}
+
+			FTextureID textureId = line->sidedef[0]->GetTexture(side_t::mid);
+			FTexture *texture = textureId.isValid() ? TexMan[textureId] : NULL;
+			const BYTE *pixels = texture != NULL && texture->UseType != FTexture::TEX_Null ? texture->GetPixels() : NULL;
+			if (texture == NULL || pixels == NULL)
+			{
+				texture = TexMan[TexMan.GetDefaultTexture()];
+				pixels = texture != NULL ? texture->GetPixels() : NULL;
+			}
+
+			float x1 = FIXED2FLOAT(line->v1->x);
+			float y1 = FIXED2FLOAT(line->v1->y);
+			float x2 = FIXED2FLOAT(line->v2->x);
+			float y2 = FIXED2FLOAT(line->v2->y);
+			float floor1 = FIXED2FLOAT(line->frontsector->floorplane.ZatPoint(line->v1));
+			float floor2 = FIXED2FLOAT(line->frontsector->floorplane.ZatPoint(line->v2));
+			float ceiling1 = FIXED2FLOAT(line->frontsector->ceilingplane.ZatPoint(line->v1));
+			float ceiling2 = FIXED2FLOAT(line->frontsector->ceilingplane.ZatPoint(line->v2));
+
+			const double pi = 3.14159265358979323846;
+			const double yawRadians = ANGLE2DBL(viewangle) * (pi / 180.0);
+			const double forwardX = cos(yawRadians);
+			const double forwardY = sin(yawRadians);
+			const double rightX = forwardY;
+			const double rightY = -forwardX;
+			const double camX = FIXED2FLOAT(viewx);
+			const double camY = FIXED2FLOAT(viewy);
+			const double nearDepth = 8.0;
+			const double originalX1 = x1;
+			const double originalY1 = y1;
+			const double originalX2 = x2;
+			const double originalY2 = y2;
+			const double originalLength = sqrt((originalX2 - originalX1) * (originalX2 - originalX1) + (originalY2 - originalY1) * (originalY2 - originalY1));
+
+			double relX1 = x1 - camX;
+			double relY1 = y1 - camY;
+			double relX2 = x2 - camX;
+			double relY2 = y2 - camY;
+			double depth1 = relX1 * forwardX + relY1 * forwardY;
+			double depth2 = relX2 * forwardX + relY2 * forwardY;
+			if (depth1 <= nearDepth && depth2 <= nearDepth)
+			{
+				return false;
+			}
+			if (depth1 <= nearDepth || depth2 <= nearDepth)
+			{
+				const double denom = depth2 - depth1;
+				if (fabs(denom) < 0.0001)
+				{
+					return false;
+				}
+				const float t = (float)((nearDepth - depth1) / denom);
+				if (depth1 <= nearDepth)
+				{
+					x1 += (x2 - x1) * t;
+					y1 += (y2 - y1) * t;
+					floor1 += (floor2 - floor1) * t;
+					ceiling1 += (ceiling2 - ceiling1) * t;
+				}
+				else
+				{
+					x2 = x1 + (x2 - x1) * t;
+					y2 = y1 + (y2 - y1) * t;
+					floor2 = floor1 + (floor2 - floor1) * t;
+					ceiling2 = ceiling1 + (ceiling2 - ceiling1) * t;
+				}
+				relX1 = x1 - camX;
+				relY1 = y1 - camY;
+				relX2 = x2 - camX;
+				relY2 = y2 - camY;
+				depth1 = relX1 * forwardX + relY1 * forwardY;
+				depth2 = relX2 * forwardX + relY2 * forwardY;
+			}
+
+			double fovDegrees = (double)R_GetFOV();
+			if (fovDegrees < 5.0)
+			{
+				fovDegrees = 5.0;
+			}
+			else if (fovDegrees > 170.0)
+			{
+				fovDegrees = 170.0;
+			}
+			double side1 = relX1 * rightX + relY1 * rightY;
+			double side2 = relX2 * rightX + relY2 * rightY;
+			const double tanX = tan(fovDegrees * (pi / 360.0));
+			const double padding = 4.0;
+			for (unsigned int plane = 0; plane < 2; ++plane)
+			{
+				double value1 = plane == 0 ? side1 + depth1 * tanX + padding : -side1 + depth1 * tanX + padding;
+				double value2 = plane == 0 ? side2 + depth2 * tanX + padding : -side2 + depth2 * tanX + padding;
+				if (value1 < 0.0 && value2 < 0.0)
+				{
+					return false;
+				}
+				if (value1 < 0.0 || value2 < 0.0)
+				{
+					const double denom = value1 - value2;
+					if (fabs(denom) < 0.0001)
+					{
+						return false;
+					}
+					const float t = (float)(value1 / denom);
+					if (value1 < 0.0)
+					{
+						x1 += (x2 - x1) * t;
+						y1 += (y2 - y1) * t;
+						floor1 += (floor2 - floor1) * t;
+						ceiling1 += (ceiling2 - ceiling1) * t;
+						depth1 += (depth2 - depth1) * t;
+						side1 += (side2 - side1) * t;
+					}
+					else
+					{
+						x2 = x1 + (x2 - x1) * t;
+						y2 = y1 + (y2 - y1) * t;
+						floor2 = floor1 + (floor2 - floor1) * t;
+						ceiling2 = ceiling1 + (ceiling2 - ceiling1) * t;
+						depth2 = depth1 + (depth2 - depth1) * t;
+						side2 = side1 + (side2 - side1) * t;
+					}
+				}
+			}
+			if (fabs(x2 - x1) + fabs(y2 - y1) < 0.001)
+			{
+				return false;
+			}
+
+			const double lineDx = originalX2 - originalX1;
+			const double lineDy = originalY2 - originalY1;
+			const double invLengthSquared = originalLength > 0.001 ? 1.0 / (originalLength * originalLength) : 0.0;
+			const double clippedU1 = ((x1 - originalX1) * lineDx + (y1 - originalY1) * lineDy) * invLengthSquared * originalLength;
+			const double clippedU2 = ((x2 - originalX1) * lineDx + (y2 - originalY1) * lineDy) * invLengthSquared * originalLength;
+			const double xOffset = FIXED2FLOAT(line->sidedef[0]->GetTextureXOffset(side_t::mid));
+			const double yOffset = FIXED2FLOAT(line->sidedef[0]->GetTextureYOffset(side_t::mid));
+			const float light = line->frontsector->lightlevel <= 0 ? 0.20f : (line->frontsector->lightlevel / 255.0f);
+
+			for (int column = 0; column < WorldDrawTextureColumns; ++column)
+			{
+				const double columnA = (double)column / (double)WorldDrawTextureColumns;
+				const double columnB = (double)(column + 1) / (double)WorldDrawTextureColumns;
+				const double ax = x1 + (x2 - x1) * columnA;
+				const double ay = y1 + (y2 - y1) * columnA;
+				const double bx = x1 + (x2 - x1) * columnB;
+				const double by = y1 + (y2 - y1) * columnB;
+				const double topA = ceiling1 + (ceiling2 - ceiling1) * columnA;
+				const double topB = ceiling1 + (ceiling2 - ceiling1) * columnB;
+				const double bottomA = floor1 + (floor2 - floor1) * columnA;
+				const double bottomB = floor1 + (floor2 - floor1) * columnB;
+				const double uMid = xOffset + clippedU1 + (clippedU2 - clippedU1) * ((double)column + 0.5) / (double)WorldDrawTextureColumns;
+
+				for (int row = 0; row < WorldDrawTextureRows; ++row)
+				{
+					const double rowA = (double)row / (double)WorldDrawTextureRows;
+					const double rowB = (double)(row + 1) / (double)WorldDrawTextureRows;
+					const double zTopA = topA + (bottomA - topA) * rowA;
+					const double zTopB = topB + (bottomB - topB) * rowA;
+					const double zBottomA = topA + (bottomA - topA) * rowB;
+					const double zBottomB = topB + (bottomB - topB) * rowB;
+					const double zTop = (zTopA + zTopB) * 0.5;
+					const double zBottom = (zBottomA + zBottomB) * 0.5;
+					const double wallHeight = ((topA - bottomA) + (topB - bottomB)) * 0.5;
+					const double vMid = yOffset + wallHeight * ((double)row + 0.5) / (double)WorldDrawTextureRows;
+					float r, g, b;
+					SampleWallTexture(texture, pixels, uMid, vMid, light, r, g, b);
+					AppendTexturedCell(vertices, count, ax, ay, bx, by, zTop, zBottom, r, g, b);
+				}
+			}
+			return true;
+		}
+
 		void AppendWorldProbeVertices(SceneProbeVertex *vertices, unsigned int &count)
 		{
 			if (lines == NULL || numlines <= 0)
@@ -2223,8 +2456,7 @@ namespace
 				{
 					continue;
 				}
-				const float tint = (walls & 1) ? 0.82f : 1.0f;
-				if (AppendWorldProbeWall(vertices, count, line, 0.50f * tint, 0.43f * tint, 0.32f * tint))
+				if (AppendTexturedWorldWall(vertices, count, line))
 				{
 					++walls;
 				}

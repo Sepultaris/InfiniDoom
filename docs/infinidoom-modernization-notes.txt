@@ -87,9 +87,10 @@ Current Vulkan direction:
   projection share that same basis.
 - `vk_draw_world` is the first non-probe Vulkan world geometry toggle. It
   reuses the clipped one-sided wall extraction but writes into a separate draw
-  range and appears in `stat renderer` as `GPU world draw`. This is still
-  flat-colored scaffolding; texture upload, UVs, and material binding are the
-  next renderer milestone.
+  range and appears in `stat renderer` as `GPU world draw`. The first texture
+  milestone samples the sidedef mid texture on the CPU and emits small
+  texture-colored wall cells through Vulkan, proving material selection and UV
+  mapping before the backend grows persistent sampled texture descriptors.
 - Live Vulkan basis calibration CVars were removed after sign changes in the
   projection path could crash the diagnostic renderer when changed in-game.
   Continue matching Doom's software-space camera basis through fixed,
