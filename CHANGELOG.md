@@ -1,5 +1,12 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.17 - 2026-06-26
+
+- Changed `vk_scene_probe` from hardcoded shader vertices to a host-visible
+  Vulkan vertex buffer populated by the backend and submitted with
+  `vkCmdBindVertexBuffers`.
+- Updated `stat renderer` to show the active probe vertex count.
+
 ## 3.3-alpha-vdoom.16 - 2026-06-26
 
 - Moved the `vk_scene_probe` triangle to a more visible right-center screen

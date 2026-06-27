@@ -193,7 +193,14 @@ ADD_STAT(renderer)
 					vk.PresentViewportHeight,
 					vk.PresentViewportX,
 					vk.PresentViewportY);
-				out.AppendFormat("GPU scene probe: %s\n", vk.SceneProbeActive ? "active" : "off");
+				if (vk.SceneProbeActive)
+				{
+					out.AppendFormat("GPU scene probe: active, %u vertices\n", vk.SceneProbeVertexCount);
+				}
+				else
+				{
+					out.AppendFormat("GPU scene probe: off\n");
+				}
 			}
 			out.AppendFormat("Queue: graphics/present family %u of %u device(s)\n",
 				vk.GraphicsQueueFamily,

@@ -71,8 +71,9 @@ Current Vulkan direction:
   should separate true internal render resolution from logical UI and output
   resolution.
 - `vk_scene_probe` is an opt-in Vulkan geometry proof. It creates a separate
-  graphics pipeline and draw call after the palette presenter so we can verify
-  backend-owned geometry drawing before replacing it with map/actor geometry.
+  graphics pipeline, fills a host-visible vertex buffer from the backend, and
+  issues a draw call after the palette presenter so we can verify backend-owned
+  geometry drawing before replacing it with map/actor geometry.
 - `vk_present_scale_mode` controls how the Vulkan palette presenter maps the
   software framebuffer into the swapchain: `0` stretches to the full client
   size, `1` preserves aspect, and `2` uses integer scaling against a 320-wide

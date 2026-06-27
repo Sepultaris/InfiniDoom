@@ -8,6 +8,7 @@
 ** built in small steps.
 */
 
+#include <stddef.h>
 #include <string.h>
 
 #ifdef _WIN32
@@ -196,6 +197,7 @@ namespace
 		PFN_vkCmdEndRenderPass CmdEndRenderPass;
 		PFN_vkCmdBindPipeline CmdBindPipeline;
 		PFN_vkCmdBindDescriptorSets CmdBindDescriptorSets;
+		PFN_vkCmdBindVertexBuffers CmdBindVertexBuffers;
 		PFN_vkCmdDraw CmdDraw;
 		PFN_vkCmdSetViewport CmdSetViewport;
 		PFN_vkCmdSetScissor CmdSetScissor;
@@ -226,6 +228,17 @@ namespace
 		float FilterParams[4];
 	};
 
+	struct SceneProbeVertex
+	{
+		float Position[2];
+		float Color[3];
+	};
+
+	enum
+	{
+		SceneProbeVertexCount = 3
+	};
+
 	static int ClampPresentFilterMode()
 	{
 		return vk_present_filter < 0 ? 0 : (vk_present_filter > 2 ? 2 : vk_present_filter);
@@ -249,6 +262,8 @@ namespace
 			  Swapchain(VK_NULL_HANDLE), CommandPool(VK_NULL_HANDLE), CommandBuffer(VK_NULL_HANDLE),
 			  ImageAvailableSemaphore(VK_NULL_HANDLE), RenderFinishedSemaphore(VK_NULL_HANDLE), RenderFence(VK_NULL_HANDLE),
 			  UploadBuffer(VK_NULL_HANDLE), UploadMemory(VK_NULL_HANDLE), UploadPtr(NULL), UploadSize(0),
+			  ProbeVertexBuffer(VK_NULL_HANDLE), ProbeVertexMemory(VK_NULL_HANDLE), ProbeVertexPtr(NULL), ProbeVertexBufferSize(0),
+			  ProbeVertexDrawCount(0),
 			  SourceImage(VK_NULL_HANDLE), SourceImageMemory(VK_NULL_HANDLE), SourceImageView(VK_NULL_HANDLE),
 			  PaletteImage(VK_NULL_HANDLE), PaletteImageMemory(VK_NULL_HANDLE), PaletteImageView(VK_NULL_HANDLE),
 			  NearestSampler(VK_NULL_HANDLE), DescriptorSetLayout(VK_NULL_HANDLE), DescriptorPool(VK_NULL_HANDLE),
@@ -355,6 +370,7 @@ namespace
 				CommandPool = VK_NULL_HANDLE;
 				CommandBuffer = VK_NULL_HANDLE;
 				DestroyPresentationResources();
+				DestroyProbeVertexBuffer();
 				DestroyUploadBuffer();
 				DestroySwapchainResources();
 				Vk.DestroyDevice(Device, NULL);
@@ -483,7 +499,12 @@ namespace
 
 		bool IsSceneProbeActive() const
 		{
-			return vk_scene_probe && ProbePipeline != VK_NULL_HANDLE;
+			return vk_scene_probe && ProbePipeline != VK_NULL_HANDLE && ProbeVertexBuffer != VK_NULL_HANDLE;
+		}
+
+		unsigned int GetSceneProbeVertexCount() const
+		{
+			return IsSceneProbeActive() ? ProbeVertexDrawCount : 0;
 		}
 
 		bool AreTimestampQueriesAvailable() const
@@ -923,6 +944,7 @@ namespace
 			Vk.CmdEndRenderPass = reinterpret_cast<PFN_vkCmdEndRenderPass>(Vk.GetDeviceProcAddr(Device, "vkCmdEndRenderPass"));
 			Vk.CmdBindPipeline = reinterpret_cast<PFN_vkCmdBindPipeline>(Vk.GetDeviceProcAddr(Device, "vkCmdBindPipeline"));
 			Vk.CmdBindDescriptorSets = reinterpret_cast<PFN_vkCmdBindDescriptorSets>(Vk.GetDeviceProcAddr(Device, "vkCmdBindDescriptorSets"));
+			Vk.CmdBindVertexBuffers = reinterpret_cast<PFN_vkCmdBindVertexBuffers>(Vk.GetDeviceProcAddr(Device, "vkCmdBindVertexBuffers"));
 			Vk.CmdDraw = reinterpret_cast<PFN_vkCmdDraw>(Vk.GetDeviceProcAddr(Device, "vkCmdDraw"));
 			Vk.CmdSetViewport = reinterpret_cast<PFN_vkCmdSetViewport>(Vk.GetDeviceProcAddr(Device, "vkCmdSetViewport"));
 			Vk.CmdSetScissor = reinterpret_cast<PFN_vkCmdSetScissor>(Vk.GetDeviceProcAddr(Device, "vkCmdSetScissor"));
@@ -992,6 +1014,7 @@ namespace
 				Vk.CmdEndRenderPass != NULL &&
 				Vk.CmdBindPipeline != NULL &&
 				Vk.CmdBindDescriptorSets != NULL &&
+				Vk.CmdBindVertexBuffers != NULL &&
 				Vk.CmdDraw != NULL &&
 				Vk.CmdSetViewport != NULL &&
 				Vk.CmdSetScissor != NULL &&
@@ -1736,6 +1759,25 @@ namespace
 			VkPipelineVertexInputStateCreateInfo vertexInput;
 			memset(&vertexInput, 0, sizeof(vertexInput));
 			vertexInput.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+			VkVertexInputBindingDescription vertexBinding;
+			memset(&vertexBinding, 0, sizeof(vertexBinding));
+			vertexBinding.binding = 0;
+			vertexBinding.stride = sizeof(SceneProbeVertex);
+			vertexBinding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+			VkVertexInputAttributeDescription vertexAttributes[2];
+			memset(vertexAttributes, 0, sizeof(vertexAttributes));
+			vertexAttributes[0].location = 0;
+			vertexAttributes[0].binding = 0;
+			vertexAttributes[0].format = VK_FORMAT_R32G32_SFLOAT;
+			vertexAttributes[0].offset = offsetof(SceneProbeVertex, Position);
+			vertexAttributes[1].location = 1;
+			vertexAttributes[1].binding = 0;
+			vertexAttributes[1].format = VK_FORMAT_R32G32B32_SFLOAT;
+			vertexAttributes[1].offset = offsetof(SceneProbeVertex, Color);
+			vertexInput.vertexBindingDescriptionCount = 1;
+			vertexInput.pVertexBindingDescriptions = &vertexBinding;
+			vertexInput.vertexAttributeDescriptionCount = 2;
+			vertexInput.pVertexAttributeDescriptions = vertexAttributes;
 
 			VkPipelineInputAssemblyStateCreateInfo inputAssembly;
 			memset(&inputAssembly, 0, sizeof(inputAssembly));
@@ -1823,6 +1865,122 @@ namespace
 				return false;
 			}
 			Printf(TEXTCOLOR_GREEN "Vulkan scene probe pipeline active.\n");
+			return true;
+		}
+
+		void DestroyProbeVertexBuffer()
+		{
+			if (Device == NULL)
+			{
+				ProbeVertexBuffer = VK_NULL_HANDLE;
+				ProbeVertexMemory = VK_NULL_HANDLE;
+				ProbeVertexPtr = NULL;
+				ProbeVertexBufferSize = 0;
+				ProbeVertexDrawCount = 0;
+				return;
+			}
+			if (ProbeVertexMemory != VK_NULL_HANDLE && ProbeVertexPtr != NULL && Vk.UnmapMemory != NULL)
+			{
+				Vk.UnmapMemory(Device, ProbeVertexMemory);
+			}
+			ProbeVertexPtr = NULL;
+			if (ProbeVertexBuffer != VK_NULL_HANDLE && Vk.DestroyBuffer != NULL)
+			{
+				Vk.DestroyBuffer(Device, ProbeVertexBuffer, NULL);
+			}
+			ProbeVertexBuffer = VK_NULL_HANDLE;
+			if (ProbeVertexMemory != VK_NULL_HANDLE && Vk.FreeMemory != NULL)
+			{
+				Vk.FreeMemory(Device, ProbeVertexMemory, NULL);
+			}
+			ProbeVertexMemory = VK_NULL_HANDLE;
+			ProbeVertexBufferSize = 0;
+			ProbeVertexDrawCount = 0;
+		}
+
+		void UpdateProbeVertices()
+		{
+			if (ProbeVertexPtr == NULL)
+			{
+				ProbeVertexDrawCount = 0;
+				return;
+			}
+
+			static const SceneProbeVertex vertices[SceneProbeVertexCount] =
+			{
+				{ { 0.25f, -0.45f }, { 1.0f, 0.0f, 1.0f } },
+				{ { 0.95f, -0.45f }, { 0.0f, 1.0f, 1.0f } },
+				{ { 0.95f,  0.25f }, { 1.0f, 1.0f, 0.0f } }
+			};
+			memcpy(ProbeVertexPtr, vertices, sizeof(vertices));
+			ProbeVertexDrawCount = SceneProbeVertexCount;
+		}
+
+		bool EnsureProbeVertexBuffer()
+		{
+			const VkDeviceSize needed = sizeof(SceneProbeVertex) * SceneProbeVertexCount;
+			if (ProbeVertexBuffer != VK_NULL_HANDLE && ProbeVertexPtr != NULL && ProbeVertexBufferSize >= needed)
+			{
+				UpdateProbeVertices();
+				return true;
+			}
+
+			DestroyProbeVertexBuffer();
+
+			VkBufferCreateInfo bufferInfo;
+			memset(&bufferInfo, 0, sizeof(bufferInfo));
+			bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+			bufferInfo.size = needed;
+			bufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+			bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+			VkResult result = Vk.CreateBuffer(Device, &bufferInfo, NULL, &ProbeVertexBuffer);
+			if (result != VK_SUCCESS)
+			{
+				Printf(TEXTCOLOR_RED "Vulkan: probe vkCreateBuffer failed (%d).\n", (int)result);
+				return false;
+			}
+
+			VkMemoryRequirements requirements;
+			Vk.GetBufferMemoryRequirements(Device, ProbeVertexBuffer, &requirements);
+			unsigned int memoryType = FindMemoryType(requirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+			if (memoryType == ~0u)
+			{
+				Printf(TEXTCOLOR_RED "Vulkan: no host-visible probe vertex memory type found.\n");
+				DestroyProbeVertexBuffer();
+				return false;
+			}
+
+			VkMemoryAllocateInfo allocInfo;
+			memset(&allocInfo, 0, sizeof(allocInfo));
+			allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+			allocInfo.allocationSize = requirements.size;
+			allocInfo.memoryTypeIndex = memoryType;
+
+			result = Vk.AllocateMemory(Device, &allocInfo, NULL, &ProbeVertexMemory);
+			if (result != VK_SUCCESS)
+			{
+				Printf(TEXTCOLOR_RED "Vulkan: probe vkAllocateMemory failed (%d).\n", (int)result);
+				DestroyProbeVertexBuffer();
+				return false;
+			}
+			result = Vk.BindBufferMemory(Device, ProbeVertexBuffer, ProbeVertexMemory, 0);
+			if (result != VK_SUCCESS)
+			{
+				Printf(TEXTCOLOR_RED "Vulkan: probe vkBindBufferMemory failed (%d).\n", (int)result);
+				DestroyProbeVertexBuffer();
+				return false;
+			}
+			result = Vk.MapMemory(Device, ProbeVertexMemory, 0, needed, 0, &ProbeVertexPtr);
+			if (result != VK_SUCCESS)
+			{
+				Printf(TEXTCOLOR_RED "Vulkan: probe vkMapMemory failed (%d).\n", (int)result);
+				DestroyProbeVertexBuffer();
+				return false;
+			}
+			ProbeVertexBufferSize = needed;
+			UpdateProbeVertices();
+			PublishVulkanStats(this);
 			return true;
 		}
 
@@ -2285,6 +2443,10 @@ namespace
 			{
 				return false;
 			}
+			if (vk_scene_probe && !EnsureProbeVertexBuffer())
+			{
+				return false;
+			}
 			if (SwapchainFramebuffers[0] == VK_NULL_HANDLE && !CreateSwapchainFramebuffers())
 			{
 				return false;
@@ -2613,10 +2775,12 @@ namespace
 			PresentPushConstants constants = BuildPresentPushConstants(width, height);
 			Vk.CmdPushConstants(CommandBuffer, PipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(constants), &constants);
 			Vk.CmdDraw(CommandBuffer, 3, 1, 0, 0);
-			if (vk_scene_probe && ProbePipeline != VK_NULL_HANDLE)
+			if (vk_scene_probe && ProbePipeline != VK_NULL_HANDLE && ProbeVertexBuffer != VK_NULL_HANDLE && ProbeVertexDrawCount > 0)
 			{
+				VkDeviceSize vertexOffsets[1] = { 0 };
 				Vk.CmdBindPipeline(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, ProbePipeline);
-				Vk.CmdDraw(CommandBuffer, 3, 1, 0, 0);
+				Vk.CmdBindVertexBuffers(CommandBuffer, 0, 1, &ProbeVertexBuffer, vertexOffsets);
+				Vk.CmdDraw(CommandBuffer, ProbeVertexDrawCount, 1, 0, 0);
 			}
 			Vk.CmdEndRenderPass(CommandBuffer);
 
@@ -2857,6 +3021,11 @@ namespace
 		VkDeviceMemory UploadMemory;
 		void *UploadPtr;
 		VkDeviceSize UploadSize;
+		VkBuffer ProbeVertexBuffer;
+		VkDeviceMemory ProbeVertexMemory;
+		void *ProbeVertexPtr;
+		VkDeviceSize ProbeVertexBufferSize;
+		unsigned int ProbeVertexDrawCount;
 		VkImage SourceImage;
 		VkDeviceMemory SourceImageMemory;
 		VkImageView SourceImageView;
@@ -2955,6 +3124,7 @@ namespace
 		VulkanStats.PresentSharpness = runtime->GetPresentSharpness();
 		VulkanStats.PresentAspect = runtime->GetPresentAspect();
 		VulkanStats.SceneProbeActive = runtime->IsSceneProbeActive();
+		VulkanStats.SceneProbeVertexCount = runtime->GetSceneProbeVertexCount();
 
 		const VkPhysicalDeviceProperties &properties = runtime->GetDeviceProperties();
 		CopyVulkanString(VulkanStats.DeviceName, sizeof(VulkanStats.DeviceName), properties.deviceName);

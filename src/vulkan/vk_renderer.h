@@ -40,6 +40,7 @@ struct FVulkanBackendStats
 	unsigned int PresentSourceHeight;
 	float PresentSharpness;
 	float PresentAspect;
+	unsigned int SceneProbeVertexCount;
 	bool SceneProbeActive;
 	bool GpuPresentationActive;
 	bool TimestampQueriesAvailable;
