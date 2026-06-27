@@ -80,10 +80,11 @@ Current Vulkan direction:
   actual level geometry. Wall segments are clipped against a small camera near
   plane and the left/right view-frustum planes, which keeps this probe from
   drawing behind-camera or offscreen slabs across the foreground. The Vulkan
-  probe/world extraction path and the shared world-to-clip transform currently
-  default to a 180-degree-rotated negated Doom view angle. Its side vector is
-  the opposite perpendicular of that forward vector, matching Doom's lateral
-  movement handedness for strafe tests.
+  probe/world extraction path and the shared world-to-clip transform now follow
+  UZDoom's renderer convention more closely: Doom yaw is used directly for
+  forward depth, the side vector matches UZDoom's software world-to-view
+  helper, and CPU frustum clipping, probe placement, and GPU push-constant
+  projection share that same basis.
 - `vk_draw_world` is the first non-probe Vulkan world geometry toggle. It
   reuses the clipped one-sided wall extraction but writes into a separate draw
   range and appears in `stat renderer` as `GPU world draw`. This is still
