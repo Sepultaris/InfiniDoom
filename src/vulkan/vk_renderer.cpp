@@ -2051,7 +2051,7 @@ namespace
 			float ceiling2 = FIXED2FLOAT(line->frontsector->ceilingplane.ZatPoint(line->v2));
 
 			const double pi = 3.14159265358979323846;
-			const double yawRadians = (180.0 + ANGLE2DBL(viewangle)) * (pi / 180.0);
+			const double yawRadians = (180.0 - ANGLE2DBL(viewangle)) * (pi / 180.0);
 			const double forwardX = cos(yawRadians);
 			const double forwardY = sin(yawRadians);
 			const double rightX = forwardY;
@@ -2238,7 +2238,7 @@ namespace
 				return;
 			}
 			const double pi = 3.14159265358979323846;
-			const double angleRadians = (180.0 + ANGLE2DBL(viewangle)) * (pi / 180.0);
+			const double angleRadians = (180.0 - ANGLE2DBL(viewangle)) * (pi / 180.0);
 			const double forwardX = cos(angleRadians);
 			const double forwardY = sin(angleRadians);
 			const double rightX = forwardY;

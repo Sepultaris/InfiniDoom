@@ -1,5 +1,13 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.29 - 2026-06-27
+
+- Restored the CPU-side Vulkan world/probe extraction yaw to the known-good
+  `180 - viewangle` path so forward/back and strafe selection no longer render
+  the world behind the player.
+- Kept the shared Vulkan world-to-clip transform on `180 + viewangle`, limiting
+  the turn-direction correction to projection instead of world extraction.
+
 ## 3.3-alpha-vdoom.28 - 2026-06-27
 
 - Switched the Vulkan world/probe yaw mapping from `180 - viewangle` to
