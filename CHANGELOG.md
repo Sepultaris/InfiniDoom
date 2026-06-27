@@ -1,5 +1,12 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.32 - 2026-06-27
+
+- Removed the remaining live Vulkan world-basis calibration CVars after
+  `vk_clip_yaw_sign 1` could also crash the client.
+- Restored the Vulkan diagnostic world/probe basis to the last non-crashing
+  fixed setup while we continue rotation correction in code-reviewed builds.
+
 ## 3.3-alpha-vdoom.31 - 2026-06-27
 
 - Removed the live `vk_clip_side_sign` calibration CVar after it could crash

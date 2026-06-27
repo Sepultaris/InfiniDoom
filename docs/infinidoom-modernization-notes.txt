@@ -89,11 +89,10 @@ Current Vulkan direction:
   range and appears in `stat renderer` as `GPU world draw`. This is still
   flat-colored scaffolding; texture upload, UVs, and material binding are the
   next renderer milestone.
-- Temporary calibration CVars `vk_world_yaw_sign` and `vk_clip_yaw_sign` are
-  available while matching Doom's software-space camera basis. Once the correct
-  combination is verified in-game, collapse these back into fixed renderer
-  math. `vk_clip_side_sign` was intentionally removed after it could crash the
-  diagnostic renderer path when changed live.
+- Live Vulkan basis calibration CVars were removed after sign changes in the
+  projection path could crash the diagnostic renderer when changed in-game.
+  Continue matching Doom's software-space camera basis through fixed,
+  code-reviewed builds instead of mutable projection controls.
 - The Vulkan presentation render pass now owns a depth attachment. The palette
   presenter ignores depth, while the world-probe geometry pipeline depth-tests
   and writes camera-distance depth values.
