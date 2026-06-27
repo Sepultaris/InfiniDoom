@@ -1822,6 +1822,7 @@ namespace
 				Printf(TEXTCOLOR_RED "Vulkan: probe vkCreateGraphicsPipelines failed (%d).\n", (int)result);
 				return false;
 			}
+			Printf(TEXTCOLOR_GREEN "Vulkan scene probe pipeline active.\n");
 			return true;
 		}
 

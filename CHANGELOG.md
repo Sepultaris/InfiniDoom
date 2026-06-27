@@ -1,5 +1,11 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.16 - 2026-06-26
+
+- Moved the `vk_scene_probe` triangle to a more visible right-center screen
+  position, increased its opacity, and print a console confirmation when the
+  probe pipeline is created.
+
 ## 3.3-alpha-vdoom.15 - 2026-06-26
 
 - Added `vk_scene_probe`, an opt-in Vulkan-owned geometry draw after the
