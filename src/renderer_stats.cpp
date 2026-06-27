@@ -179,6 +179,10 @@ ADD_STAT(renderer)
 				VulkanPresentFilterName(vk.PresentFilterMode),
 				VulkanScaleModeName(vk.PresentScaleMode),
 				FormatPresentAspect(vk.PresentAspect).GetChars());
+			if (vk.PresentFilterMode == 2)
+			{
+				out.AppendFormat("Present sharpness: %.2f\n", (double)vk.PresentSharpness);
+			}
 			if (vk.GpuPresentationActive)
 			{
 				out.AppendFormat("Present source: %ux%u\n",

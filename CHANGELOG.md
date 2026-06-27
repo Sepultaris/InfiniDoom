@@ -1,5 +1,13 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.14 - 2026-06-26
+
+- Added `vk_present_sharpness` for the `vk_present_filter 2` sharp-color
+  scaler. Lower values behave closer to smooth color bilinear filtering; higher
+  values preserve crisper pixel edges.
+- Updated `stat renderer` to show the active sharpness value when the
+  sharp-color presentation filter is selected.
+
 ## 3.3-alpha-vdoom.13 - 2026-06-26
 
 - Added `vk_render_scale`, a Vulkan presentation-source scale control for

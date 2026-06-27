@@ -71,6 +71,18 @@ CUSTOM_CVAR(Float, vk_render_scale, 1.f, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR
 	}
 }
 
+CUSTOM_CVAR(Float, vk_present_sharpness, 0.5f, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINITCALL)
+{
+	if (self < 0.f)
+	{
+		self = 0.f;
+	}
+	else if (self > 1.f)
+	{
+		self = 1.f;
+	}
+}
+
 CUSTOM_CVAR(Int, vk_present_scale_mode, 1, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINITCALL)
 {
 	if (self < 0)
@@ -221,6 +233,11 @@ namespace
 	static float ClampRenderScale()
 	{
 		return vk_render_scale < 0.25f ? 0.25f : (vk_render_scale > 1.f ? 1.f : vk_render_scale);
+	}
+
+	static float ClampPresentSharpness()
+	{
+		return vk_present_sharpness < 0.f ? 0.f : (vk_present_sharpness > 1.f ? 1.f : vk_present_sharpness);
 	}
 
 	class VulkanRuntime
@@ -525,6 +542,11 @@ namespace
 		unsigned int GetPresentSourceHeight() const
 		{
 			return SourceImageHeight;
+		}
+
+		float GetPresentSharpness() const
+		{
+			return ClampPresentSharpness();
 		}
 
 		float GetPresentAspect() const
@@ -2471,6 +2493,7 @@ namespace
 			constants.FilterParams[0] = (float)ClampPresentFilterMode();
 			constants.FilterParams[1] = (float)(sourceWidth > 0 ? sourceWidth : 1);
 			constants.FilterParams[2] = (float)(sourceHeight > 0 ? sourceHeight : 1);
+			constants.FilterParams[3] = ClampPresentSharpness();
 
 			PresentScaleMode = (unsigned int)(vk_present_scale_mode < 0 ? 0 : (vk_present_scale_mode > 2 ? 2 : vk_present_scale_mode));
 			PresentViewportX = 0;
@@ -2781,6 +2804,7 @@ namespace
 		VulkanStats.PresentViewportHeight = runtime->GetPresentViewportHeight();
 		VulkanStats.PresentSourceWidth = runtime->GetPresentSourceWidth();
 		VulkanStats.PresentSourceHeight = runtime->GetPresentSourceHeight();
+		VulkanStats.PresentSharpness = runtime->GetPresentSharpness();
 		VulkanStats.PresentAspect = runtime->GetPresentAspect();
 
 		const VkPhysicalDeviceProperties &properties = runtime->GetDeviceProperties();

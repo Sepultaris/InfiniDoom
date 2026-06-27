@@ -29,7 +29,9 @@ vec4 sharpColorFilter(vec2 sourceCoord)
 	ivec2 sourceSize = max(ivec2(pc.filterParams.yz + vec2(0.5)), ivec2(1));
 	vec2 pixel = sourceCoord * vec2(sourceSize) - vec2(0.5);
 	ivec2 basePixel = ivec2(floor(pixel));
-	vec2 blend = clamp((fract(pixel) - vec2(0.25)) * 2.0, vec2(0.0), vec2(1.0));
+	float sharpness = clamp(pc.filterParams.w, 0.0, 1.0);
+	float blendEdge = mix(0.0, 0.45, sharpness);
+	vec2 blend = clamp((fract(pixel) - vec2(blendEdge)) / (1.0 - 2.0 * blendEdge), vec2(0.0), vec2(1.0));
 
 	vec4 c00 = paletteColorAt(basePixel, sourceSize);
 	vec4 c10 = paletteColorAt(basePixel + ivec2(1, 0), sourceSize);
