@@ -70,17 +70,16 @@ Current Vulkan direction:
   swapchain. This proves and tunes the presentation/upscale path; a later pass
   should separate true internal render resolution from logical UI and output
   resolution.
-- `vk_scene_probe` is an opt-in Vulkan geometry proof. It creates a separate
-  graphics pipeline, fills a host-visible vertex buffer with 3D Doom-world
+- `vk_scene_probe` is an opt-in Vulkan geometry proof. It uses a translucent
+  debug-marker pipeline, fills a host-visible vertex buffer with 3D Doom-world
   positions near the current camera, pushes a world-to-clip transform to the
-  vertex shader, and issues a draw call after the palette presenter so we can
-  verify backend-owned geometry drawing before replacing it with map/actor
-  geometry.
-- `vk_world_probe` uses the same debug Vulkan geometry path but fills the
-  vertex buffer from nearby one-sided Doom map lines, emitting simple wall
-  quads as the first backend-owned batch of actual level geometry.
+  vertex shader, and issues a draw call after the palette presenter.
+- `vk_world_probe` shares the debug vertex stream but uses its own opaque,
+  depth-tested pipeline. It fills the vertex buffer from nearby one-sided Doom
+  map lines, emitting simple wall quads as the first backend-owned batch of
+  actual level geometry.
 - The Vulkan presentation render pass now owns a depth attachment. The palette
-  presenter ignores depth, while the probe/world geometry pipeline depth-tests
+  presenter ignores depth, while the world-probe geometry pipeline depth-tests
   and writes camera-distance depth values.
 - `vk_present_scale_mode` controls how the Vulkan palette presenter maps the
   software framebuffer into the swapchain: `0` stretches to the full client

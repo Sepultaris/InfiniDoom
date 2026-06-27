@@ -277,13 +277,14 @@ namespace
 			  ImageAvailableSemaphore(VK_NULL_HANDLE), RenderFinishedSemaphore(VK_NULL_HANDLE), RenderFence(VK_NULL_HANDLE),
 			  UploadBuffer(VK_NULL_HANDLE), UploadMemory(VK_NULL_HANDLE), UploadPtr(NULL), UploadSize(0),
 			  ProbeVertexBuffer(VK_NULL_HANDLE), ProbeVertexMemory(VK_NULL_HANDLE), ProbeVertexPtr(NULL), ProbeVertexBufferSize(0),
-			  ProbeVertexDrawCount(0),
+			  ProbeVertexDrawCount(0), SceneProbeFirstVertex(0), SceneProbeDrawCount(0), WorldProbeFirstVertex(0), WorldProbeDrawCount(0),
 			  SourceImage(VK_NULL_HANDLE), SourceImageMemory(VK_NULL_HANDLE), SourceImageView(VK_NULL_HANDLE),
 			  PaletteImage(VK_NULL_HANDLE), PaletteImageMemory(VK_NULL_HANDLE), PaletteImageView(VK_NULL_HANDLE),
 			  DepthImage(VK_NULL_HANDLE), DepthImageMemory(VK_NULL_HANDLE), DepthImageView(VK_NULL_HANDLE),
 			  NearestSampler(VK_NULL_HANDLE), DescriptorSetLayout(VK_NULL_HANDLE), DescriptorPool(VK_NULL_HANDLE),
 			  DescriptorSet(VK_NULL_HANDLE), PipelineLayout(VK_NULL_HANDLE), RenderPass(VK_NULL_HANDLE),
 			  GraphicsPipeline(VK_NULL_HANDLE), ProbePipelineLayout(VK_NULL_HANDLE), ProbePipeline(VK_NULL_HANDLE),
+			  WorldProbePipelineLayout(VK_NULL_HANDLE), WorldProbePipeline(VK_NULL_HANDLE),
 			  SourceImageWidth(0), SourceImageHeight(0), GpuPresentationReady(false),
 			  PresentFilterMode(-1), TimestampQueryPool(VK_NULL_HANDLE), TimestampQueriesSupported(false),
 			  TimestampQueryPending(false), TimestampPeriod(0.0), LastGpuFrameMS(0.0), MemoryBudgetSupported(false),
@@ -514,12 +515,22 @@ namespace
 
 		bool IsSceneProbeActive() const
 		{
-			return WantsProbeDraw() && ProbePipeline != VK_NULL_HANDLE && ProbeVertexBuffer != VK_NULL_HANDLE && ProbeVertexDrawCount > 0;
+			return vk_scene_probe && ProbePipeline != VK_NULL_HANDLE && ProbeVertexBuffer != VK_NULL_HANDLE && SceneProbeDrawCount > 0;
 		}
 
 		unsigned int GetSceneProbeVertexCount() const
 		{
-			return IsSceneProbeActive() ? ProbeVertexDrawCount : 0;
+			return IsSceneProbeActive() ? SceneProbeDrawCount : 0;
+		}
+
+		bool IsWorldProbeActive() const
+		{
+			return vk_world_probe && WorldProbePipeline != VK_NULL_HANDLE && ProbeVertexBuffer != VK_NULL_HANDLE && WorldProbeDrawCount > 0;
+		}
+
+		unsigned int GetWorldProbeVertexCount() const
+		{
+			return IsWorldProbeActive() ? WorldProbeDrawCount : 0;
 		}
 
 		bool WantsProbeDraw() const
@@ -1775,7 +1786,7 @@ namespace
 			return true;
 		}
 
-		bool CreateProbePipeline()
+		bool CreateProbePipeline(VkPipelineLayout &pipelineLayout, VkPipeline &pipeline, bool enableBlend, bool enableDepthTest, bool enableDepthWrite, const char *label)
 		{
 			if (RenderPass == VK_NULL_HANDLE && !CreateRenderPass())
 			{
@@ -1851,7 +1862,7 @@ namespace
 
 			VkPipelineColorBlendAttachmentState blendAttachment;
 			memset(&blendAttachment, 0, sizeof(blendAttachment));
-			blendAttachment.blendEnable = VK_TRUE;
+			blendAttachment.blendEnable = enableBlend ? VK_TRUE : VK_FALSE;
 			blendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
 			blendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
 			blendAttachment.colorBlendOp = VK_BLEND_OP_ADD;
@@ -1869,8 +1880,8 @@ namespace
 			VkPipelineDepthStencilStateCreateInfo depthStencil;
 			memset(&depthStencil, 0, sizeof(depthStencil));
 			depthStencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
-			depthStencil.depthTestEnable = VK_TRUE;
-			depthStencil.depthWriteEnable = VK_TRUE;
+			depthStencil.depthTestEnable = enableDepthTest ? VK_TRUE : VK_FALSE;
+			depthStencil.depthWriteEnable = enableDepthWrite ? VK_TRUE : VK_FALSE;
 			depthStencil.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
 			depthStencil.depthBoundsTestEnable = VK_FALSE;
 			depthStencil.stencilTestEnable = VK_FALSE;
@@ -1893,10 +1904,10 @@ namespace
 			layoutInfo.pushConstantRangeCount = 1;
 			layoutInfo.pPushConstantRanges = &pushConstantRange;
 
-			VkResult result = Vk.CreatePipelineLayout(Device, &layoutInfo, NULL, &ProbePipelineLayout);
+			VkResult result = Vk.CreatePipelineLayout(Device, &layoutInfo, NULL, &pipelineLayout);
 			if (result != VK_SUCCESS)
 			{
-				Printf(TEXTCOLOR_RED "Vulkan: probe vkCreatePipelineLayout failed (%d).\n", (int)result);
+				Printf(TEXTCOLOR_RED "Vulkan: %s vkCreatePipelineLayout failed (%d).\n", label, (int)result);
 				Vk.DestroyShaderModule(Device, vert, NULL);
 				Vk.DestroyShaderModule(Device, frag, NULL);
 				return false;
@@ -1915,20 +1926,35 @@ namespace
 			pipelineInfo.pDepthStencilState = &depthStencil;
 			pipelineInfo.pColorBlendState = &blending;
 			pipelineInfo.pDynamicState = &dynamicState;
-			pipelineInfo.layout = ProbePipelineLayout;
+			pipelineInfo.layout = pipelineLayout;
 			pipelineInfo.renderPass = RenderPass;
 			pipelineInfo.subpass = 0;
-			result = Vk.CreateGraphicsPipelines(Device, VK_NULL_HANDLE, 1, &pipelineInfo, NULL, &ProbePipeline);
+			result = Vk.CreateGraphicsPipelines(Device, VK_NULL_HANDLE, 1, &pipelineInfo, NULL, &pipeline);
 
 			Vk.DestroyShaderModule(Device, vert, NULL);
 			Vk.DestroyShaderModule(Device, frag, NULL);
 			if (result != VK_SUCCESS)
 			{
-				Printf(TEXTCOLOR_RED "Vulkan: probe vkCreateGraphicsPipelines failed (%d).\n", (int)result);
+				Printf(TEXTCOLOR_RED "Vulkan: %s vkCreateGraphicsPipelines failed (%d).\n", label, (int)result);
+				if (pipelineLayout != VK_NULL_HANDLE)
+				{
+					Vk.DestroyPipelineLayout(Device, pipelineLayout, NULL);
+					pipelineLayout = VK_NULL_HANDLE;
+				}
 				return false;
 			}
-			Printf(TEXTCOLOR_GREEN "Vulkan scene probe pipeline active.\n");
+			Printf(TEXTCOLOR_GREEN "Vulkan %s pipeline active.\n", label);
 			return true;
+		}
+
+		bool CreateSceneProbePipeline()
+		{
+			return CreateProbePipeline(ProbePipelineLayout, ProbePipeline, true, false, false, "scene probe");
+		}
+
+		bool CreateWorldProbePipeline()
+		{
+			return CreateProbePipeline(WorldProbePipelineLayout, WorldProbePipeline, false, true, true, "world probe");
 		}
 
 		void DestroyProbeVertexBuffer()
@@ -1940,6 +1966,10 @@ namespace
 				ProbeVertexPtr = NULL;
 				ProbeVertexBufferSize = 0;
 				ProbeVertexDrawCount = 0;
+				SceneProbeFirstVertex = 0;
+				SceneProbeDrawCount = 0;
+				WorldProbeFirstVertex = 0;
+				WorldProbeDrawCount = 0;
 				return;
 			}
 			if (ProbeVertexMemory != VK_NULL_HANDLE && ProbeVertexPtr != NULL && Vk.UnmapMemory != NULL)
@@ -1959,6 +1989,10 @@ namespace
 			ProbeVertexMemory = VK_NULL_HANDLE;
 			ProbeVertexBufferSize = 0;
 			ProbeVertexDrawCount = 0;
+			SceneProbeFirstVertex = 0;
+			SceneProbeDrawCount = 0;
+			WorldProbeFirstVertex = 0;
+			WorldProbeDrawCount = 0;
 		}
 
 		void AppendProbeVertex(SceneProbeVertex *vertices, unsigned int &count, float x, float y, float z, float r, float g, float b)
@@ -2077,18 +2111,30 @@ namespace
 			if (ProbeVertexPtr == NULL)
 			{
 				ProbeVertexDrawCount = 0;
+				SceneProbeFirstVertex = 0;
+				SceneProbeDrawCount = 0;
+				WorldProbeFirstVertex = 0;
+				WorldProbeDrawCount = 0;
 				return;
 			}
 
 			SceneProbeVertex *vertices = static_cast<SceneProbeVertex *>(ProbeVertexPtr);
 			unsigned int count = 0;
+			SceneProbeFirstVertex = 0;
+			SceneProbeDrawCount = 0;
+			WorldProbeFirstVertex = 0;
+			WorldProbeDrawCount = 0;
 			if (vk_world_probe)
 			{
+				WorldProbeFirstVertex = count;
 				AppendWorldProbeVertices(vertices, count);
+				WorldProbeDrawCount = count - WorldProbeFirstVertex;
 			}
 			if (vk_scene_probe)
 			{
+				SceneProbeFirstVertex = count;
 				AppendSceneProbeVertices(vertices, count);
+				SceneProbeDrawCount = count - SceneProbeFirstVertex;
 			}
 			ProbeVertexDrawCount = count;
 		}
@@ -2254,6 +2300,11 @@ namespace
 				Vk.DestroyPipeline(Device, ProbePipeline, NULL);
 			}
 			ProbePipeline = VK_NULL_HANDLE;
+			if (WorldProbePipeline != VK_NULL_HANDLE && Vk.DestroyPipeline != NULL)
+			{
+				Vk.DestroyPipeline(Device, WorldProbePipeline, NULL);
+			}
+			WorldProbePipeline = VK_NULL_HANDLE;
 			if (PipelineLayout != VK_NULL_HANDLE && Vk.DestroyPipelineLayout != NULL)
 			{
 				Vk.DestroyPipelineLayout(Device, PipelineLayout, NULL);
@@ -2264,6 +2315,11 @@ namespace
 				Vk.DestroyPipelineLayout(Device, ProbePipelineLayout, NULL);
 			}
 			ProbePipelineLayout = VK_NULL_HANDLE;
+			if (WorldProbePipelineLayout != VK_NULL_HANDLE && Vk.DestroyPipelineLayout != NULL)
+			{
+				Vk.DestroyPipelineLayout(Device, WorldProbePipelineLayout, NULL);
+			}
+			WorldProbePipelineLayout = VK_NULL_HANDLE;
 			if (RenderPass != VK_NULL_HANDLE && Vk.DestroyRenderPass != NULL)
 			{
 				Vk.DestroyRenderPass(Device, RenderPass, NULL);
@@ -2719,7 +2775,11 @@ namespace
 			{
 				return false;
 			}
-			if (WantsProbeDraw() && ProbePipeline == VK_NULL_HANDLE && !CreateProbePipeline())
+			if (vk_scene_probe && ProbePipeline == VK_NULL_HANDLE && !CreateSceneProbePipeline())
+			{
+				return false;
+			}
+			if (vk_world_probe && WorldProbePipeline == VK_NULL_HANDLE && !CreateWorldProbePipeline())
 			{
 				return false;
 			}
@@ -3065,14 +3125,24 @@ namespace
 			{
 				UpdateProbeVertices();
 			}
-			if (WantsProbeDraw() && ProbePipeline != VK_NULL_HANDLE && ProbeVertexBuffer != VK_NULL_HANDLE && ProbeVertexDrawCount > 0)
+			if (ProbeVertexBuffer != VK_NULL_HANDLE && ProbeVertexDrawCount > 0)
 			{
 				VkDeviceSize vertexOffsets[1] = { 0 };
 				SceneProbePushConstants probeConstants = BuildSceneProbePushConstants();
-				Vk.CmdBindPipeline(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, ProbePipeline);
-				Vk.CmdPushConstants(CommandBuffer, ProbePipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(probeConstants), &probeConstants);
-				Vk.CmdBindVertexBuffers(CommandBuffer, 0, 1, &ProbeVertexBuffer, vertexOffsets);
-				Vk.CmdDraw(CommandBuffer, ProbeVertexDrawCount, 1, 0, 0);
+				if (vk_world_probe && WorldProbePipeline != VK_NULL_HANDLE && WorldProbeDrawCount > 0)
+				{
+					Vk.CmdBindPipeline(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, WorldProbePipeline);
+					Vk.CmdPushConstants(CommandBuffer, WorldProbePipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(probeConstants), &probeConstants);
+					Vk.CmdBindVertexBuffers(CommandBuffer, 0, 1, &ProbeVertexBuffer, vertexOffsets);
+					Vk.CmdDraw(CommandBuffer, WorldProbeDrawCount, 1, WorldProbeFirstVertex, 0);
+				}
+				if (vk_scene_probe && ProbePipeline != VK_NULL_HANDLE && SceneProbeDrawCount > 0)
+				{
+					Vk.CmdBindPipeline(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, ProbePipeline);
+					Vk.CmdPushConstants(CommandBuffer, ProbePipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(probeConstants), &probeConstants);
+					Vk.CmdBindVertexBuffers(CommandBuffer, 0, 1, &ProbeVertexBuffer, vertexOffsets);
+					Vk.CmdDraw(CommandBuffer, SceneProbeDrawCount, 1, SceneProbeFirstVertex, 0);
+				}
 			}
 			Vk.CmdEndRenderPass(CommandBuffer);
 
@@ -3394,6 +3464,10 @@ namespace
 		void *ProbeVertexPtr;
 		VkDeviceSize ProbeVertexBufferSize;
 		unsigned int ProbeVertexDrawCount;
+		unsigned int SceneProbeFirstVertex;
+		unsigned int SceneProbeDrawCount;
+		unsigned int WorldProbeFirstVertex;
+		unsigned int WorldProbeDrawCount;
 		VkImage SourceImage;
 		VkDeviceMemory SourceImageMemory;
 		VkImageView SourceImageView;
@@ -3412,6 +3486,8 @@ namespace
 		VkPipeline GraphicsPipeline;
 		VkPipelineLayout ProbePipelineLayout;
 		VkPipeline ProbePipeline;
+		VkPipelineLayout WorldProbePipelineLayout;
+		VkPipeline WorldProbePipeline;
 		unsigned int SourceImageWidth;
 		unsigned int SourceImageHeight;
 		bool GpuPresentationReady;
@@ -3496,6 +3572,8 @@ namespace
 		VulkanStats.PresentAspect = runtime->GetPresentAspect();
 		VulkanStats.SceneProbeActive = runtime->IsSceneProbeActive();
 		VulkanStats.SceneProbeVertexCount = runtime->GetSceneProbeVertexCount();
+		VulkanStats.WorldProbeActive = runtime->IsWorldProbeActive();
+		VulkanStats.WorldProbeVertexCount = runtime->GetWorldProbeVertexCount();
 
 		const VkPhysicalDeviceProperties &properties = runtime->GetDeviceProperties();
 		CopyVulkanString(VulkanStats.DeviceName, sizeof(VulkanStats.DeviceName), properties.deviceName);

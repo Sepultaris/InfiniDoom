@@ -1,5 +1,14 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.21 - 2026-06-27
+
+- Split Vulkan debug geometry into separate scene-marker and world-wall probe
+  pipelines.
+- Made `vk_world_probe` use an opaque, depth-tested pipeline while keeping
+  `vk_scene_probe` as a translucent debug marker.
+- Updated `stat renderer` to report scene-probe and world-probe vertex counts
+  separately.
+
 ## 3.3-alpha-vdoom.20 - 2026-06-27
 
 - Added a Vulkan depth attachment to the GPU presentation render pass and
