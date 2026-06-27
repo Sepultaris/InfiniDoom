@@ -1,5 +1,14 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.15 - 2026-06-26
+
+- Added `vk_scene_probe`, an opt-in Vulkan-owned geometry draw after the
+  palette presentation pass. This uses a separate Vulkan graphics pipeline and
+  draw call, proving that the backend can draw independent GPU geometry on top
+  of the uploaded software frame.
+- Updated `stat renderer` to report whether the GPU scene probe pipeline is
+  active.
+
 ## 3.3-alpha-vdoom.14 - 2026-06-26
 
 - Added `vk_present_sharpness` for the `vk_present_filter 2` sharp-color

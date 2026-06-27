@@ -108,6 +108,7 @@ CUSTOM_CVAR(Float, vk_present_aspect, 0.f, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CV
 }
 
 CVAR(Bool, vk_present_force_aspect, false, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINITCALL)
+CVAR(Bool, vk_scene_probe, false, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINITCALL)
 
 namespace
 {
@@ -252,7 +253,8 @@ namespace
 			  PaletteImage(VK_NULL_HANDLE), PaletteImageMemory(VK_NULL_HANDLE), PaletteImageView(VK_NULL_HANDLE),
 			  NearestSampler(VK_NULL_HANDLE), DescriptorSetLayout(VK_NULL_HANDLE), DescriptorPool(VK_NULL_HANDLE),
 			  DescriptorSet(VK_NULL_HANDLE), PipelineLayout(VK_NULL_HANDLE), RenderPass(VK_NULL_HANDLE),
-			  GraphicsPipeline(VK_NULL_HANDLE), SourceImageWidth(0), SourceImageHeight(0), GpuPresentationReady(false),
+			  GraphicsPipeline(VK_NULL_HANDLE), ProbePipelineLayout(VK_NULL_HANDLE), ProbePipeline(VK_NULL_HANDLE),
+			  SourceImageWidth(0), SourceImageHeight(0), GpuPresentationReady(false),
 			  PresentFilterMode(-1), TimestampQueryPool(VK_NULL_HANDLE), TimestampQueriesSupported(false),
 			  TimestampQueryPending(false), TimestampPeriod(0.0), LastGpuFrameMS(0.0), MemoryBudgetSupported(false),
 			  DeviceLocalMemoryBudgetBytes(0), DeviceLocalMemoryUsageBytes(0),
@@ -477,6 +479,11 @@ namespace
 		bool IsGpuPresentationReady() const
 		{
 			return GpuPresentationReady;
+		}
+
+		bool IsSceneProbeActive() const
+		{
+			return vk_scene_probe && ProbePipeline != VK_NULL_HANDLE;
 		}
 
 		bool AreTimestampQueriesAvailable() const
@@ -1699,6 +1706,125 @@ namespace
 			return true;
 		}
 
+		bool CreateProbePipeline()
+		{
+			if (RenderPass == VK_NULL_HANDLE && !CreateRenderPass())
+			{
+				return false;
+			}
+
+			VkShaderModule vert = CreateShaderModule(SceneProbeVertSpv, SceneProbeVertSpvSize);
+			VkShaderModule frag = CreateShaderModule(SceneProbeFragSpv, SceneProbeFragSpvSize);
+			if (vert == VK_NULL_HANDLE || frag == VK_NULL_HANDLE)
+			{
+				if (vert != VK_NULL_HANDLE) Vk.DestroyShaderModule(Device, vert, NULL);
+				if (frag != VK_NULL_HANDLE) Vk.DestroyShaderModule(Device, frag, NULL);
+				return false;
+			}
+
+			VkPipelineShaderStageCreateInfo stages[2];
+			memset(stages, 0, sizeof(stages));
+			stages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+			stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
+			stages[0].module = vert;
+			stages[0].pName = "main";
+			stages[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+			stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+			stages[1].module = frag;
+			stages[1].pName = "main";
+
+			VkPipelineVertexInputStateCreateInfo vertexInput;
+			memset(&vertexInput, 0, sizeof(vertexInput));
+			vertexInput.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+
+			VkPipelineInputAssemblyStateCreateInfo inputAssembly;
+			memset(&inputAssembly, 0, sizeof(inputAssembly));
+			inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+			inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+
+			VkPipelineViewportStateCreateInfo viewportState;
+			memset(&viewportState, 0, sizeof(viewportState));
+			viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+			viewportState.viewportCount = 1;
+			viewportState.scissorCount = 1;
+
+			VkPipelineRasterizationStateCreateInfo rasterizer;
+			memset(&rasterizer, 0, sizeof(rasterizer));
+			rasterizer.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+			rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
+			rasterizer.cullMode = VK_CULL_MODE_NONE;
+			rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+			rasterizer.lineWidth = 1.f;
+
+			VkPipelineMultisampleStateCreateInfo multisampling;
+			memset(&multisampling, 0, sizeof(multisampling));
+			multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+			multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+
+			VkPipelineColorBlendAttachmentState blendAttachment;
+			memset(&blendAttachment, 0, sizeof(blendAttachment));
+			blendAttachment.blendEnable = VK_TRUE;
+			blendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+			blendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+			blendAttachment.colorBlendOp = VK_BLEND_OP_ADD;
+			blendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+			blendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+			blendAttachment.alphaBlendOp = VK_BLEND_OP_ADD;
+			blendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+
+			VkPipelineColorBlendStateCreateInfo blending;
+			memset(&blending, 0, sizeof(blending));
+			blending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+			blending.attachmentCount = 1;
+			blending.pAttachments = &blendAttachment;
+
+			VkDynamicState dynamicStates[2] = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
+			VkPipelineDynamicStateCreateInfo dynamicState;
+			memset(&dynamicState, 0, sizeof(dynamicState));
+			dynamicState.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+			dynamicState.dynamicStateCount = 2;
+			dynamicState.pDynamicStates = dynamicStates;
+
+			VkPipelineLayoutCreateInfo layoutInfo;
+			memset(&layoutInfo, 0, sizeof(layoutInfo));
+			layoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+
+			VkResult result = Vk.CreatePipelineLayout(Device, &layoutInfo, NULL, &ProbePipelineLayout);
+			if (result != VK_SUCCESS)
+			{
+				Printf(TEXTCOLOR_RED "Vulkan: probe vkCreatePipelineLayout failed (%d).\n", (int)result);
+				Vk.DestroyShaderModule(Device, vert, NULL);
+				Vk.DestroyShaderModule(Device, frag, NULL);
+				return false;
+			}
+
+			VkGraphicsPipelineCreateInfo pipelineInfo;
+			memset(&pipelineInfo, 0, sizeof(pipelineInfo));
+			pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+			pipelineInfo.stageCount = 2;
+			pipelineInfo.pStages = stages;
+			pipelineInfo.pVertexInputState = &vertexInput;
+			pipelineInfo.pInputAssemblyState = &inputAssembly;
+			pipelineInfo.pViewportState = &viewportState;
+			pipelineInfo.pRasterizationState = &rasterizer;
+			pipelineInfo.pMultisampleState = &multisampling;
+			pipelineInfo.pColorBlendState = &blending;
+			pipelineInfo.pDynamicState = &dynamicState;
+			pipelineInfo.layout = ProbePipelineLayout;
+			pipelineInfo.renderPass = RenderPass;
+			pipelineInfo.subpass = 0;
+			result = Vk.CreateGraphicsPipelines(Device, VK_NULL_HANDLE, 1, &pipelineInfo, NULL, &ProbePipeline);
+
+			Vk.DestroyShaderModule(Device, vert, NULL);
+			Vk.DestroyShaderModule(Device, frag, NULL);
+			if (result != VK_SUCCESS)
+			{
+				Printf(TEXTCOLOR_RED "Vulkan: probe vkCreateGraphicsPipelines failed (%d).\n", (int)result);
+				return false;
+			}
+			return true;
+		}
+
 		void DestroyUploadBuffer()
 		{
 			if (Device == NULL)
@@ -1785,11 +1911,21 @@ namespace
 				Vk.DestroyPipeline(Device, GraphicsPipeline, NULL);
 			}
 			GraphicsPipeline = VK_NULL_HANDLE;
+			if (ProbePipeline != VK_NULL_HANDLE && Vk.DestroyPipeline != NULL)
+			{
+				Vk.DestroyPipeline(Device, ProbePipeline, NULL);
+			}
+			ProbePipeline = VK_NULL_HANDLE;
 			if (PipelineLayout != VK_NULL_HANDLE && Vk.DestroyPipelineLayout != NULL)
 			{
 				Vk.DestroyPipelineLayout(Device, PipelineLayout, NULL);
 			}
 			PipelineLayout = VK_NULL_HANDLE;
+			if (ProbePipelineLayout != VK_NULL_HANDLE && Vk.DestroyPipelineLayout != NULL)
+			{
+				Vk.DestroyPipelineLayout(Device, ProbePipelineLayout, NULL);
+			}
+			ProbePipelineLayout = VK_NULL_HANDLE;
 			if (RenderPass != VK_NULL_HANDLE && Vk.DestroyRenderPass != NULL)
 			{
 				Vk.DestroyRenderPass(Device, RenderPass, NULL);
@@ -2144,6 +2280,10 @@ namespace
 			{
 				return false;
 			}
+			if (vk_scene_probe && ProbePipeline == VK_NULL_HANDLE && !CreateProbePipeline())
+			{
+				return false;
+			}
 			if (SwapchainFramebuffers[0] == VK_NULL_HANDLE && !CreateSwapchainFramebuffers())
 			{
 				return false;
@@ -2472,6 +2612,11 @@ namespace
 			PresentPushConstants constants = BuildPresentPushConstants(width, height);
 			Vk.CmdPushConstants(CommandBuffer, PipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(constants), &constants);
 			Vk.CmdDraw(CommandBuffer, 3, 1, 0, 0);
+			if (vk_scene_probe && ProbePipeline != VK_NULL_HANDLE)
+			{
+				Vk.CmdBindPipeline(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, ProbePipeline);
+				Vk.CmdDraw(CommandBuffer, 3, 1, 0, 0);
+			}
 			Vk.CmdEndRenderPass(CommandBuffer);
 
 			WriteTimestampEnd();
@@ -2724,6 +2869,8 @@ namespace
 		VkPipelineLayout PipelineLayout;
 		VkRenderPass RenderPass;
 		VkPipeline GraphicsPipeline;
+		VkPipelineLayout ProbePipelineLayout;
+		VkPipeline ProbePipeline;
 		unsigned int SourceImageWidth;
 		unsigned int SourceImageHeight;
 		bool GpuPresentationReady;
@@ -2806,6 +2953,7 @@ namespace
 		VulkanStats.PresentSourceHeight = runtime->GetPresentSourceHeight();
 		VulkanStats.PresentSharpness = runtime->GetPresentSharpness();
 		VulkanStats.PresentAspect = runtime->GetPresentAspect();
+		VulkanStats.SceneProbeActive = runtime->IsSceneProbeActive();
 
 		const VkPhysicalDeviceProperties &properties = runtime->GetDeviceProperties();
 		CopyVulkanString(VulkanStats.DeviceName, sizeof(VulkanStats.DeviceName), properties.deviceName);
