@@ -76,6 +76,9 @@ Current Vulkan direction:
   vertex shader, and issues a draw call after the palette presenter so we can
   verify backend-owned geometry drawing before replacing it with map/actor
   geometry.
+- `vk_world_probe` uses the same debug Vulkan geometry path but fills the
+  vertex buffer from nearby one-sided Doom map lines, emitting simple wall
+  quads as the first backend-owned batch of actual level geometry.
 - `vk_present_scale_mode` controls how the Vulkan palette presenter maps the
   software framebuffer into the swapchain: `0` stretches to the full client
   size, `1` preserves aspect, and `2` uses integer scaling against a 320-wide

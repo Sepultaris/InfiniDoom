@@ -113,6 +113,7 @@ CUSTOM_CVAR(Float, vk_present_aspect, 0.f, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CV
 
 CVAR(Bool, vk_present_force_aspect, false, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINITCALL)
 CVAR(Bool, vk_scene_probe, false, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINITCALL)
+CVAR(Bool, vk_world_probe, false, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINITCALL)
 
 namespace
 {
@@ -247,7 +248,9 @@ namespace
 
 	enum
 	{
-		SceneProbeVertexCount = 3
+		SceneProbeVertexCount = 3,
+		WorldProbeMaxWalls = 96,
+		ProbeVertexMaxCount = SceneProbeVertexCount + WorldProbeMaxWalls * 6
 	};
 
 	static int ClampPresentFilterMode()
@@ -510,12 +513,17 @@ namespace
 
 		bool IsSceneProbeActive() const
 		{
-			return vk_scene_probe && ProbePipeline != VK_NULL_HANDLE && ProbeVertexBuffer != VK_NULL_HANDLE;
+			return WantsProbeDraw() && ProbePipeline != VK_NULL_HANDLE && ProbeVertexBuffer != VK_NULL_HANDLE && ProbeVertexDrawCount > 0;
 		}
 
 		unsigned int GetSceneProbeVertexCount() const
 		{
 			return IsSceneProbeActive() ? ProbeVertexDrawCount : 0;
+		}
+
+		bool WantsProbeDraw() const
+		{
+			return vk_scene_probe || vk_world_probe;
 		}
 
 		bool AreTimestampQueriesAvailable() const
@@ -1916,14 +1924,91 @@ namespace
 			ProbeVertexDrawCount = 0;
 		}
 
-		void UpdateProbeVertices()
+		void AppendProbeVertex(SceneProbeVertex *vertices, unsigned int &count, float x, float y, float z, float r, float g, float b)
 		{
-			if (ProbeVertexPtr == NULL)
+			if (count >= ProbeVertexMaxCount)
 			{
-				ProbeVertexDrawCount = 0;
+				return;
+			}
+			vertices[count].Position[0] = x;
+			vertices[count].Position[1] = y;
+			vertices[count].Position[2] = z;
+			vertices[count].Color[0] = r;
+			vertices[count].Color[1] = g;
+			vertices[count].Color[2] = b;
+			++count;
+		}
+
+		void AppendWorldProbeWall(SceneProbeVertex *vertices, unsigned int &count, const line_t *line, float r, float g, float b)
+		{
+			if (line == NULL || line->v1 == NULL || line->v2 == NULL || line->frontsector == NULL)
+			{
+				return;
+			}
+			if (line->backsector != NULL)
+			{
+				return;
+			}
+			if (count + 6 > ProbeVertexMaxCount)
+			{
 				return;
 			}
 
+			const float x1 = FIXED2FLOAT(line->v1->x);
+			const float y1 = FIXED2FLOAT(line->v1->y);
+			const float x2 = FIXED2FLOAT(line->v2->x);
+			const float y2 = FIXED2FLOAT(line->v2->y);
+			const float floor1 = FIXED2FLOAT(line->frontsector->floorplane.ZatPoint(line->v1));
+			const float floor2 = FIXED2FLOAT(line->frontsector->floorplane.ZatPoint(line->v2));
+			const float ceiling1 = FIXED2FLOAT(line->frontsector->ceilingplane.ZatPoint(line->v1));
+			const float ceiling2 = FIXED2FLOAT(line->frontsector->ceilingplane.ZatPoint(line->v2));
+
+			AppendProbeVertex(vertices, count, x1, y1, ceiling1, r, g, b);
+			AppendProbeVertex(vertices, count, x2, y2, ceiling2, r, g, b);
+			AppendProbeVertex(vertices, count, x2, y2, floor2, r * 0.65f, g * 0.65f, b * 0.65f);
+			AppendProbeVertex(vertices, count, x1, y1, ceiling1, r, g, b);
+			AppendProbeVertex(vertices, count, x2, y2, floor2, r * 0.65f, g * 0.65f, b * 0.65f);
+			AppendProbeVertex(vertices, count, x1, y1, floor1, r * 0.65f, g * 0.65f, b * 0.65f);
+		}
+
+		void AppendWorldProbeVertices(SceneProbeVertex *vertices, unsigned int &count)
+		{
+			if (lines == NULL || numlines <= 0)
+			{
+				return;
+			}
+			const double camX = FIXED2FLOAT(viewx);
+			const double camY = FIXED2FLOAT(viewy);
+			const double maxDistance = 768.0;
+			const double maxDistanceSquared = maxDistance * maxDistance;
+			unsigned int walls = 0;
+			for (int i = 0; i < numlines && walls < WorldProbeMaxWalls; ++i)
+			{
+				const line_t *line = &lines[i];
+				if (line->v1 == NULL || line->v2 == NULL || line->frontsector == NULL || line->backsector != NULL)
+				{
+					continue;
+				}
+				const double midX = (FIXED2FLOAT(line->v1->x) + FIXED2FLOAT(line->v2->x)) * 0.5;
+				const double midY = (FIXED2FLOAT(line->v1->y) + FIXED2FLOAT(line->v2->y)) * 0.5;
+				const double dx = midX - camX;
+				const double dy = midY - camY;
+				if (dx * dx + dy * dy > maxDistanceSquared)
+				{
+					continue;
+				}
+				const float tint = (walls & 1) ? 0.85f : 1.0f;
+				AppendWorldProbeWall(vertices, count, line, 0.05f * tint, 0.90f * tint, 0.35f * tint);
+				++walls;
+			}
+		}
+
+		void AppendSceneProbeVertices(SceneProbeVertex *vertices, unsigned int &count)
+		{
+			if (count + SceneProbeVertexCount > ProbeVertexMaxCount)
+			{
+				return;
+			}
 			const double pi = 3.14159265358979323846;
 			const double angleRadians = ANGLE2DBL(viewangle) * (pi / 180.0);
 			const double forwardX = cos(angleRadians);
@@ -1940,19 +2025,40 @@ namespace
 			const double topZ = camZ + 42.0;
 			const double centerX = camX + forwardX * centerForward + rightX * centerRight;
 			const double centerY = camY + forwardY * centerForward + rightY * centerRight;
-			SceneProbeVertex vertices[SceneProbeVertexCount] =
+			SceneProbeVertex sceneVertices[SceneProbeVertexCount] =
 			{
 				{ { (float)centerX, (float)centerY, (float)topZ }, { 1.0f, 0.0f, 1.0f } },
 				{ { (float)(centerX - rightX * halfWidth), (float)(centerY - rightY * halfWidth), (float)baseZ }, { 0.0f, 1.0f, 1.0f } },
 				{ { (float)(centerX + rightX * halfWidth), (float)(centerY + rightY * halfWidth), (float)baseZ }, { 1.0f, 1.0f, 0.0f } }
 			};
-			memcpy(ProbeVertexPtr, vertices, sizeof(vertices));
-			ProbeVertexDrawCount = SceneProbeVertexCount;
+			memcpy(&vertices[count], sceneVertices, sizeof(sceneVertices));
+			count += SceneProbeVertexCount;
+		}
+
+		void UpdateProbeVertices()
+		{
+			if (ProbeVertexPtr == NULL)
+			{
+				ProbeVertexDrawCount = 0;
+				return;
+			}
+
+			SceneProbeVertex *vertices = static_cast<SceneProbeVertex *>(ProbeVertexPtr);
+			unsigned int count = 0;
+			if (vk_world_probe)
+			{
+				AppendWorldProbeVertices(vertices, count);
+			}
+			if (vk_scene_probe)
+			{
+				AppendSceneProbeVertices(vertices, count);
+			}
+			ProbeVertexDrawCount = count;
 		}
 
 		bool EnsureProbeVertexBuffer()
 		{
-			const VkDeviceSize needed = sizeof(SceneProbeVertex) * SceneProbeVertexCount;
+			const VkDeviceSize needed = sizeof(SceneProbeVertex) * ProbeVertexMaxCount;
 			if (ProbeVertexBuffer != VK_NULL_HANDLE && ProbeVertexPtr != NULL && ProbeVertexBufferSize >= needed)
 			{
 				UpdateProbeVertices();
@@ -2473,11 +2579,11 @@ namespace
 			{
 				return false;
 			}
-			if (vk_scene_probe && ProbePipeline == VK_NULL_HANDLE && !CreateProbePipeline())
+			if (WantsProbeDraw() && ProbePipeline == VK_NULL_HANDLE && !CreateProbePipeline())
 			{
 				return false;
 			}
-			if (vk_scene_probe && !EnsureProbeVertexBuffer())
+			if (WantsProbeDraw() && !EnsureProbeVertexBuffer())
 			{
 				return false;
 			}
@@ -2809,7 +2915,11 @@ namespace
 			PresentPushConstants constants = BuildPresentPushConstants(width, height);
 			Vk.CmdPushConstants(CommandBuffer, PipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(constants), &constants);
 			Vk.CmdDraw(CommandBuffer, 3, 1, 0, 0);
-			if (vk_scene_probe && ProbePipeline != VK_NULL_HANDLE && ProbeVertexBuffer != VK_NULL_HANDLE && ProbeVertexDrawCount > 0)
+			if (WantsProbeDraw())
+			{
+				UpdateProbeVertices();
+			}
+			if (WantsProbeDraw() && ProbePipeline != VK_NULL_HANDLE && ProbeVertexBuffer != VK_NULL_HANDLE && ProbeVertexDrawCount > 0)
 			{
 				VkDeviceSize vertexOffsets[1] = { 0 };
 				SceneProbePushConstants probeConstants = BuildSceneProbePushConstants();

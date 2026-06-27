@@ -1,5 +1,14 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.19 - 2026-06-27
+
+- Added `vk_world_probe`, an opt-in Vulkan debug draw that extracts nearby
+  one-sided map linedefs into a host-visible vertex buffer as wall quads.
+- Reused the Vulkan probe pipeline for the first actual Doom map geometry
+  batch while keeping the software-rendered frame as the reference underneath.
+- Renamed the renderer stats probe line to `GPU probe` because it can now
+  represent scene-marker or map-wall debug geometry.
+
 ## 3.3-alpha-vdoom.18 - 2026-06-26
 
 - Changed `vk_scene_probe` to feed 3D Doom-world positions into Vulkan and
