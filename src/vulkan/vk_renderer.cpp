@@ -2093,15 +2093,47 @@ namespace
 			{
 				fovDegrees = 170.0;
 			}
-			const double side1 = relX1 * rightX + relY1 * rightY;
-			const double side2 = relX2 * rightX + relY2 * rightY;
+			double side1 = relX1 * rightX + relY1 * rightY;
+			double side2 = relX2 * rightX + relY2 * rightY;
 			const double tanX = tan(fovDegrees * (pi / 360.0));
-			const double padding = 32.0;
-			const double left1 = -depth1 * tanX - padding;
-			const double left2 = -depth2 * tanX - padding;
-			const double right1 = depth1 * tanX + padding;
-			const double right2 = depth2 * tanX + padding;
-			if ((side1 < left1 && side2 < left2) || (side1 > right1 && side2 > right2))
+			const double padding = 4.0;
+			for (unsigned int plane = 0; plane < 2; ++plane)
+			{
+				double value1 = plane == 0 ? side1 + depth1 * tanX + padding : -side1 + depth1 * tanX + padding;
+				double value2 = plane == 0 ? side2 + depth2 * tanX + padding : -side2 + depth2 * tanX + padding;
+				if (value1 < 0.0 && value2 < 0.0)
+				{
+					return false;
+				}
+				if (value1 < 0.0 || value2 < 0.0)
+				{
+					const double denom = value1 - value2;
+					if (fabs(denom) < 0.0001)
+					{
+						return false;
+					}
+					const float t = (float)(value1 / denom);
+					if (value1 < 0.0)
+					{
+						x1 += (x2 - x1) * t;
+						y1 += (y2 - y1) * t;
+						floor1 += (floor2 - floor1) * t;
+						ceiling1 += (ceiling2 - ceiling1) * t;
+						depth1 += (depth2 - depth1) * t;
+						side1 += (side2 - side1) * t;
+					}
+					else
+					{
+						x2 = x1 + (x2 - x1) * t;
+						y2 = y1 + (y2 - y1) * t;
+						floor2 = floor1 + (floor2 - floor1) * t;
+						ceiling2 = ceiling1 + (ceiling2 - ceiling1) * t;
+						depth2 = depth1 + (depth2 - depth1) * t;
+						side2 = side1 + (side2 - side1) * t;
+					}
+				}
+			}
+			if (fabs(x2 - x1) + fabs(y2 - y1) < 0.001)
 			{
 				return false;
 			}

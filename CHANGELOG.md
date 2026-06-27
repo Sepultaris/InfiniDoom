@@ -1,5 +1,12 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.23 - 2026-06-27
+
+- Clipped `vk_world_probe` wall segments against the left and right view
+  frustum planes instead of only rejecting fully off-screen walls.
+- Tightened the probe FOV padding so partially visible debug wall quads no
+  longer spill across the foreground.
+
 ## 3.3-alpha-vdoom.22 - 2026-06-27
 
 - Clipped `vk_world_probe` wall segments against the camera near plane before

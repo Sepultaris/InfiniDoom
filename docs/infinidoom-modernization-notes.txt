@@ -78,8 +78,8 @@ Current Vulkan direction:
   depth-tested pipeline. It fills the vertex buffer from nearby one-sided Doom
   map lines, emitting simple wall quads as the first backend-owned batch of
   actual level geometry. Wall segments are clipped against a small camera near
-  plane and rejected when both endpoints are outside the horizontal FOV, which
-  keeps this probe from drawing behind-camera slabs across the foreground.
+  plane and the left/right view-frustum planes, which keeps this probe from
+  drawing behind-camera or offscreen slabs across the foreground.
 - The Vulkan presentation render pass now owns a depth attachment. The palette
   presenter ignores depth, while the world-probe geometry pipeline depth-tests
   and writes camera-distance depth values.
