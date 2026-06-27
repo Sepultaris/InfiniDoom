@@ -1,5 +1,13 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.27 - 2026-06-27
+
+- Flipped the Vulkan probe/world right-vector basis so strafing left and right
+  moves GPU-drawn world geometry in the same lateral direction as the software
+  renderer.
+- Updated the shared world-to-clip side row to match the corrected lateral
+  handedness.
+
 ## 3.3-alpha-vdoom.26 - 2026-06-27
 
 - Rotated the Vulkan world/probe yaw basis by 180 degrees so GPU world

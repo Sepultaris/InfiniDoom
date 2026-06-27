@@ -2054,8 +2054,8 @@ namespace
 			const double yawRadians = (180.0 - ANGLE2DBL(viewangle)) * (pi / 180.0);
 			const double forwardX = cos(yawRadians);
 			const double forwardY = sin(yawRadians);
-			const double rightX = -forwardY;
-			const double rightY = forwardX;
+			const double rightX = forwardY;
+			const double rightY = -forwardX;
 			const double camX = FIXED2FLOAT(viewx);
 			const double camY = FIXED2FLOAT(viewy);
 			const double nearDepth = 8.0;
@@ -2241,8 +2241,8 @@ namespace
 			const double angleRadians = (180.0 - ANGLE2DBL(viewangle)) * (pi / 180.0);
 			const double forwardX = cos(angleRadians);
 			const double forwardY = sin(angleRadians);
-			const double rightX = -forwardY;
-			const double rightY = forwardX;
+			const double rightX = forwardY;
+			const double rightY = -forwardX;
 			const double camX = FIXED2FLOAT(viewx);
 			const double camY = FIXED2FLOAT(viewy);
 			const double camZ = FIXED2FLOAT(viewz);
@@ -3384,10 +3384,10 @@ namespace
 				-camZ
 			};
 
-			constants.Row0[0] = (float)(-yawSin * invTanX);
-			constants.Row0[1] = (float)(yawCos * invTanX);
+			constants.Row0[0] = (float)(yawSin * invTanX);
+			constants.Row0[1] = (float)(-yawCos * invTanX);
 			constants.Row0[2] = 0.0f;
-			constants.Row0[3] = (float)((yawSin * camX - yawCos * camY) * invTanX);
+			constants.Row0[3] = (float)((-yawSin * camX + yawCos * camY) * invTanX);
 
 			const double nearDepth = 4.0;
 			for (unsigned int i = 0; i < 4; ++i)

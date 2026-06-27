@@ -83,7 +83,8 @@ Current Vulkan direction:
   probe path uses a 180-degree-rotated negated Doom view angle when building
   its world-space forward vectors so debug geometry follows the same left/right
   camera turn direction as the software renderer while still facing the
-  player's forward view.
+  player's forward view. Its side vector is the opposite perpendicular of that
+  forward vector, matching Doom's lateral movement handedness for strafe tests.
 - `vk_draw_world` is the first non-probe Vulkan world geometry toggle. It
   reuses the clipped one-sided wall extraction but writes into a separate draw
   range and appears in `stat renderer` as `GPU world draw`. This is still
