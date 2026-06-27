@@ -83,6 +83,11 @@ Current Vulkan direction:
   probe path negates Doom's view angle when building its world-space forward
   vectors so debug geometry follows the same left/right camera turn direction
   as the software renderer.
+- `vk_draw_world` is the first non-probe Vulkan world geometry toggle. It
+  reuses the clipped one-sided wall extraction but writes into a separate draw
+  range and appears in `stat renderer` as `GPU world draw`. This is still
+  flat-colored scaffolding; texture upload, UVs, and material binding are the
+  next renderer milestone.
 - The Vulkan presentation render pass now owns a depth attachment. The palette
   presenter ignores depth, while the world-probe geometry pipeline depth-tests
   and writes camera-distance depth values.

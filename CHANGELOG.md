@@ -1,5 +1,14 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.25 - 2026-06-27
+
+- Added `vk_draw_world`, an opt-in Vulkan world-wall batch separate from the
+  green `vk_world_probe` diagnostic overlay.
+- Added independent world-draw vertex ranges and `stat renderer` reporting so
+  the real world path can be tested without conflating it with probe geometry.
+- Reused the existing clipped one-sided wall extraction for the first opaque
+  GPU-owned world draw pass.
+
 ## 3.3-alpha-vdoom.24 - 2026-06-27
 
 - Flipped the Vulkan probe yaw convention to match Doom's camera turn

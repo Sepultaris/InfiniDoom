@@ -193,6 +193,14 @@ ADD_STAT(renderer)
 					vk.PresentViewportHeight,
 					vk.PresentViewportX,
 					vk.PresentViewportY);
+				if (vk.WorldDrawActive)
+				{
+					out.AppendFormat("GPU world draw: active, %u vertices\n", vk.WorldDrawVertexCount);
+				}
+				else
+				{
+					out.AppendFormat("GPU world draw: off\n");
+				}
 				if (vk.SceneProbeActive)
 				{
 					out.AppendFormat("GPU scene probe: active, %u vertices\n", vk.SceneProbeVertexCount);

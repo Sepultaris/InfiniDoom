@@ -112,6 +112,7 @@ CUSTOM_CVAR(Float, vk_present_aspect, 0.f, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CV
 }
 
 CVAR(Bool, vk_present_force_aspect, false, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINITCALL)
+CVAR(Bool, vk_draw_world, false, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINITCALL)
 CVAR(Bool, vk_scene_probe, false, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINITCALL)
 CVAR(Bool, vk_world_probe, false, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINITCALL)
 
@@ -250,7 +251,8 @@ namespace
 	{
 		SceneProbeVertexCount = 3,
 		WorldProbeMaxWalls = 96,
-		ProbeVertexMaxCount = SceneProbeVertexCount + WorldProbeMaxWalls * 6
+		WorldDrawMaxWalls = 192,
+		ProbeVertexMaxCount = SceneProbeVertexCount + (WorldProbeMaxWalls + WorldDrawMaxWalls) * 6
 	};
 
 	static int ClampPresentFilterMode()
@@ -277,7 +279,7 @@ namespace
 			  ImageAvailableSemaphore(VK_NULL_HANDLE), RenderFinishedSemaphore(VK_NULL_HANDLE), RenderFence(VK_NULL_HANDLE),
 			  UploadBuffer(VK_NULL_HANDLE), UploadMemory(VK_NULL_HANDLE), UploadPtr(NULL), UploadSize(0),
 			  ProbeVertexBuffer(VK_NULL_HANDLE), ProbeVertexMemory(VK_NULL_HANDLE), ProbeVertexPtr(NULL), ProbeVertexBufferSize(0),
-			  ProbeVertexDrawCount(0), SceneProbeFirstVertex(0), SceneProbeDrawCount(0), WorldProbeFirstVertex(0), WorldProbeDrawCount(0),
+			  ProbeVertexDrawCount(0), WorldDrawFirstVertex(0), WorldDrawDrawCount(0), SceneProbeFirstVertex(0), SceneProbeDrawCount(0), WorldProbeFirstVertex(0), WorldProbeDrawCount(0),
 			  SourceImage(VK_NULL_HANDLE), SourceImageMemory(VK_NULL_HANDLE), SourceImageView(VK_NULL_HANDLE),
 			  PaletteImage(VK_NULL_HANDLE), PaletteImageMemory(VK_NULL_HANDLE), PaletteImageView(VK_NULL_HANDLE),
 			  DepthImage(VK_NULL_HANDLE), DepthImageMemory(VK_NULL_HANDLE), DepthImageView(VK_NULL_HANDLE),
@@ -533,9 +535,19 @@ namespace
 			return IsWorldProbeActive() ? WorldProbeDrawCount : 0;
 		}
 
+		bool IsWorldDrawActive() const
+		{
+			return vk_draw_world && WorldProbePipeline != VK_NULL_HANDLE && ProbeVertexBuffer != VK_NULL_HANDLE && WorldDrawDrawCount > 0;
+		}
+
+		unsigned int GetWorldDrawVertexCount() const
+		{
+			return IsWorldDrawActive() ? WorldDrawDrawCount : 0;
+		}
+
 		bool WantsProbeDraw() const
 		{
-			return vk_scene_probe || vk_world_probe;
+			return vk_draw_world || vk_scene_probe || vk_world_probe;
 		}
 
 		bool AreTimestampQueriesAvailable() const
@@ -1966,6 +1978,8 @@ namespace
 				ProbeVertexPtr = NULL;
 				ProbeVertexBufferSize = 0;
 				ProbeVertexDrawCount = 0;
+				WorldDrawFirstVertex = 0;
+				WorldDrawDrawCount = 0;
 				SceneProbeFirstVertex = 0;
 				SceneProbeDrawCount = 0;
 				WorldProbeFirstVertex = 0;
@@ -1989,6 +2003,8 @@ namespace
 			ProbeVertexMemory = VK_NULL_HANDLE;
 			ProbeVertexBufferSize = 0;
 			ProbeVertexDrawCount = 0;
+			WorldDrawFirstVertex = 0;
+			WorldDrawDrawCount = 0;
 			SceneProbeFirstVertex = 0;
 			SceneProbeDrawCount = 0;
 			WorldProbeFirstVertex = 0;
@@ -2181,6 +2197,40 @@ namespace
 			}
 		}
 
+		void AppendWorldDrawVertices(SceneProbeVertex *vertices, unsigned int &count)
+		{
+			if (lines == NULL || numlines <= 0)
+			{
+				return;
+			}
+			const double camX = FIXED2FLOAT(viewx);
+			const double camY = FIXED2FLOAT(viewy);
+			const double maxDistance = 1024.0;
+			const double maxDistanceSquared = maxDistance * maxDistance;
+			unsigned int walls = 0;
+			for (int i = 0; i < numlines && walls < WorldDrawMaxWalls; ++i)
+			{
+				const line_t *line = &lines[i];
+				if (line->v1 == NULL || line->v2 == NULL || line->frontsector == NULL || line->backsector != NULL)
+				{
+					continue;
+				}
+				const double midX = (FIXED2FLOAT(line->v1->x) + FIXED2FLOAT(line->v2->x)) * 0.5;
+				const double midY = (FIXED2FLOAT(line->v1->y) + FIXED2FLOAT(line->v2->y)) * 0.5;
+				const double dx = midX - camX;
+				const double dy = midY - camY;
+				if (dx * dx + dy * dy > maxDistanceSquared)
+				{
+					continue;
+				}
+				const float tint = (walls & 1) ? 0.82f : 1.0f;
+				if (AppendWorldProbeWall(vertices, count, line, 0.50f * tint, 0.43f * tint, 0.32f * tint))
+				{
+					++walls;
+				}
+			}
+		}
+
 		void AppendSceneProbeVertices(SceneProbeVertex *vertices, unsigned int &count)
 		{
 			if (count + SceneProbeVertexCount > ProbeVertexMaxCount)
@@ -2218,6 +2268,8 @@ namespace
 			if (ProbeVertexPtr == NULL)
 			{
 				ProbeVertexDrawCount = 0;
+				WorldDrawFirstVertex = 0;
+				WorldDrawDrawCount = 0;
 				SceneProbeFirstVertex = 0;
 				SceneProbeDrawCount = 0;
 				WorldProbeFirstVertex = 0;
@@ -2227,10 +2279,18 @@ namespace
 
 			SceneProbeVertex *vertices = static_cast<SceneProbeVertex *>(ProbeVertexPtr);
 			unsigned int count = 0;
+			WorldDrawFirstVertex = 0;
+			WorldDrawDrawCount = 0;
 			SceneProbeFirstVertex = 0;
 			SceneProbeDrawCount = 0;
 			WorldProbeFirstVertex = 0;
 			WorldProbeDrawCount = 0;
+			if (vk_draw_world)
+			{
+				WorldDrawFirstVertex = count;
+				AppendWorldDrawVertices(vertices, count);
+				WorldDrawDrawCount = count - WorldDrawFirstVertex;
+			}
 			if (vk_world_probe)
 			{
 				WorldProbeFirstVertex = count;
@@ -2886,7 +2946,7 @@ namespace
 			{
 				return false;
 			}
-			if (vk_world_probe && WorldProbePipeline == VK_NULL_HANDLE && !CreateWorldProbePipeline())
+			if ((vk_draw_world || vk_world_probe) && WorldProbePipeline == VK_NULL_HANDLE && !CreateWorldProbePipeline())
 			{
 				return false;
 			}
@@ -3236,6 +3296,13 @@ namespace
 			{
 				VkDeviceSize vertexOffsets[1] = { 0 };
 				SceneProbePushConstants probeConstants = BuildSceneProbePushConstants();
+				if (vk_draw_world && WorldProbePipeline != VK_NULL_HANDLE && WorldDrawDrawCount > 0)
+				{
+					Vk.CmdBindPipeline(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, WorldProbePipeline);
+					Vk.CmdPushConstants(CommandBuffer, WorldProbePipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(probeConstants), &probeConstants);
+					Vk.CmdBindVertexBuffers(CommandBuffer, 0, 1, &ProbeVertexBuffer, vertexOffsets);
+					Vk.CmdDraw(CommandBuffer, WorldDrawDrawCount, 1, WorldDrawFirstVertex, 0);
+				}
 				if (vk_world_probe && WorldProbePipeline != VK_NULL_HANDLE && WorldProbeDrawCount > 0)
 				{
 					Vk.CmdBindPipeline(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, WorldProbePipeline);
@@ -3571,6 +3638,8 @@ namespace
 		void *ProbeVertexPtr;
 		VkDeviceSize ProbeVertexBufferSize;
 		unsigned int ProbeVertexDrawCount;
+		unsigned int WorldDrawFirstVertex;
+		unsigned int WorldDrawDrawCount;
 		unsigned int SceneProbeFirstVertex;
 		unsigned int SceneProbeDrawCount;
 		unsigned int WorldProbeFirstVertex;
@@ -3677,6 +3746,8 @@ namespace
 		VulkanStats.PresentSourceHeight = runtime->GetPresentSourceHeight();
 		VulkanStats.PresentSharpness = runtime->GetPresentSharpness();
 		VulkanStats.PresentAspect = runtime->GetPresentAspect();
+		VulkanStats.WorldDrawActive = runtime->IsWorldDrawActive();
+		VulkanStats.WorldDrawVertexCount = runtime->GetWorldDrawVertexCount();
 		VulkanStats.SceneProbeActive = runtime->IsSceneProbeActive();
 		VulkanStats.SceneProbeVertexCount = runtime->GetSceneProbeVertexCount();
 		VulkanStats.WorldProbeActive = runtime->IsWorldProbeActive();
