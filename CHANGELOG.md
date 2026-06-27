@@ -1,5 +1,13 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.18 - 2026-06-26
+
+- Changed `vk_scene_probe` to feed 3D Doom-world positions into Vulkan and
+  transform them in the vertex shader with a per-frame world-to-clip push
+  constant.
+- The probe triangle is generated near the active software-renderer camera so
+  it can validate Vulkan geometry against the current view.
+
 ## 3.3-alpha-vdoom.17 - 2026-06-26
 
 - Changed `vk_scene_probe` from hardcoded shader vertices to a host-visible

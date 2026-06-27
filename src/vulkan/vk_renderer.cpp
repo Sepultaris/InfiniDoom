@@ -8,6 +8,7 @@
 ** built in small steps.
 */
 
+#include <math.h>
 #include <stddef.h>
 #include <string.h>
 
@@ -34,6 +35,8 @@
 #include "c_cvars.h"
 #include "v_text.h"
 #include "v_palette.h"
+#include "m_fixed.h"
+#include "r_utility.h"
 #include "vulkan/vk_palette_present_shaders.h"
 #ifdef _WIN32
 #include "win32/i_system.h"
@@ -230,8 +233,16 @@ namespace
 
 	struct SceneProbeVertex
 	{
-		float Position[2];
+		float Position[3];
 		float Color[3];
+	};
+
+	struct SceneProbePushConstants
+	{
+		float Row0[4];
+		float Row1[4];
+		float Row2[4];
+		float Row3[4];
 	};
 
 	enum
@@ -1768,7 +1779,7 @@ namespace
 			memset(vertexAttributes, 0, sizeof(vertexAttributes));
 			vertexAttributes[0].location = 0;
 			vertexAttributes[0].binding = 0;
-			vertexAttributes[0].format = VK_FORMAT_R32G32_SFLOAT;
+			vertexAttributes[0].format = VK_FORMAT_R32G32B32_SFLOAT;
 			vertexAttributes[0].offset = offsetof(SceneProbeVertex, Position);
 			vertexAttributes[1].location = 1;
 			vertexAttributes[1].binding = 0;
@@ -1830,6 +1841,13 @@ namespace
 			VkPipelineLayoutCreateInfo layoutInfo;
 			memset(&layoutInfo, 0, sizeof(layoutInfo));
 			layoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+			VkPushConstantRange pushConstantRange;
+			memset(&pushConstantRange, 0, sizeof(pushConstantRange));
+			pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+			pushConstantRange.offset = 0;
+			pushConstantRange.size = sizeof(SceneProbePushConstants);
+			layoutInfo.pushConstantRangeCount = 1;
+			layoutInfo.pPushConstantRanges = &pushConstantRange;
 
 			VkResult result = Vk.CreatePipelineLayout(Device, &layoutInfo, NULL, &ProbePipelineLayout);
 			if (result != VK_SUCCESS)
@@ -1906,11 +1924,27 @@ namespace
 				return;
 			}
 
-			static const SceneProbeVertex vertices[SceneProbeVertexCount] =
+			const double pi = 3.14159265358979323846;
+			const double angleRadians = ANGLE2DBL(viewangle) * (pi / 180.0);
+			const double forwardX = cos(angleRadians);
+			const double forwardY = sin(angleRadians);
+			const double rightX = -forwardY;
+			const double rightY = forwardX;
+			const double camX = FIXED2FLOAT(viewx);
+			const double camY = FIXED2FLOAT(viewy);
+			const double camZ = FIXED2FLOAT(viewz);
+			const double centerForward = 128.0;
+			const double centerRight = 56.0;
+			const double halfWidth = 32.0;
+			const double baseZ = camZ - 20.0;
+			const double topZ = camZ + 42.0;
+			const double centerX = camX + forwardX * centerForward + rightX * centerRight;
+			const double centerY = camY + forwardY * centerForward + rightY * centerRight;
+			SceneProbeVertex vertices[SceneProbeVertexCount] =
 			{
-				{ { 0.25f, -0.45f }, { 1.0f, 0.0f, 1.0f } },
-				{ { 0.95f, -0.45f }, { 0.0f, 1.0f, 1.0f } },
-				{ { 0.95f,  0.25f }, { 1.0f, 1.0f, 0.0f } }
+				{ { (float)centerX, (float)centerY, (float)topZ }, { 1.0f, 0.0f, 1.0f } },
+				{ { (float)(centerX - rightX * halfWidth), (float)(centerY - rightY * halfWidth), (float)baseZ }, { 0.0f, 1.0f, 1.0f } },
+				{ { (float)(centerX + rightX * halfWidth), (float)(centerY + rightY * halfWidth), (float)baseZ }, { 1.0f, 1.0f, 0.0f } }
 			};
 			memcpy(ProbeVertexPtr, vertices, sizeof(vertices));
 			ProbeVertexDrawCount = SceneProbeVertexCount;
@@ -2778,7 +2812,9 @@ namespace
 			if (vk_scene_probe && ProbePipeline != VK_NULL_HANDLE && ProbeVertexBuffer != VK_NULL_HANDLE && ProbeVertexDrawCount > 0)
 			{
 				VkDeviceSize vertexOffsets[1] = { 0 };
+				SceneProbePushConstants probeConstants = BuildSceneProbePushConstants();
 				Vk.CmdBindPipeline(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, ProbePipeline);
+				Vk.CmdPushConstants(CommandBuffer, ProbePipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(probeConstants), &probeConstants);
 				Vk.CmdBindVertexBuffers(CommandBuffer, 0, 1, &ProbeVertexBuffer, vertexOffsets);
 				Vk.CmdDraw(CommandBuffer, ProbeVertexDrawCount, 1, 0, 0);
 			}
@@ -2786,6 +2822,80 @@ namespace
 
 			WriteTimestampEnd();
 			return Vk.EndCommandBuffer(CommandBuffer) == VK_SUCCESS;
+		}
+
+		SceneProbePushConstants BuildSceneProbePushConstants()
+		{
+			SceneProbePushConstants constants;
+			memset(&constants, 0, sizeof(constants));
+
+			const double pi = 3.14159265358979323846;
+			double fovDegrees = (double)R_GetFOV();
+			if (fovDegrees < 5.0)
+			{
+				fovDegrees = 5.0;
+			}
+			else if (fovDegrees > 170.0)
+			{
+				fovDegrees = 170.0;
+			}
+			double aspect = 4.0 / 3.0;
+			if (PresentViewportWidth > 0 && PresentViewportHeight > 0)
+			{
+				aspect = (double)PresentViewportWidth / (double)PresentViewportHeight;
+			}
+			else if (SwapchainExtent.width > 0 && SwapchainExtent.height > 0)
+			{
+				aspect = (double)SwapchainExtent.width / (double)SwapchainExtent.height;
+			}
+			const double tanX = tan(fovDegrees * (pi / 360.0));
+			const double tanY = tanX / aspect;
+			const double invTanX = tanX > 0.0001 ? 1.0 / tanX : 1.0;
+			const double invTanY = tanY > 0.0001 ? 1.0 / tanY : 1.0;
+			const double yawRadians = ANGLE2DBL(viewangle) * (pi / 180.0);
+			const double pitchRadians = ((double)viewpitch * (90.0 / (double)ANGLE_90)) * (pi / 180.0);
+			const double yawCos = cos(yawRadians);
+			const double yawSin = sin(yawRadians);
+			const double pitchCos = cos(pitchRadians);
+			const double pitchSin = sin(pitchRadians);
+			const double camX = FIXED2FLOAT(viewx);
+			const double camY = FIXED2FLOAT(viewy);
+			const double camZ = FIXED2FLOAT(viewz);
+
+			const double forwardRow[4] =
+			{
+				yawCos * pitchCos,
+				yawSin * pitchCos,
+				pitchSin,
+				-((yawCos * camX + yawSin * camY) * pitchCos + camZ * pitchSin)
+			};
+			const double unpitchedForwardRow[4] =
+			{
+				yawCos,
+				yawSin,
+				0.0,
+				-(yawCos * camX + yawSin * camY)
+			};
+			const double upRow[4] =
+			{
+				0.0,
+				0.0,
+				1.0,
+				-camZ
+			};
+
+			constants.Row0[0] = (float)(-yawSin * invTanX);
+			constants.Row0[1] = (float)(yawCos * invTanX);
+			constants.Row0[2] = 0.0f;
+			constants.Row0[3] = (float)((yawSin * camX - yawCos * camY) * invTanX);
+
+			for (unsigned int i = 0; i < 4; ++i)
+			{
+				constants.Row1[i] = (float)((unpitchedForwardRow[i] * pitchSin - upRow[i] * pitchCos) * invTanY);
+				constants.Row2[i] = (float)(forwardRow[i] * 0.5);
+				constants.Row3[i] = (float)forwardRow[i];
+			}
+			return constants;
 		}
 
 		PresentPushConstants BuildPresentPushConstants(int sourceWidth, int sourceHeight)
