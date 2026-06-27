@@ -1,5 +1,13 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.28 - 2026-06-27
+
+- Switched the Vulkan world/probe yaw mapping from `180 - viewangle` to
+  `180 + viewangle` so GPU-drawn world geometry follows the software renderer
+  when turning the camera.
+- Kept the corrected lateral handedness from `.27`, preserving forward/back and
+  strafe alignment while fixing camera rotation direction.
+
 ## 3.3-alpha-vdoom.27 - 2026-06-27
 
 - Flipped the Vulkan probe/world right-vector basis so strafing left and right
