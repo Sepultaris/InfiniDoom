@@ -1,5 +1,14 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.30 - 2026-06-27
+
+- Added temporary Vulkan world-basis calibration CVars:
+  `vk_world_yaw_sign`, `vk_clip_yaw_sign`, and `vk_clip_side_sign`.
+- Defaulted the calibration signs to the last known front-visible setup while
+  exposing the active values through `stat renderer` for faster test feedback.
+- Restored matching default extraction/projection yaw signs so the probe should
+  start in front again before trying alternate turn-direction combinations.
+
 ## 3.3-alpha-vdoom.29 - 2026-06-27
 
 - Restored the CPU-side Vulkan world/probe extraction yaw to the known-good

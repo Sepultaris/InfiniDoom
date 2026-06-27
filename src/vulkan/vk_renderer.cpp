@@ -115,6 +115,39 @@ CVAR(Bool, vk_present_force_aspect, false, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CV
 CVAR(Bool, vk_draw_world, false, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINITCALL)
 CVAR(Bool, vk_scene_probe, false, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINITCALL)
 CVAR(Bool, vk_world_probe, false, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINITCALL)
+CUSTOM_CVAR(Int, vk_world_yaw_sign, -1, CVAR_NOINITCALL)
+{
+	if (self < 0)
+	{
+		self = -1;
+	}
+	else
+	{
+		self = 1;
+	}
+}
+CUSTOM_CVAR(Int, vk_clip_yaw_sign, -1, CVAR_NOINITCALL)
+{
+	if (self < 0)
+	{
+		self = -1;
+	}
+	else
+	{
+		self = 1;
+	}
+}
+CUSTOM_CVAR(Int, vk_clip_side_sign, 1, CVAR_NOINITCALL)
+{
+	if (self < 0)
+	{
+		self = -1;
+	}
+	else
+	{
+		self = 1;
+	}
+}
 
 namespace
 {
@@ -2051,7 +2084,7 @@ namespace
 			float ceiling2 = FIXED2FLOAT(line->frontsector->ceilingplane.ZatPoint(line->v2));
 
 			const double pi = 3.14159265358979323846;
-			const double yawRadians = (180.0 - ANGLE2DBL(viewangle)) * (pi / 180.0);
+			const double yawRadians = (180.0 + (double)vk_world_yaw_sign * ANGLE2DBL(viewangle)) * (pi / 180.0);
 			const double forwardX = cos(yawRadians);
 			const double forwardY = sin(yawRadians);
 			const double rightX = forwardY;
@@ -2238,7 +2271,7 @@ namespace
 				return;
 			}
 			const double pi = 3.14159265358979323846;
-			const double angleRadians = (180.0 - ANGLE2DBL(viewangle)) * (pi / 180.0);
+			const double angleRadians = (180.0 + (double)vk_world_yaw_sign * ANGLE2DBL(viewangle)) * (pi / 180.0);
 			const double forwardX = cos(angleRadians);
 			const double forwardY = sin(angleRadians);
 			const double rightX = forwardY;
@@ -3352,7 +3385,7 @@ namespace
 			const double tanY = tanX / aspect;
 			const double invTanX = tanX > 0.0001 ? 1.0 / tanX : 1.0;
 			const double invTanY = tanY > 0.0001 ? 1.0 / tanY : 1.0;
-			const double yawRadians = (180.0 + ANGLE2DBL(viewangle)) * (pi / 180.0);
+			const double yawRadians = (180.0 + (double)vk_clip_yaw_sign * ANGLE2DBL(viewangle)) * (pi / 180.0);
 			const double pitchRadians = ((double)viewpitch * (90.0 / (double)ANGLE_90)) * (pi / 180.0);
 			const double yawCos = cos(yawRadians);
 			const double yawSin = sin(yawRadians);
@@ -3384,10 +3417,11 @@ namespace
 				-camZ
 			};
 
-			constants.Row0[0] = (float)(yawSin * invTanX);
-			constants.Row0[1] = (float)(-yawCos * invTanX);
+			const double sideSign = (double)vk_clip_side_sign;
+			constants.Row0[0] = (float)(sideSign * yawSin * invTanX);
+			constants.Row0[1] = (float)(sideSign * -yawCos * invTanX);
 			constants.Row0[2] = 0.0f;
-			constants.Row0[3] = (float)((-yawSin * camX + yawCos * camY) * invTanX);
+			constants.Row0[3] = (float)(sideSign * (-yawSin * camX + yawCos * camY) * invTanX);
 
 			const double nearDepth = 4.0;
 			for (unsigned int i = 0; i < 4; ++i)
