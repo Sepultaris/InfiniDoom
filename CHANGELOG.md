@@ -1,5 +1,12 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.59 - 2026-06-28
+
+- Removed the temporary camera-position floor/ceiling eligibility test from
+  Vulkan flat submission. Visible BSP subsectors now submit textured floor and
+  ceiling planes directly instead of dropping planes based on the viewer's XY
+  position against the sector plane.
+
 ## 3.3-alpha-vdoom.58 - 2026-06-28
 
 - Added `vk_debug_flat_colors`, a Vulkan flat diagnostic mode that tints

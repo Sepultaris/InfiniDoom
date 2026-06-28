@@ -3358,11 +3358,8 @@ namespace
 			}
 
 			const float baseLight = sector->lightlevel <= 0 ? 0.20f : (sector->lightlevel / 255.0f);
-			const double camX = FIXED2FLOAT(viewx);
-			const double camY = FIXED2FLOAT(viewy);
-			const double camZ = FIXED2FLOAT(viewz);
-			const bool drawFloor = floorTile != NULL && sector->GetSecPlane(sector_t::floor).ZatPoint(camX, camY) <= camZ;
-			const bool drawCeiling = ceilingTile != NULL && sector->GetSecPlane(sector_t::ceiling).ZatPoint(camX, camY) >= camZ;
+			const bool drawFloor = floorTile != NULL;
+			const bool drawCeiling = ceilingTile != NULL;
 			const bool useEarClipping = !WorldFlatIsConvex(points, pointCount);
 			if (useEarClipping)
 			{
