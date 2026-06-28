@@ -1,5 +1,13 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.69 - 2026-06-28
+
+- Added near-plane clipping for temporary Vulkan floor and ceiling triangles
+  before submission, matching the wall path's need to avoid camera-crossing
+  geometry in the provisional projection.
+- Raised the temporary flat vertex budget estimate because a clipped flat
+  triangle can become two submitted triangles.
+
 ## 3.3-alpha-vdoom.68 - 2026-06-28
 
 - Extended temporary Vulkan flat loop reconstruction so subsector edge chains

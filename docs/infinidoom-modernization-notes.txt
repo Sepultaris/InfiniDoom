@@ -156,6 +156,10 @@ The center-fan diagnostic changed the wedge pattern, confirming flat holes are
 coming from polygon construction. The next checkpoint reconstructs a continuous
 subsector edge loop before building a boundary fan, mirroring the GL flat
 vertex buffer's reliance on subsector boundary order.
+UZDoom's mature path can rely on its established hardware projection and
+indexed flat mesh path. The temporary vDoom Vulkan path now clips flat triangles
+against the same near-depth used by temporary wall submission so floor and
+ceiling triangles crossing the camera do not create missing wedges.
 The ordered-loop checkpoint improved coverage but still left wedges, so the
 next pass accepts reversed seg links during loop reconstruction and uses
 ear-clipping for ordered non-convex loops before falling back to the center fan.
