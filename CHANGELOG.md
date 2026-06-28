@@ -1,5 +1,15 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.80 - 2026-06-28
+
+- Added the first cached Vulkan flat mesh path: subsector floor and ceiling
+  triangles are built into persistent CPU-side ranges and reused by the visible
+  BSP flat walk instead of rebuilding every flat polygon during each frame.
+- The cache follows the UZDoom-style policy of fan triangulation for ordinary
+  convex subsectors, with ear clipping reserved for non-convex point loops.
+- This still expands cached flat triangles into the existing temporary Vulkan
+  vertex stream; native Vulkan index buffers are the next step.
+
 ## 3.3-alpha-vdoom.79 - 2026-06-28
 
 - Reintroduced near-plane clipping for temporary Vulkan flat triangles so

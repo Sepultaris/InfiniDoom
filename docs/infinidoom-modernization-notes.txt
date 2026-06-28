@@ -246,3 +246,12 @@ rather than missing flat textures. Temporary Vulkan flat triangles are clipped
 against the camera near plane again, and ordinary convex subsectors return to
 the UZDoom/OpenGL fan triangulation policy. Ear clipping remains available only
 for non-convex flat point loops.
+
+The `.80` Vulkan flat work starts replacing per-frame flat polygon generation
+with a UZDoom-style cached level mesh. Each map subsector now receives cached
+floor and ceiling triangle ranges built once from the subsector's `firstline`
+vertices. The visible BSP walk replays those cached ranges into the existing
+temporary Vulkan vertex stream. This is a stepping stone: the geometry
+construction now resembles UZDoom's flat mesh approach, but the next renderer
+milestone is to store the cached mesh in Vulkan vertex/index buffers and issue
+indexed draw calls directly.

@@ -296,6 +296,12 @@ namespace
 		unsigned int VertexCount;
 	};
 
+	struct WorldFlatMeshRange
+	{
+		unsigned int FirstTriangle;
+		unsigned int TriangleCount;
+	};
+
 	static int ClampPresentFilterMode()
 	{
 		return vk_present_filter < 0 ? 0 : (vk_present_filter > 2 ? 2 : vk_present_filter);
@@ -332,6 +338,9 @@ namespace
 			  WorldProbePipelineLayout(VK_NULL_HANDLE), WorldProbePipeline(VK_NULL_HANDLE),
 			  WallTextureDescriptorSetLayout(VK_NULL_HANDLE), WallTextureDescriptorPool(VK_NULL_HANDLE),
 			  WallTextureDescriptorSet(VK_NULL_HANDLE), WallTexturePipelineLayout(VK_NULL_HANDLE), WallTexturePipeline(VK_NULL_HANDLE), FlatTexturePipeline(VK_NULL_HANDLE),
+			  WorldFlatMeshTriangles(NULL), WorldFlatMeshTriangleCount(0), WorldFlatMeshTriangleCapacity(0),
+			  WorldFlatMeshFloorRanges(NULL), WorldFlatMeshCeilingRanges(NULL), WorldFlatMeshSubsectorCount(0),
+			  WorldFlatMeshSubsectors(NULL), WorldFlatMeshSectors(NULL), WorldFlatMeshSectorCount(0), WorldFlatMeshReady(false),
 			  SourceImageWidth(0), SourceImageHeight(0), GpuPresentationReady(false),
 			  PresentFilterMode(-1), TimestampQueryPool(VK_NULL_HANDLE), TimestampQueriesSupported(false),
 			  TimestampQueryPending(false), TimestampPeriod(0.0), LastGpuFrameMS(0.0), MemoryBudgetSupported(false),
@@ -421,6 +430,7 @@ namespace
 
 		void Shutdown()
 		{
+			DestroyWorldFlatMesh();
 			if (Device != NULL && Vk.DestroyDevice != NULL)
 			{
 				if (Vk.DeviceWaitIdle != NULL)
@@ -3217,6 +3227,16 @@ namespace
 			double Y;
 		};
 
+		struct WorldFlatMeshTriangle
+		{
+			WorldFlatPoint Points[3];
+			const subsector_t *Subsector;
+			sector_t *PlaneSector;
+			sector_t *TextureSector;
+			int Plane;
+			bool NonConvex;
+		};
+
 		bool WorldFlatSamePoint(const WorldFlatPoint &a, const WorldFlatPoint &b)
 		{
 			return fabs(a.X - b.X) < 0.001 && fabs(a.Y - b.Y) < 0.001;
@@ -3311,6 +3331,285 @@ namespace
 				}
 			}
 			return pointCount;
+		}
+
+		void ResetWorldFlatMeshRange(WorldFlatMeshRange &range)
+		{
+			range.FirstTriangle = 0;
+			range.TriangleCount = 0;
+		}
+
+		void DestroyWorldFlatMesh()
+		{
+			delete[] WorldFlatMeshTriangles;
+			WorldFlatMeshTriangles = NULL;
+			WorldFlatMeshTriangleCount = 0;
+			WorldFlatMeshTriangleCapacity = 0;
+			delete[] WorldFlatMeshFloorRanges;
+			WorldFlatMeshFloorRanges = NULL;
+			delete[] WorldFlatMeshCeilingRanges;
+			WorldFlatMeshCeilingRanges = NULL;
+			WorldFlatMeshSubsectorCount = 0;
+			WorldFlatMeshSubsectors = NULL;
+			WorldFlatMeshSectors = NULL;
+			WorldFlatMeshSectorCount = 0;
+			WorldFlatMeshReady = false;
+		}
+
+		bool IsWorldFlatMeshCurrent() const
+		{
+			return WorldFlatMeshReady &&
+				WorldFlatMeshSubsectors == subsectors &&
+				WorldFlatMeshSubsectorCount == (unsigned int)(numsubsectors > 0 ? numsubsectors : 0) &&
+				WorldFlatMeshSectors == sectors &&
+				WorldFlatMeshSectorCount == numsectors;
+		}
+
+		bool AddWorldFlatMeshTriangle(const subsector_t *subsector, sector_t *planeSector, sector_t *textureSector,
+			int plane, const WorldFlatPoint &a, const WorldFlatPoint &b, const WorldFlatPoint &c, bool nonConvex)
+		{
+			if (WorldFlatMeshTriangleCount >= WorldFlatMeshTriangleCapacity)
+			{
+				return false;
+			}
+			WorldFlatMeshTriangle &triangle = WorldFlatMeshTriangles[WorldFlatMeshTriangleCount++];
+			triangle.Points[0] = a;
+			triangle.Points[1] = b;
+			triangle.Points[2] = c;
+			triangle.Subsector = subsector;
+			triangle.PlaneSector = planeSector;
+			triangle.TextureSector = textureSector;
+			triangle.Plane = plane;
+			triangle.NonConvex = nonConvex;
+			return true;
+		}
+
+		bool AddWorldFlatMeshFan(const subsector_t *subsector, sector_t *planeSector, sector_t *textureSector,
+			int plane, const WorldFlatPoint *points, unsigned int pointCount)
+		{
+			bool drew = false;
+			for (unsigned int i = 2; i < pointCount; ++i)
+			{
+				drew = AddWorldFlatMeshTriangle(subsector, planeSector, textureSector, plane,
+					points[0], points[i - 1], points[i], false) || drew;
+			}
+			return drew;
+		}
+
+		bool AddWorldFlatMeshEarClipped(const subsector_t *subsector, sector_t *planeSector, sector_t *textureSector,
+			int plane, const WorldFlatPoint *points, unsigned int pointCount)
+		{
+			const double area = WorldFlatArea(points, pointCount);
+			if (fabs(area) < 0.001)
+			{
+				return false;
+			}
+
+			unsigned int indices[WorldDrawFlatMaxSegs];
+			for (unsigned int i = 0; i < pointCount; ++i)
+			{
+				indices[i] = i;
+			}
+
+			bool drew = false;
+			unsigned int remaining = pointCount;
+			const bool counterClockwise = area > 0.0;
+			unsigned int guard = 0;
+			while (remaining > 2 && guard++ < pointCount * pointCount)
+			{
+				bool clipped = false;
+				for (unsigned int i = 0; i < remaining; ++i)
+				{
+					const unsigned int prevIndex = indices[(i + remaining - 1) % remaining];
+					const unsigned int currIndex = indices[i];
+					const unsigned int nextIndex = indices[(i + 1) % remaining];
+					const WorldFlatPoint &prev = points[prevIndex];
+					const WorldFlatPoint &curr = points[currIndex];
+					const WorldFlatPoint &next = points[nextIndex];
+					const double cross = WorldFlatCross(prev, curr, next);
+					if ((counterClockwise && cross <= 0.001) || (!counterClockwise && cross >= -0.001))
+					{
+						continue;
+					}
+
+					bool containsPoint = false;
+					for (unsigned int j = 0; j < remaining; ++j)
+					{
+						const unsigned int testIndex = indices[j];
+						if (testIndex == prevIndex || testIndex == currIndex || testIndex == nextIndex)
+						{
+							continue;
+						}
+						if (WorldFlatPointInTriangle(points[testIndex], prev, curr, next))
+						{
+							containsPoint = true;
+							break;
+						}
+					}
+					if (containsPoint)
+					{
+						continue;
+					}
+
+					if (!AddWorldFlatMeshTriangle(subsector, planeSector, textureSector, plane, prev, curr, next, true))
+					{
+						return drew;
+					}
+					drew = true;
+					for (unsigned int j = i; j + 1 < remaining; ++j)
+					{
+						indices[j] = indices[j + 1];
+					}
+					--remaining;
+					clipped = true;
+					break;
+				}
+				if (!clipped)
+				{
+					break;
+				}
+			}
+			return drew;
+		}
+
+		bool BuildWorldFlatMeshPlane(const subsector_t *subsector, sector_t *planeSector, sector_t *textureSector,
+			int plane, WorldFlatMeshRange &range)
+		{
+			ResetWorldFlatMeshRange(range);
+			if (subsector == NULL || subsector->firstline == NULL || subsector->numlines < 3 || subsector->numlines > WorldDrawFlatMaxSegs)
+			{
+				return false;
+			}
+			if ((subsector->flags & SSECF_DEGENERATE) || planeSector == NULL || textureSector == NULL)
+			{
+				return false;
+			}
+
+			WorldFlatPoint points[WorldDrawFlatMaxSegs];
+			const unsigned int pointCount = BuildWorldFlatPolygon(subsector, points);
+			if (pointCount < 3 || fabs(WorldFlatArea(points, pointCount)) < 0.001)
+			{
+				return false;
+			}
+
+			range.FirstTriangle = WorldFlatMeshTriangleCount;
+			const bool nonConvex = !WorldFlatIsConvex(points, pointCount);
+			const bool drew = nonConvex ?
+				AddWorldFlatMeshEarClipped(subsector, planeSector, textureSector, plane, points, pointCount) :
+				AddWorldFlatMeshFan(subsector, planeSector, textureSector, plane, points, pointCount);
+			range.TriangleCount = WorldFlatMeshTriangleCount - range.FirstTriangle;
+			if (!drew || range.TriangleCount == 0)
+			{
+				ResetWorldFlatMeshRange(range);
+				return false;
+			}
+			return true;
+		}
+
+		bool BuildWorldFlatMesh()
+		{
+			if (IsWorldFlatMeshCurrent())
+			{
+				return true;
+			}
+			DestroyWorldFlatMesh();
+			if (subsectors == NULL || numsubsectors <= 0)
+			{
+				return false;
+			}
+
+			unsigned int capacity = 0;
+			for (int i = 0; i < numsubsectors; ++i)
+			{
+				const subsector_t &subsector = subsectors[i];
+				if (subsector.numlines >= 3 && subsector.numlines <= WorldDrawFlatMaxSegs)
+				{
+					capacity += (subsector.numlines - 2) * 2;
+				}
+			}
+			if (capacity == 0)
+			{
+				return false;
+			}
+
+			WorldFlatMeshTriangles = new WorldFlatMeshTriangle[capacity];
+			WorldFlatMeshFloorRanges = new WorldFlatMeshRange[numsubsectors];
+			WorldFlatMeshCeilingRanges = new WorldFlatMeshRange[numsubsectors];
+			WorldFlatMeshTriangleCapacity = capacity;
+			WorldFlatMeshTriangleCount = 0;
+			WorldFlatMeshSubsectorCount = (unsigned int)numsubsectors;
+			WorldFlatMeshSubsectors = subsectors;
+			WorldFlatMeshSectors = sectors;
+			WorldFlatMeshSectorCount = numsectors;
+
+			for (int i = 0; i < numsubsectors; ++i)
+			{
+				ResetWorldFlatMeshRange(WorldFlatMeshFloorRanges[i]);
+				ResetWorldFlatMeshRange(WorldFlatMeshCeilingRanges[i]);
+				const subsector_t *subsector = &subsectors[i];
+				sector_t *planeSector = subsector->sector;
+				sector_t *textureSector = subsector->render_sector != NULL ? subsector->render_sector : planeSector;
+				BuildWorldFlatMeshPlane(subsector, planeSector, textureSector, sector_t::floor, WorldFlatMeshFloorRanges[i]);
+				BuildWorldFlatMeshPlane(subsector, planeSector, textureSector, sector_t::ceiling, WorldFlatMeshCeilingRanges[i]);
+			}
+
+			WorldFlatMeshReady = true;
+			Printf(TEXTCOLOR_GREEN "Vulkan: cached flat mesh built with %u triangles for %u subsectors.\n",
+				WorldFlatMeshTriangleCount, WorldFlatMeshSubsectorCount);
+			return true;
+		}
+
+		bool AppendWorldFlatMeshTriangle(SceneProbeVertex *vertices, unsigned int &count, const WorldFlatMeshTriangle &triangle)
+		{
+			if (triangle.TextureSector == NULL || triangle.PlaneSector == NULL)
+			{
+				++WorldDrawFlatBuildSkipCount;
+				return false;
+			}
+			const WorldAtlasTile *tile = vk_debug_flat_colors ?
+				GetWorldDebugFlatTile(triangle.Subsector, triangle.Plane) :
+				GetWorldPlaneTile(triangle.TextureSector, triangle.Plane);
+			if (tile == NULL)
+			{
+				++WorldDrawFlatTextureSkipCount;
+				return false;
+			}
+			const float baseLight = triangle.TextureSector->lightlevel <= 0 ? 0.20f : (triangle.TextureSector->lightlevel / 255.0f);
+			const float lightScale = triangle.Plane == sector_t::ceiling ? 0.80f : 1.0f;
+			const bool drew = AppendWorldFlatTriangle(vertices, count, triangle.PlaneSector, triangle.TextureSector, triangle.Plane,
+				triangle.Points[0].X, triangle.Points[0].Y,
+				triangle.Points[1].X, triangle.Points[1].Y,
+				triangle.Points[2].X, triangle.Points[2].Y,
+				*tile, baseLight * lightScale);
+			if (!drew)
+			{
+				++WorldDrawFlatBuildSkipCount;
+			}
+			return drew;
+		}
+
+		bool AppendWorldFlatMeshRange(SceneProbeVertex *vertices, unsigned int &count, const WorldFlatMeshRange &range)
+		{
+			if (range.TriangleCount == 0)
+			{
+				return false;
+			}
+			if (count + range.TriangleCount * 6 > ProbeVertexMaxCount)
+			{
+				++WorldDrawFlatBudgetSkipCount;
+				return false;
+			}
+			bool drew = false;
+			for (unsigned int i = 0; i < range.TriangleCount; ++i)
+			{
+				const WorldFlatMeshTriangle &triangle = WorldFlatMeshTriangles[range.FirstTriangle + i];
+				if (triangle.NonConvex)
+				{
+					++WorldDrawFlatNonConvexCount;
+				}
+				drew = AppendWorldFlatMeshTriangle(vertices, count, triangle) || drew;
+			}
+			return drew;
 		}
 
 		bool AppendWorldFlatPolygonFan(SceneProbeVertex *vertices, unsigned int &count,
@@ -3615,7 +3914,18 @@ namespace
 				++WorldDrawFlatBudgetSkipCount;
 				return false;
 			}
-			if (AppendWorldFlatSubsector(vertices, count, subsector))
+			bool drew = false;
+			if (IsWorldFlatMeshCurrent() && subsector >= subsectors && subsector < subsectors + numsubsectors)
+			{
+				const unsigned int index = (unsigned int)(subsector - subsectors);
+				drew = AppendWorldFlatMeshRange(vertices, count, WorldFlatMeshFloorRanges[index]) || drew;
+				drew = AppendWorldFlatMeshRange(vertices, count, WorldFlatMeshCeilingRanges[index]) || drew;
+			}
+			else
+			{
+				drew = AppendWorldFlatSubsector(vertices, count, subsector);
+			}
+			if (drew)
 			{
 				++flats;
 				++WorldDrawFlatCount;
@@ -3903,6 +4213,7 @@ namespace
 			WorldDrawFlatNonConvexCount = 0;
 			if (subsectors != NULL && numsubsectors > 0)
 			{
+				BuildWorldFlatMesh();
 				unsigned int flats = 0;
 				if (nodes != NULL && numnodes > 0)
 				{
@@ -5540,6 +5851,16 @@ namespace
 		VkPipelineLayout WallTexturePipelineLayout;
 		VkPipeline WallTexturePipeline;
 		VkPipeline FlatTexturePipeline;
+		WorldFlatMeshTriangle *WorldFlatMeshTriangles;
+		unsigned int WorldFlatMeshTriangleCount;
+		unsigned int WorldFlatMeshTriangleCapacity;
+		WorldFlatMeshRange *WorldFlatMeshFloorRanges;
+		WorldFlatMeshRange *WorldFlatMeshCeilingRanges;
+		unsigned int WorldFlatMeshSubsectorCount;
+		const subsector_t *WorldFlatMeshSubsectors;
+		const sector_t *WorldFlatMeshSectors;
+		int WorldFlatMeshSectorCount;
+		bool WorldFlatMeshReady;
 		unsigned int SourceImageWidth;
 		unsigned int SourceImageHeight;
 		bool GpuPresentationReady;
