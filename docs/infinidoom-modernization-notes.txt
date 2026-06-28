@@ -187,6 +187,12 @@ Flat collection now uses the sector-owned subsector lists instead of the
 temporary BSP-leaf flat walk. The old GL path draws flats as sector work after
 visibility has been established, so this moves the diagnostic Vulkan path
 closer to that ownership model while retaining the per-subsector fan draws.
+The sector scan was too broad for the temporary renderer budget and made the
+flat gaps worse, so active collection returned to the view-local BSP walk. The
+more convincing issue was in textured wall presentation: the world fragment
+shader sampled texture alpha but did not discard masked texels, so transparent
+wall pixels could draw as opaque black and write depth over flats. The `.76`
+shader now discards low-alpha texels before writing color/depth.
 The ordered-loop checkpoint improved coverage but still left wedges, so the
 next pass accepts reversed seg links during loop reconstruction and uses
 ear-clipping for ordered non-convex loops before falling back to the center fan.

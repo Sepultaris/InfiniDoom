@@ -1,5 +1,12 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.76 - 2026-06-28
+
+- Added alpha-test discard to the Vulkan world texture fragment shader so
+  transparent texels no longer draw as opaque black depth-writing pixels.
+- Restored active flat collection to the view-local BSP path from `.74` after
+  the sector scan proved too broad for the temporary renderer budget.
+
 ## 3.3-alpha-vdoom.75 - 2026-06-28
 
 - Changed the temporary Vulkan flat collector to gather floor and ceiling fans

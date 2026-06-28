@@ -12,5 +12,9 @@ void main()
 	vec2 repeatedCoord = fract(TexCoord);
 	vec2 atlasCoord = mix(AtlasRect.xy, AtlasRect.zw, repeatedCoord);
 	vec4 texel = texture(WallAtlas, atlasCoord);
+	if (texel.a < 0.5)
+	{
+		discard;
+	}
 	FragColor = vec4(texel.rgb * LightColor, texel.a);
 }
