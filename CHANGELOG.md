@@ -1,5 +1,13 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.45 - 2026-06-28
+
+- Added Vulkan near-plane clipping for floor and ceiling triangles so flat
+  polygons crossing the camera plane are split before projection instead of
+  relying on backend clipping.
+- Expanded the temporary Vulkan flat vertex budget to cover clipped flat
+  triangles that split into two triangles.
+
 ## 3.3-alpha-vdoom.44 - 2026-06-28
 
 - Added `vk_debug_solid_flats` as a Vulkan flat diagnostic mode. When enabled,
