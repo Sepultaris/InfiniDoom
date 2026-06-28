@@ -4139,9 +4139,11 @@ namespace
 		}
 
 		bool AppendWorldFlatSectorSubsectors(SceneProbeVertex *vertices, unsigned int &count,
-			sector_t *sector, int plane, unsigned int &flats)
+			sector_t *planeSector, sector_t *textureSector, int plane, unsigned int &flats)
 		{
-			if (sector == NULL || sector->subsectors == NULL || sector->subsectorcount <= 0)
+			sector_t *drawSector = textureSector != NULL ? textureSector : planeSector;
+			if (planeSector == NULL || textureSector == NULL || drawSector == NULL ||
+				drawSector->subsectors == NULL || drawSector->subsectorcount <= 0)
 			{
 				return false;
 			}
@@ -4152,9 +4154,9 @@ namespace
 			}
 
 			bool drewAny = false;
-			for (int i = 0; i < sector->subsectorcount && flats < WorldDrawMaxFlats; ++i)
+			for (int i = 0; i < drawSector->subsectorcount && flats < WorldDrawMaxFlats; ++i)
 			{
-				const subsector_t *subsector = sector->subsectors[i];
+				const subsector_t *subsector = drawSector->subsectors[i];
 				if (subsector == NULL || subsector->numlines > WorldDrawFlatMaxSegs)
 				{
 					if (subsector != NULL && subsector->numlines > WorldDrawFlatMaxSegs)
@@ -4164,7 +4166,7 @@ namespace
 					continue;
 				}
 
-				const bool drew = AppendWorldFlatSubsectorPlane(vertices, count, subsector, sector, sector, plane);
+				const bool drew = AppendWorldFlatSubsectorPlane(vertices, count, subsector, planeSector, textureSector, plane);
 				if (drew)
 				{
 					++flats;
@@ -4175,10 +4177,23 @@ namespace
 			return drewAny;
 		}
 
+		bool AppendWorldFlatSectorSubsectors(SceneProbeVertex *vertices, unsigned int &count,
+			sector_t *sector, int plane, unsigned int &flats)
+		{
+			return AppendWorldFlatSectorSubsectors(vertices, count, sector, sector, plane, flats);
+		}
+
 		struct WorldFlatHackKey
 		{
 			const subsector_t *Subsector;
 			sector_t *PlaneSector;
+			int Plane;
+		};
+
+		struct WorldFlatSectorKey
+		{
+			sector_t *PlaneSector;
+			sector_t *TextureSector;
 			int Plane;
 		};
 
@@ -4303,19 +4318,49 @@ namespace
 		{
 			const vdoom::VdHwFlatCommand *commands = scene.GetFlats();
 			const unsigned int commandCount = scene.GetFlatCount();
+			WorldFlatSectorKey sectorKeys[WorldDrawMaxFlats];
+			unsigned int sectorKeyCount = 0;
 			for (unsigned int i = 0; i < commandCount && flats < WorldDrawMaxFlats; ++i)
 			{
 				const vdoom::VdHwFlatCommand &command = commands[i];
-				if (command.Subsector != NULL && command.Subsector->numlines > WorldDrawFlatMaxSegs)
+				if (command.OtherPlane)
 				{
-					++WorldDrawFlatTooLargeSkipCount;
+					if (command.Subsector != NULL && command.Subsector->numlines > WorldDrawFlatMaxSegs)
+					{
+						++WorldDrawFlatTooLargeSkipCount;
+						continue;
+					}
+					if (AppendWorldFlatSubsectorPlane(vertices, count, command.Subsector, command.PlaneSector, command.TextureSector, command.Plane))
+					{
+						++flats;
+						++WorldDrawFlatCount;
+					}
 					continue;
 				}
-				if (AppendWorldFlatSubsectorPlane(vertices, count, command.Subsector, command.PlaneSector, command.TextureSector, command.Plane))
+
+				bool alreadyAdded = false;
+				for (unsigned int j = 0; j < sectorKeyCount; ++j)
 				{
-					++flats;
-					++WorldDrawFlatCount;
+					if (sectorKeys[j].PlaneSector == command.PlaneSector &&
+						sectorKeys[j].TextureSector == command.TextureSector &&
+						sectorKeys[j].Plane == command.Plane)
+					{
+						alreadyAdded = true;
+						break;
+					}
 				}
+				if (alreadyAdded)
+				{
+					continue;
+				}
+				if (sectorKeyCount < WorldDrawMaxFlats)
+				{
+					sectorKeys[sectorKeyCount].PlaneSector = command.PlaneSector;
+					sectorKeys[sectorKeyCount].TextureSector = command.TextureSector;
+					sectorKeys[sectorKeyCount].Plane = command.Plane;
+					++sectorKeyCount;
+				}
+				AppendWorldFlatSectorSubsectors(vertices, count, command.PlaneSector, command.TextureSector, command.Plane, flats);
 			}
 			if (commandCount > WorldDrawMaxFlats)
 			{

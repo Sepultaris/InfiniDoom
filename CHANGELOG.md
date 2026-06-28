@@ -1,5 +1,14 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.93 - 2026-06-28
+
+- Changed normal Vulkan flat scene commands to expand to the visible
+  sector/render-sector subsector set once per plane, rather than drawing only
+  the triggering subsector polygon.
+- Kept missing-texture other-plane commands subsector-specific so render hacks
+  remain isolated while normal floor/ceiling rendering moves toward the
+  UZDoom-style section model.
+
 ## 3.3-alpha-vdoom.92 - 2026-06-28
 
 - Changed the Vulkan flat path to use scene-collected live flat tessellation by
