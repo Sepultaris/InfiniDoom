@@ -1,5 +1,12 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.73 - 2026-06-28
+
+- Changed the temporary Vulkan world draw order to submit textured walls before
+  floor and ceiling flats.
+- This uses wall depth as the stable occluder while diagnosing whether flat
+  wedges are caused by depth-order interactions rather than polygon coverage.
+
 ## 3.3-alpha-vdoom.72 - 2026-06-28
 
 - Removed the temporary CPU near-plane clipping from Vulkan flat triangles.

@@ -175,6 +175,10 @@ path. The GL/UZDoom model submits the flat fan and lets the hardware projection
 clip it, so the temporary Vulkan flat path now emits direct fan triangles and
 uses the shared Vulkan projection instead of generating clipped replacement
 polygons on the CPU.
+The temporary Vulkan command order now draws walls before flats. This is a
+focused diagnostic to check whether flat wedges are coming from depth-order
+interactions; wall depth should act as the stable occluder before floor and
+ceiling surfaces are submitted.
 The ordered-loop checkpoint improved coverage but still left wedges, so the
 next pass accepts reversed seg links during loop reconstruction and uses
 ear-clipping for ordered non-convex loops before falling back to the center fan.

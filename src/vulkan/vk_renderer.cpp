@@ -5012,14 +5012,6 @@ namespace
 			{
 				VkDeviceSize vertexOffsets[1] = { 0 };
 				SceneProbePushConstants probeConstants = BuildSceneProbePushConstants();
-				if (vk_draw_world && WallTexturePipeline != VK_NULL_HANDLE && WallTextureDescriptorSet != VK_NULL_HANDLE && WorldFlatDrawCount > 0)
-				{
-					Vk.CmdBindPipeline(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, WallTexturePipeline);
-					Vk.CmdBindDescriptorSets(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, WallTexturePipelineLayout, 0, 1, &WallTextureDescriptorSet, 0, NULL);
-					Vk.CmdPushConstants(CommandBuffer, WallTexturePipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(probeConstants), &probeConstants);
-					Vk.CmdBindVertexBuffers(CommandBuffer, 0, 1, &ProbeVertexBuffer, vertexOffsets);
-					Vk.CmdDraw(CommandBuffer, WorldFlatDrawCount, 1, WorldFlatFirstVertex, 0);
-				}
 				if (vk_draw_world && WallTexturePipeline != VK_NULL_HANDLE && WallTextureDescriptorSet != VK_NULL_HANDLE && WorldDrawDrawCount > 0)
 				{
 					Vk.CmdBindPipeline(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, WallTexturePipeline);
@@ -5027,6 +5019,14 @@ namespace
 					Vk.CmdPushConstants(CommandBuffer, WallTexturePipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(probeConstants), &probeConstants);
 					Vk.CmdBindVertexBuffers(CommandBuffer, 0, 1, &ProbeVertexBuffer, vertexOffsets);
 					Vk.CmdDraw(CommandBuffer, WorldDrawDrawCount, 1, WorldDrawFirstVertex, 0);
+				}
+				if (vk_draw_world && WallTexturePipeline != VK_NULL_HANDLE && WallTextureDescriptorSet != VK_NULL_HANDLE && WorldFlatDrawCount > 0)
+				{
+					Vk.CmdBindPipeline(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, WallTexturePipeline);
+					Vk.CmdBindDescriptorSets(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, WallTexturePipelineLayout, 0, 1, &WallTextureDescriptorSet, 0, NULL);
+					Vk.CmdPushConstants(CommandBuffer, WallTexturePipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(probeConstants), &probeConstants);
+					Vk.CmdBindVertexBuffers(CommandBuffer, 0, 1, &ProbeVertexBuffer, vertexOffsets);
+					Vk.CmdDraw(CommandBuffer, WorldFlatDrawCount, 1, WorldFlatFirstVertex, 0);
 				}
 				if (vk_world_probe && WorldProbePipeline != VK_NULL_HANDLE && WorldProbeDrawCount > 0)
 				{
