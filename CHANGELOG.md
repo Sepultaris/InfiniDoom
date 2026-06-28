@@ -1,5 +1,13 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.40 - 2026-06-27
+
+- Fixed `vk_hide_software_frame` hiding the menu when no Vulkan world is
+  available or when the menu is active.
+- Changed first-pass Vulkan flat triangulation from a subsector vertex fan to
+  center-to-seg triangles, reducing missing floor and ceiling pieces caused by
+  mixed seg ordering.
+
 ## 3.3-alpha-vdoom.39 - 2026-06-27
 
 - Added first-pass Vulkan floor and ceiling flat rendering to `vk_draw_world`.

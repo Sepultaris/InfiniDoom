@@ -33,6 +33,7 @@
 #include "r_swrenderer.h"
 #include "version.h"
 #include "c_cvars.h"
+#include "doomstat.h"
 #include "v_text.h"
 #include "v_palette.h"
 #include "m_fixed.h"
@@ -265,7 +266,7 @@ namespace
 		WorldDrawTextureVerticesPerWall = WorldDrawTextureSectionsPerWall * WorldDrawTextureVerticesPerSection,
 		WorldDrawMaxFlats = 192,
 		WorldDrawFlatMaxSegs = 24,
-		WorldDrawFlatVerticesPerSubsector = (WorldDrawFlatMaxSegs - 2) * 3 * 2,
+		WorldDrawFlatVerticesPerSubsector = WorldDrawFlatMaxSegs * 3 * 2,
 		ProbeVertexMaxCount = SceneProbeVertexCount + WorldProbeMaxWalls * 6 + WorldDrawMaxWalls * WorldDrawTextureVerticesPerWall + WorldDrawMaxFlats * WorldDrawFlatVerticesPerSubsector,
 		WorldAtlasTileSize = 128,
 		WorldAtlasTilesPerRow = 8,
@@ -2868,16 +2869,10 @@ namespace
 			return GetWorldAtlasTile(textureId, texture, pixels);
 		}
 
-		void AppendFlatVertex(SceneProbeVertex *vertices, unsigned int &count,
-			sector_t *sector, int plane, const vertex_t *vertex, const WorldAtlasTile &tile, float light)
+		void AppendFlatPoint(SceneProbeVertex *vertices, unsigned int &count,
+			sector_t *sector, int plane, double x, double y, const WorldAtlasTile &tile, float light)
 		{
-			if (vertex == NULL)
-			{
-				return;
-			}
-			const double x = FIXED2FLOAT(vertex->x);
-			const double y = FIXED2FLOAT(vertex->y);
-			const double z = FIXED2FLOAT(sector->GetSecPlane(plane).ZatPoint(vertex));
+			const double z = sector->GetSecPlane(plane).ZatPoint(x, y);
 			double xScale = FIXED2FLOAT(sector->GetXScale(plane));
 			double yScale = FIXED2FLOAT(sector->GetYScale(plane));
 			if (fabs(xScale) < 0.001)
@@ -2894,7 +2889,8 @@ namespace
 		}
 
 		void AppendWorldFlatTriangle(SceneProbeVertex *vertices, unsigned int &count,
-			sector_t *sector, int plane, const vertex_t *a, const vertex_t *b, const vertex_t *c,
+			sector_t *sector, int plane,
+			double ax, double ay, double bx, double by, double cx, double cy,
 			const WorldAtlasTile &tile, float light)
 		{
 			if (count + 3 > ProbeVertexMaxCount)
@@ -2903,15 +2899,15 @@ namespace
 			}
 			if (plane == sector_t::ceiling)
 			{
-				AppendFlatVertex(vertices, count, sector, plane, a, tile, light);
-				AppendFlatVertex(vertices, count, sector, plane, c, tile, light);
-				AppendFlatVertex(vertices, count, sector, plane, b, tile, light);
+				AppendFlatPoint(vertices, count, sector, plane, ax, ay, tile, light);
+				AppendFlatPoint(vertices, count, sector, plane, cx, cy, tile, light);
+				AppendFlatPoint(vertices, count, sector, plane, bx, by, tile, light);
 			}
 			else
 			{
-				AppendFlatVertex(vertices, count, sector, plane, a, tile, light);
-				AppendFlatVertex(vertices, count, sector, plane, b, tile, light);
-				AppendFlatVertex(vertices, count, sector, plane, c, tile, light);
+				AppendFlatPoint(vertices, count, sector, plane, ax, ay, tile, light);
+				AppendFlatPoint(vertices, count, sector, plane, bx, by, tile, light);
+				AppendFlatPoint(vertices, count, sector, plane, cx, cy, tile, light);
 			}
 		}
 
@@ -2926,8 +2922,7 @@ namespace
 			{
 				return false;
 			}
-			const unsigned int triangleCount = subsector->numlines - 2;
-			const unsigned int maxNeeded = triangleCount * 3 * 2;
+			const unsigned int maxNeeded = subsector->numlines * 3 * 2;
 			if (count + maxNeeded > ProbeVertexMaxCount)
 			{
 				return false;
@@ -2941,24 +2936,60 @@ namespace
 			}
 
 			const float baseLight = sector->lightlevel <= 0 ? 0.20f : (sector->lightlevel / 255.0f);
-			bool drew = false;
-			for (unsigned int i = 1; i + 1 < subsector->numlines; ++i)
+			double centerX = 0.0;
+			double centerY = 0.0;
+			unsigned int centerPoints = 0;
+			for (unsigned int i = 0; i < subsector->numlines; ++i)
 			{
-				const vertex_t *a = subsector->firstline[0].v1;
-				const vertex_t *b = subsector->firstline[i].v1;
-				const vertex_t *c = subsector->firstline[i + 1].v1;
-				if (a == NULL || b == NULL || c == NULL)
+				const vertex_t *v1 = subsector->firstline[i].v1;
+				const vertex_t *v2 = subsector->firstline[i].v2;
+				if (v1 != NULL)
+				{
+					centerX += FIXED2FLOAT(v1->x);
+					centerY += FIXED2FLOAT(v1->y);
+					++centerPoints;
+				}
+				if (v2 != NULL)
+				{
+					centerX += FIXED2FLOAT(v2->x);
+					centerY += FIXED2FLOAT(v2->y);
+					++centerPoints;
+				}
+			}
+			if (centerPoints == 0)
+			{
+				return false;
+			}
+			centerX /= (double)centerPoints;
+			centerY /= (double)centerPoints;
+
+			bool drew = false;
+			for (unsigned int i = 0; i < subsector->numlines; ++i)
+			{
+				const vertex_t *v1 = subsector->firstline[i].v1;
+				const vertex_t *v2 = subsector->firstline[i].v2;
+				if (v1 == NULL || v2 == NULL)
+				{
+					continue;
+				}
+				const double x1 = FIXED2FLOAT(v1->x);
+				const double y1 = FIXED2FLOAT(v1->y);
+				const double x2 = FIXED2FLOAT(v2->x);
+				const double y2 = FIXED2FLOAT(v2->y);
+				if (fabs(x2 - x1) + fabs(y2 - y1) < 0.001)
 				{
 					continue;
 				}
 				if (floorTile != NULL)
 				{
-					AppendWorldFlatTriangle(vertices, count, sector, sector_t::floor, a, b, c, *floorTile, baseLight);
+					AppendWorldFlatTriangle(vertices, count, sector, sector_t::floor,
+						centerX, centerY, x1, y1, x2, y2, *floorTile, baseLight);
 					drew = true;
 				}
 				if (ceilingTile != NULL)
 				{
-					AppendWorldFlatTriangle(vertices, count, sector, sector_t::ceiling, a, b, c, *ceilingTile, baseLight * 0.80f);
+					AppendWorldFlatTriangle(vertices, count, sector, sector_t::ceiling,
+						centerX, centerY, x1, y1, x2, y2, *ceilingTile, baseLight * 0.80f);
 					drew = true;
 				}
 			}
@@ -4237,7 +4268,8 @@ namespace
 			scissor.extent = SwapchainExtent;
 			Vk.CmdSetViewport(CommandBuffer, 0, 1, &viewport);
 			Vk.CmdSetScissor(CommandBuffer, 0, 1, &scissor);
-			if (!vk_hide_software_frame)
+			const bool drawSoftwareFrame = !vk_hide_software_frame || WorldDrawDrawCount == 0 || menuactive != MENU_Off;
+			if (drawSoftwareFrame)
 			{
 				Vk.CmdBindPipeline(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, GraphicsPipeline);
 				Vk.CmdBindDescriptorSets(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, PipelineLayout, 0, 1, &DescriptorSet, 0, NULL);
