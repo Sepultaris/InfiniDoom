@@ -2992,11 +2992,15 @@ namespace
 
 		bool AppendWorldFlatPolygon(SceneProbeVertex *vertices, unsigned int &count,
 			sector_t *sector, int plane, const WorldFlatPoint *points, unsigned int pointCount,
-			const WorldAtlasTile &tile, float light)
+			const WorldAtlasTile &tile, float light, bool useEarClipping)
 		{
 			if (pointCount < 3 || count + (pointCount - 2) * 3 > ProbeVertexMaxCount)
 			{
 				return false;
+			}
+			if (!useEarClipping)
+			{
+				return AppendWorldFlatPolygonFan(vertices, count, sector, plane, points, pointCount, tile, light);
 			}
 
 			const double area = WorldFlatArea(points, pointCount);
@@ -3012,6 +3016,7 @@ namespace
 			}
 
 			bool drew = false;
+			const unsigned int startCount = count;
 			unsigned int remaining = pointCount;
 			const bool counterClockwise = area > 0.0;
 			unsigned int guard = 0;
@@ -3067,7 +3072,8 @@ namespace
 				}
 				if (!clipped)
 				{
-					return drew || AppendWorldFlatPolygonFan(vertices, count, sector, plane, points, pointCount, tile, light);
+					count = startCount;
+					return AppendWorldFlatPolygonFan(vertices, count, sector, plane, points, pointCount, tile, light);
 				}
 			}
 			return drew;
@@ -3105,14 +3111,15 @@ namespace
 			}
 
 			const float baseLight = sector->lightlevel <= 0 ? 0.20f : (sector->lightlevel / 255.0f);
+			const bool useEarClipping = false;
 			bool drew = false;
 			if (floorTile != NULL)
 			{
-				drew = AppendWorldFlatPolygon(vertices, count, sector, sector_t::floor, points, pointCount, *floorTile, baseLight) || drew;
+				drew = AppendWorldFlatPolygon(vertices, count, sector, sector_t::floor, points, pointCount, *floorTile, baseLight, useEarClipping) || drew;
 			}
 			if (ceilingTile != NULL)
 			{
-				drew = AppendWorldFlatPolygon(vertices, count, sector, sector_t::ceiling, points, pointCount, *ceilingTile, baseLight * 0.80f) || drew;
+				drew = AppendWorldFlatPolygon(vertices, count, sector, sector_t::ceiling, points, pointCount, *ceilingTile, baseLight * 0.80f, useEarClipping) || drew;
 			}
 			return drew;
 		}

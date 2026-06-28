@@ -1,5 +1,13 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.42 - 2026-06-27
+
+- Fixed the Vulkan flat triangulator leaving partial floor/ceiling polygons
+  behind when ear clipping stalled on awkward or collinear subsector vertices.
+- Matched the established OpenGL and UZDoom behavior more closely: normal
+  subsectors now draw as ordered triangle fans, with the local ear-clipping
+  helper kept all-or-nothing for future hole-subsector support.
+
 ## 3.3-alpha-vdoom.41 - 2026-06-27
 
 - Reworked the Vulkan `vk_draw_world` flat pass to follow the established
