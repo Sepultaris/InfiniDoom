@@ -1,5 +1,13 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.84 - 2026-06-28
+
+- Changed active Vulkan flat collection from raw BSP traversal to the existing
+  sector/subsector scan path so floor and ceiling submission follows the same
+  high-level ownership model as the hardware flat renderers.
+- Kept fallback flat triangulation on the GL-style subsector fan path instead
+  of re-enabling experimental ear clipping through the sector scan path.
+
 ## 3.3-alpha-vdoom.83 - 2026-06-28
 
 - Changed cached Vulkan flat mesh construction to follow the established

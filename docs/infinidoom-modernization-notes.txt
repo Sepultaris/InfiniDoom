@@ -279,3 +279,11 @@ clip the generated triangles. This removes the earlier experimental
 per-triangle CPU near-plane clipping and avoids ear-clipping ordinary
 subsectors, which could create camera-dependent missing wedges that did not
 match the hardware flat renderer path.
+
+The `.84` checkpoint moves active Vulkan flat collection away from raw BSP
+subsector traversal and onto the existing sector/subsector scan path. This is a
+closer match for the GL/UZDoom hardware renderer model, where flats are
+submitted from sector-owned subsector sections and special plane hacks are
+handled as distinct passes rather than inferred from a bare BSP walk. The
+fallback flat path now also keeps the GL-style fan triangulation rule so this
+diagnostic does not mix collection changes with ear-clipping behavior.

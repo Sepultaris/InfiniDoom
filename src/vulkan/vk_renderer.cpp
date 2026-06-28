@@ -3885,8 +3885,8 @@ namespace
 			}
 
 			const float baseLight = textureSector->lightlevel <= 0 ? 0.20f : (textureSector->lightlevel / 255.0f);
-			const bool useEarClipping = !WorldFlatIsConvex(points, pointCount);
-			if (useEarClipping)
+			const bool useEarClipping = false;
+			if (!WorldFlatIsConvex(points, pointCount))
 			{
 				++WorldDrawFlatNonConvexCount;
 			}
@@ -4258,14 +4258,7 @@ namespace
 			{
 				BuildWorldFlatMesh();
 				unsigned int flats = 0;
-				if (nodes != NULL && numnodes > 0)
-				{
-					AppendWorldFlatBspNode(vertices, count, nodes + numnodes - 1, 0, flats);
-				}
-				else
-				{
-					AppendWorldFlatFallbackScan(vertices, count, flats);
-				}
+				AppendWorldFlatSectorScan(vertices, count, flats);
 			}
 		}
 
