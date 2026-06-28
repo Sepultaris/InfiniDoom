@@ -1,5 +1,14 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.92 - 2026-06-28
+
+- Changed the Vulkan flat path to use scene-collected live flat tessellation by
+  default instead of the legacy cached flat mesh, removing a hidden fan-based
+  bypass from the active renderer path.
+- Added `vk_cache_flat_mesh` as an opt-in diagnostic switch for the cached flat
+  mesh path, and changed that cache builder to use ear-clipped triangles when
+  it is enabled.
+
 ## 3.3-alpha-vdoom.91 - 2026-06-28
 
 - Added near-plane clipping for Vulkan flat triangles so floor and ceiling

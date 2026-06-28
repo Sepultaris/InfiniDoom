@@ -121,6 +121,7 @@ CVAR(Bool, vk_draw_world, false, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINITC
 CVAR(Bool, vk_hide_software_frame, false, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINITCALL)
 CVAR(Bool, vk_debug_solid_flats, false, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINITCALL)
 CVAR(Bool, vk_debug_flat_colors, false, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINITCALL)
+CVAR(Bool, vk_cache_flat_mesh, false, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINITCALL)
 CVAR(Bool, vk_scene_probe, false, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINITCALL)
 CVAR(Bool, vk_world_probe, false, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINITCALL)
 
@@ -3621,7 +3622,7 @@ namespace
 			}
 
 			range.FirstTriangle = WorldFlatMeshTriangleCount;
-			const bool drew = AddWorldFlatMeshFan(subsector, planeSector, textureSector, plane, points, pointCount);
+			const bool drew = AddWorldFlatMeshEarClipped(subsector, planeSector, textureSector, plane, points, pointCount);
 			range.TriangleCount = WorldFlatMeshTriangleCount - range.FirstTriangle;
 			if (!drew || range.TriangleCount == 0)
 			{
@@ -4040,7 +4041,7 @@ namespace
 				return false;
 			}
 			bool drew = false;
-			if (IsWorldFlatMeshCurrent() && subsector >= subsectors && subsector < subsectors + numsubsectors)
+			if (vk_cache_flat_mesh && IsWorldFlatMeshCurrent() && subsector >= subsectors && subsector < subsectors + numsubsectors)
 			{
 				const unsigned int index = (unsigned int)(subsector - subsectors);
 				drew = AppendWorldFlatMeshRange(vertices, count, WorldFlatMeshFloorRanges[index]) || drew;
@@ -4465,7 +4466,10 @@ namespace
 			}
 			if (subsectors != NULL && numsubsectors > 0)
 			{
-				BuildWorldFlatMesh();
+				if (vk_cache_flat_mesh)
+				{
+					BuildWorldFlatMesh();
+				}
 				unsigned int flats = 0;
 				vdoom::VdHwScene scene;
 				scene.CollectWorld();
