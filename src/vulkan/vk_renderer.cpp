@@ -118,6 +118,7 @@ CUSTOM_CVAR(Float, vk_present_aspect, 0.f, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CV
 CVAR(Bool, vk_present_force_aspect, false, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINITCALL)
 CVAR(Bool, vk_draw_world, false, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINITCALL)
 CVAR(Bool, vk_hide_software_frame, false, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINITCALL)
+CVAR(Bool, vk_debug_solid_flats, false, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINITCALL)
 CVAR(Bool, vk_scene_probe, false, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINITCALL)
 CVAR(Bool, vk_world_probe, false, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINITCALL)
 
@@ -568,6 +569,11 @@ namespace
 		bool IsSoftwareFrameHidden() const
 		{
 			return vk_hide_software_frame;
+		}
+
+		bool IsDebugSolidFlats() const
+		{
+			return vk_debug_solid_flats;
 		}
 
 		bool IsSceneProbeActive() const
@@ -2613,6 +2619,51 @@ namespace
 			return &tile;
 		}
 
+		const WorldAtlasTile *GetWorldSolidAtlasTile(int solidId, BYTE r, BYTE g, BYTE b)
+		{
+			if (WallAtlasPixels == NULL)
+			{
+				return NULL;
+			}
+			for (unsigned int i = 0; i < WallAtlasTileCount; ++i)
+			{
+				if (WallAtlasTiles[i].TextureIndex == solidId)
+				{
+					return &WallAtlasTiles[i];
+				}
+			}
+			if (WallAtlasTileCount >= WorldAtlasMaxTiles)
+			{
+				return NULL;
+			}
+
+			const unsigned int tileIndex = WallAtlasTileCount++;
+			const unsigned int tileX = (tileIndex % WorldAtlasTilesPerRow) * WorldAtlasTileSize;
+			const unsigned int tileY = (tileIndex / WorldAtlasTilesPerRow) * WorldAtlasTileSize;
+			for (unsigned int y = 0; y < WorldAtlasTileSize; ++y)
+			{
+				for (unsigned int x = 0; x < WorldAtlasTileSize; ++x)
+				{
+					BYTE *dst = WallAtlasPixels + (((tileY + y) * WorldAtlasSize + tileX + x) * 4);
+					dst[0] = r;
+					dst[1] = g;
+					dst[2] = b;
+					dst[3] = 255;
+				}
+			}
+
+			WorldAtlasTile &tile = WallAtlasTiles[tileIndex];
+			tile.TextureIndex = solidId;
+			tile.Width = 1;
+			tile.Height = 1;
+			tile.U0 = ((float)tileX + 0.5f) / (float)WorldAtlasSize;
+			tile.V0 = ((float)tileY + 0.5f) / (float)WorldAtlasSize;
+			tile.U1 = ((float)(tileX + WorldAtlasTileSize) - 0.5f) / (float)WorldAtlasSize;
+			tile.V1 = ((float)(tileY + WorldAtlasTileSize) - 0.5f) / (float)WorldAtlasSize;
+			WallAtlasDirty = true;
+			return &tile;
+		}
+
 		double WallTextureV(const line_t *line, int texturePart, const WorldAtlasTile &tile,
 			double top, double bottom, double z, double yOffset) const
 		{
@@ -2878,6 +2929,12 @@ namespace
 			{
 				return NULL;
 			}
+			if (vk_debug_solid_flats)
+			{
+				return plane == sector_t::ceiling ?
+					GetWorldSolidAtlasTile(-1002, 158, 158, 150) :
+					GetWorldSolidAtlasTile(-1001, 112, 104, 82);
+			}
 			FTextureID textureId = sector->GetTexture(plane);
 			if (!textureId.isValid() || textureId == skyflatnum)
 			{
@@ -2910,7 +2967,10 @@ namespace
 			}
 			const double u = (x + FIXED2FLOAT(sector->GetXOffset(plane))) / xScale;
 			const double v = (-y + FIXED2FLOAT(sector->GetYOffset(plane))) / yScale;
-			AppendTexturedVertex(vertices, count, x, y, z, u, v, tile, light);
+			AppendTexturedVertex(vertices, count, x, y, z,
+				vk_debug_solid_flats ? 0.5 : u,
+				vk_debug_solid_flats ? 0.5 : v,
+				tile, light);
 		}
 
 		void AppendWorldFlatTriangle(SceneProbeVertex *vertices, unsigned int &count,
@@ -4911,6 +4971,7 @@ namespace
 		VulkanStats.OutOfDateCount = runtime->GetOutOfDateCount();
 		VulkanStats.GpuPresentationActive = runtime->IsGpuPresentationReady();
 		VulkanStats.SoftwareFrameHidden = runtime->IsSoftwareFrameHidden();
+		VulkanStats.DebugSolidFlats = runtime->IsDebugSolidFlats();
 		VulkanStats.WindowMinimized = runtime->IsWindowMinimized();
 		VulkanStats.TimestampQueriesAvailable = runtime->AreTimestampQueriesAvailable();
 		VulkanStats.LastGpuFrameMS = runtime->GetLastGpuFrameMS();

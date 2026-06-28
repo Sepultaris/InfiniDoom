@@ -1,5 +1,14 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.44 - 2026-06-28
+
+- Added `vk_debug_solid_flats` as a Vulkan flat diagnostic mode. When enabled,
+  floors and ceilings use constant atlas tiles and stable UVs while walls stay
+  textured, making it easier to tell texture/UV artifacts from real geometry
+  holes.
+- `stat renderer` now reports whether Vulkan flats are using atlas textures or
+  the solid diagnostic mode.
+
 ## 3.3-alpha-vdoom.43 - 2026-06-27
 
 - Expanded the temporary Vulkan flat draw coverage from 256 nearby subsectors

@@ -202,6 +202,7 @@ ADD_STAT(renderer)
 						vk.WorldDrawFlatRangeSkipCount,
 						vk.WorldDrawFlatTooLargeSkipCount,
 						vk.WorldDrawFlatBudgetSkipCount);
+					out.AppendFormat("GPU flat texture mode: %s\n", vk.DebugSolidFlats ? "solid diagnostic" : "atlas textured");
 				}
 				else
 				{

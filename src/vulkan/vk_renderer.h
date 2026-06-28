@@ -52,6 +52,7 @@ struct FVulkanBackendStats
 	bool WorldProbeActive;
 	bool GpuPresentationActive;
 	bool SoftwareFrameHidden;
+	bool DebugSolidFlats;
 	bool TimestampQueriesAvailable;
 	bool MemoryBudgetAvailable;
 	bool LastPresentSucceeded;
