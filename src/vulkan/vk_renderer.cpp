@@ -4141,7 +4141,9 @@ namespace
 		bool AppendWorldFlatSectorSubsectors(SceneProbeVertex *vertices, unsigned int &count,
 			sector_t *planeSector, sector_t *textureSector, int plane, unsigned int &flats)
 		{
-			sector_t *drawSector = textureSector != NULL ? textureSector : planeSector;
+			sector_t *drawSector =
+				(textureSector != NULL && textureSector->subsectors != NULL && textureSector->subsectorcount > 0) ?
+				textureSector : planeSector;
 			if (planeSector == NULL || textureSector == NULL || drawSector == NULL ||
 				drawSector->subsectors == NULL || drawSector->subsectorcount <= 0)
 			{

@@ -1,5 +1,12 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.94 - 2026-06-28
+
+- Fixed Vulkan sector-plane flat expansion to use the render/texture sector
+  only when it owns subsector geometry, otherwise falling back to the real
+  plane sector for polygon coverage while preserving render-sector material
+  data.
+
 ## 3.3-alpha-vdoom.93 - 2026-06-28
 
 - Changed normal Vulkan flat scene commands to expand to the visible
