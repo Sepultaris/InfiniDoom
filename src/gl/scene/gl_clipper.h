@@ -69,7 +69,7 @@ public:
 
 	Clipper()
 	{
-		clipnodes=cliphead=NULL;
+		clipnodes=cliphead=silhouette=NULL;
 	}
 
 	~Clipper();
