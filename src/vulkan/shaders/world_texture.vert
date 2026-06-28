@@ -3,9 +3,11 @@
 layout(location = 0) in vec3 InPosition;
 layout(location = 1) in vec3 InLight;
 layout(location = 2) in vec2 InTexCoord;
+layout(location = 3) in vec4 InAtlasRect;
 
 layout(location = 0) out vec2 TexCoord;
 layout(location = 1) out vec3 LightColor;
+layout(location = 2) out vec4 AtlasRect;
 
 layout(push_constant) uniform ProbeConstants
 {
@@ -25,4 +27,5 @@ void main()
 		dot(Probe.Row3, world));
 	TexCoord = InTexCoord;
 	LightColor = InLight;
+	AtlasRect = InAtlasRect;
 }

@@ -239,6 +239,7 @@ namespace
 		float Position[3];
 		float Color[3];
 		float TexCoord[2];
+		float AtlasRect[4];
 	};
 
 	struct SceneProbePushConstants
@@ -2134,7 +2135,7 @@ namespace
 			vertexBinding.binding = 0;
 			vertexBinding.stride = sizeof(SceneProbeVertex);
 			vertexBinding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-			VkVertexInputAttributeDescription vertexAttributes[3];
+			VkVertexInputAttributeDescription vertexAttributes[4];
 			memset(vertexAttributes, 0, sizeof(vertexAttributes));
 			vertexAttributes[0].location = 0;
 			vertexAttributes[0].binding = 0;
@@ -2148,9 +2149,13 @@ namespace
 			vertexAttributes[2].binding = 0;
 			vertexAttributes[2].format = VK_FORMAT_R32G32_SFLOAT;
 			vertexAttributes[2].offset = offsetof(SceneProbeVertex, TexCoord);
+			vertexAttributes[3].location = 3;
+			vertexAttributes[3].binding = 0;
+			vertexAttributes[3].format = VK_FORMAT_R32G32B32A32_SFLOAT;
+			vertexAttributes[3].offset = offsetof(SceneProbeVertex, AtlasRect);
 			vertexInput.vertexBindingDescriptionCount = 1;
 			vertexInput.pVertexBindingDescriptions = &vertexBinding;
-			vertexInput.vertexAttributeDescriptionCount = 3;
+			vertexInput.vertexAttributeDescriptionCount = 4;
 			vertexInput.pVertexAttributeDescriptions = vertexAttributes;
 
 			VkPipelineInputAssemblyStateCreateInfo inputAssembly;
@@ -2309,6 +2314,10 @@ namespace
 			vertices[count].Color[2] = b;
 			vertices[count].TexCoord[0] = 0.f;
 			vertices[count].TexCoord[1] = 0.f;
+			vertices[count].AtlasRect[0] = 0.f;
+			vertices[count].AtlasRect[1] = 0.f;
+			vertices[count].AtlasRect[2] = 0.f;
+			vertices[count].AtlasRect[3] = 0.f;
 			++count;
 		}
 
@@ -2449,32 +2458,8 @@ namespace
 			return true;
 		}
 
-		float WrapTextureCoord(double value, int size) const
-		{
-			if (size <= 0)
-			{
-				return 0.f;
-			}
-			double wrapped = fmod(value, (double)size);
-			if (wrapped < 0.0)
-			{
-				wrapped += (double)size;
-			}
-			return (float)(wrapped / (double)size);
-		}
-
-		float AtlasU(const WorldAtlasTile &tile, double u) const
-		{
-			return tile.U0 + WrapTextureCoord(u, tile.Width) * (tile.U1 - tile.U0);
-		}
-
-		float AtlasV(const WorldAtlasTile &tile, double v) const
-		{
-			return tile.V0 + WrapTextureCoord(v, tile.Height) * (tile.V1 - tile.V0);
-		}
-
 		void AppendTexturedVertex(SceneProbeVertex *vertices, unsigned int &count,
-			double x, double y, double z, float u, float v, float light)
+			double x, double y, double z, double u, double v, const WorldAtlasTile &tile, float light)
 		{
 			if (count >= ProbeVertexMaxCount)
 			{
@@ -2486,28 +2471,33 @@ namespace
 			vertices[count].Color[0] = light;
 			vertices[count].Color[1] = light;
 			vertices[count].Color[2] = light;
-			vertices[count].TexCoord[0] = u;
-			vertices[count].TexCoord[1] = v;
+			vertices[count].TexCoord[0] = tile.Width > 0 ? (float)(u / (double)tile.Width) : 0.f;
+			vertices[count].TexCoord[1] = tile.Height > 0 ? (float)(v / (double)tile.Height) : 0.f;
+			vertices[count].AtlasRect[0] = tile.U0;
+			vertices[count].AtlasRect[1] = tile.V0;
+			vertices[count].AtlasRect[2] = tile.U1;
+			vertices[count].AtlasRect[3] = tile.V1;
 			++count;
 		}
 
 		void AppendTexturedCell(SceneProbeVertex *vertices, unsigned int &count,
 			double x1, double y1, double x2, double y2,
 			double zTopA, double zTopB, double zBottomA, double zBottomB,
-			float uTopA, float vTopA, float uTopB, float vTopB,
-			float uBottomA, float vBottomA, float uBottomB, float vBottomB,
+			double uTopA, double vTopA, double uTopB, double vTopB,
+			double uBottomA, double vBottomA, double uBottomB, double vBottomB,
+			const WorldAtlasTile &tile,
 			float light)
 		{
 			if (count + 6 > ProbeVertexMaxCount)
 			{
 				return;
 			}
-			AppendTexturedVertex(vertices, count, x1, y1, zTopA, uTopA, vTopA, light);
-			AppendTexturedVertex(vertices, count, x2, y2, zTopB, uTopB, vTopB, light);
-			AppendTexturedVertex(vertices, count, x2, y2, zBottomB, uBottomB, vBottomB, light);
-			AppendTexturedVertex(vertices, count, x1, y1, zTopA, uTopA, vTopA, light);
-			AppendTexturedVertex(vertices, count, x2, y2, zBottomB, uBottomB, vBottomB, light);
-			AppendTexturedVertex(vertices, count, x1, y1, zBottomA, uBottomA, vBottomA, light);
+			AppendTexturedVertex(vertices, count, x1, y1, zTopA, uTopA, vTopA, tile, light);
+			AppendTexturedVertex(vertices, count, x2, y2, zTopB, uTopB, vTopB, tile, light);
+			AppendTexturedVertex(vertices, count, x2, y2, zBottomB, uBottomB, vBottomB, tile, light);
+			AppendTexturedVertex(vertices, count, x1, y1, zTopA, uTopA, vTopA, tile, light);
+			AppendTexturedVertex(vertices, count, x2, y2, zBottomB, uBottomB, vBottomB, tile, light);
+			AppendTexturedVertex(vertices, count, x1, y1, zBottomA, uBottomA, vBottomA, tile, light);
 		}
 
 		void ResetWorldAtlas()
@@ -2768,10 +2758,11 @@ namespace
 					const double uB = xOffset + clippedU1 + (clippedU2 - clippedU1) * columnB;
 					AppendTexturedCell(vertices, count, ax, ay, bx, by,
 						zTopA, zTopB, zBottomA, zBottomB,
-						AtlasU(*tile, uA), AtlasV(*tile, vTopA),
-						AtlasU(*tile, uB), AtlasV(*tile, vTopB),
-						AtlasU(*tile, uA), AtlasV(*tile, vBottomA),
-						AtlasU(*tile, uB), AtlasV(*tile, vBottomB),
+						uA, vTopA,
+						uB, vTopB,
+						uA, vBottomA,
+						uB, vBottomB,
+						*tile,
 						light);
 				}
 			}
@@ -2869,9 +2860,9 @@ namespace
 			const double centerY = camY + forwardY * centerForward + rightY * centerRight;
 			SceneProbeVertex sceneVertices[SceneProbeVertexCount] =
 			{
-				{ { (float)centerX, (float)centerY, (float)topZ }, { 1.0f, 0.0f, 1.0f }, { 0.f, 0.f } },
-				{ { (float)(centerX - rightX * halfWidth), (float)(centerY - rightY * halfWidth), (float)baseZ }, { 0.0f, 1.0f, 1.0f }, { 0.f, 0.f } },
-				{ { (float)(centerX + rightX * halfWidth), (float)(centerY + rightY * halfWidth), (float)baseZ }, { 1.0f, 1.0f, 0.0f }, { 0.f, 0.f } }
+				{ { (float)centerX, (float)centerY, (float)topZ }, { 1.0f, 0.0f, 1.0f }, { 0.f, 0.f }, { 0.f, 0.f, 0.f, 0.f } },
+				{ { (float)(centerX - rightX * halfWidth), (float)(centerY - rightY * halfWidth), (float)baseZ }, { 0.0f, 1.0f, 1.0f }, { 0.f, 0.f }, { 0.f, 0.f, 0.f, 0.f } },
+				{ { (float)(centerX + rightX * halfWidth), (float)(centerY + rightY * halfWidth), (float)baseZ }, { 1.0f, 1.0f, 0.0f }, { 0.f, 0.f }, { 0.f, 0.f, 0.f, 0.f } }
 			};
 			memcpy(&vertices[count], sceneVertices, sizeof(sceneVertices));
 			count += SceneProbeVertexCount;

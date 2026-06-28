@@ -1,5 +1,13 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.36 - 2026-06-27
+
+- Fixed camera-dependent wall texture seams in the Vulkan `vk_draw_world`
+  path by moving texture repeat wrapping into the wall fragment shader.
+- Wall vertices now carry continuous wall-space UVs plus their atlas rectangle,
+  so clipping the visible wall segment no longer decides where atlas seams
+  appear while turning.
+
 ## 3.3-alpha-vdoom.35 - 2026-06-27
 
 - Changed `vk_draw_world` from CPU-colored wall cells to a sampled Vulkan wall
