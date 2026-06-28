@@ -3274,7 +3274,7 @@ namespace
 			return outputCount;
 		}
 
-		bool AppendWorldFlatTriangle(SceneProbeVertex *vertices, unsigned int &count,
+		bool AppendWorldFlatTriangleUnclipped(SceneProbeVertex *vertices, unsigned int &count,
 			sector_t *planeSector, sector_t *textureSector, int plane,
 			double ax, double ay, double bx, double by, double cx, double cy,
 			const WorldAtlasTile &tile, float light)
@@ -3294,6 +3294,59 @@ namespace
 			AppendFlatPoint(vertices, count, planeSector, textureSector, plane, bx, by, tile, light);
 			AppendFlatPoint(vertices, count, planeSector, textureSector, plane, cx, cy, tile, light);
 			return true;
+		}
+
+		bool AppendWorldFlatTriangle(SceneProbeVertex *vertices, unsigned int &count,
+			sector_t *planeSector, sector_t *textureSector, int plane,
+			double ax, double ay, double bx, double by, double cx, double cy,
+			const WorldAtlasTile &tile, float light)
+		{
+			const double pi = 3.14159265358979323846;
+			const double angleRadians = ANGLE2DBL(viewangle) * (pi / 180.0);
+			const double forwardX = cos(angleRadians);
+			const double forwardY = sin(angleRadians);
+			const double camX = FIXED2FLOAT(viewx);
+			const double camY = FIXED2FLOAT(viewy);
+			const double nearDepth = 8.0;
+
+			WorldFlatClipPoint input[3];
+			input[0].X = ax;
+			input[0].Y = ay;
+			input[1].X = bx;
+			input[1].Y = by;
+			input[2].X = cx;
+			input[2].Y = cy;
+
+			WorldFlatClipPoint clipped[4];
+			const unsigned int clippedCount = ClipWorldFlatNearPlane(input, 3, clipped, forwardX, forwardY, camX, camY, nearDepth);
+			if (clippedCount < 3)
+			{
+				return false;
+			}
+			if (clippedCount == 3)
+			{
+				return AppendWorldFlatTriangleUnclipped(vertices, count, planeSector, textureSector, plane,
+					clipped[0].X, clipped[0].Y,
+					clipped[1].X, clipped[1].Y,
+					clipped[2].X, clipped[2].Y,
+					tile, light);
+			}
+			if (clippedCount == 4)
+			{
+				bool drew = false;
+				drew = AppendWorldFlatTriangleUnclipped(vertices, count, planeSector, textureSector, plane,
+					clipped[0].X, clipped[0].Y,
+					clipped[1].X, clipped[1].Y,
+					clipped[2].X, clipped[2].Y,
+					tile, light) || drew;
+				drew = AppendWorldFlatTriangleUnclipped(vertices, count, planeSector, textureSector, plane,
+					clipped[0].X, clipped[0].Y,
+					clipped[2].X, clipped[2].Y,
+					clipped[3].X, clipped[3].Y,
+					tile, light) || drew;
+				return drew;
+			}
+			return false;
 		}
 
 		struct WorldFlatPoint
@@ -3704,7 +3757,7 @@ namespace
 			sector_t *planeSector, sector_t *textureSector, int plane, const WorldFlatPoint *points, unsigned int pointCount,
 			const WorldAtlasTile &tile, float light)
 		{
-			if (pointCount < 3 || count + pointCount * 3 > WorldFlatVertexMaxCount)
+			if (pointCount < 3 || count + pointCount * 6 > WorldFlatVertexMaxCount)
 			{
 				return false;
 			}
@@ -3746,7 +3799,7 @@ namespace
 				return AppendWorldFlatPolygonFan(vertices, count, planeSector, textureSector, plane, points, pointCount, tile, light);
 			}
 
-			if (pointCount < 3 || count + (pointCount - 2) * 3 > WorldFlatVertexMaxCount)
+			if (pointCount < 3 || count + (pointCount - 2) * 6 > WorldFlatVertexMaxCount)
 			{
 				return false;
 			}
@@ -3835,7 +3888,7 @@ namespace
 			sector_t *planeSector, sector_t *textureSector, int plane, const WorldFlatPoint *points, unsigned int pointCount,
 			const WorldAtlasTile &tile, float light)
 		{
-			if (pointCount < 3 || count + (pointCount - 2) * 3 > WorldFlatVertexMaxCount)
+			if (pointCount < 3 || count + (pointCount - 2) * 6 > WorldFlatVertexMaxCount)
 			{
 				return false;
 			}
@@ -3904,7 +3957,7 @@ namespace
 				++WorldDrawFlatDegenerateSkipCount;
 				return false;
 			}
-			const unsigned int maxNeeded = (pointCount - 2) * 3;
+			const unsigned int maxNeeded = (pointCount - 2) * 6;
 			if (count + maxNeeded > WorldFlatVertexMaxCount)
 			{
 				++WorldDrawFlatBudgetSkipCount;

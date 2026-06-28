@@ -1,5 +1,13 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.91 - 2026-06-28
+
+- Added near-plane clipping for Vulkan flat triangles so floor and ceiling
+  geometry crossing the camera plane is split before projection instead of
+  producing unstable foreground wedges or HOM-style gaps.
+- Expanded Vulkan flat vertex budgeting to account for clipped triangles
+  becoming two triangles during submission.
+
 ## 3.3-alpha-vdoom.90 - 2026-06-28
 
 - Changed Vulkan flat rendering from triangle-fan submission to triangle-list
