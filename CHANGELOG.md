@@ -1,5 +1,14 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.37 - 2026-06-27
+
+- Added two-sided wall section extraction to the Vulkan `vk_draw_world` path.
+- The Vulkan wall draw now emits solid one-sided middle walls plus upper and
+  lower sections for two-sided height differences, using top/bottom sidedef
+  textures when present.
+- Added first-pass wall pegging for Vulkan wall UVs so upper, lower, and
+  one-sided middle textures anchor more like Doom walls.
+
 ## 3.3-alpha-vdoom.36 - 2026-06-27
 
 - Fixed camera-dependent wall texture seams in the Vulkan `vk_draw_world`

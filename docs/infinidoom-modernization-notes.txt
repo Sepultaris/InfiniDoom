@@ -96,6 +96,12 @@ Current Vulkan direction:
   texture-repeat seams tied to the wall instead of to camera clipping. The
   atlas is still rebuilt each frame; the next renderer step is a persistent
   material/texture cache.
+- `vk_draw_world` now splits wall extraction into sections. One-sided lines
+  still emit a solid middle wall, while two-sided lines can emit upper and
+  lower wall pieces for sector height differences using the top and bottom
+  sidedef textures. The first-pass UV anchoring honors the classic upper and
+  lower unpegged line flags well enough for early renderer validation, though
+  exact software parity still needs the renderer's full seg/opening logic.
 - Live Vulkan basis calibration CVars were removed after sign changes in the
   projection path could crash the diagnostic renderer when changed in-game.
   Continue matching Doom's software-space camera basis through fixed,

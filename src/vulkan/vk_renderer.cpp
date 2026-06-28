@@ -257,7 +257,9 @@ namespace
 		WorldDrawMaxWalls = 192,
 		WorldDrawTextureColumns = 16,
 		WorldDrawTextureRows = 8,
-		WorldDrawTextureVerticesPerWall = WorldDrawTextureColumns * WorldDrawTextureRows * 6,
+		WorldDrawTextureSectionsPerWall = 2,
+		WorldDrawTextureVerticesPerSection = WorldDrawTextureColumns * WorldDrawTextureRows * 6,
+		WorldDrawTextureVerticesPerWall = WorldDrawTextureSectionsPerWall * WorldDrawTextureVerticesPerSection,
 		ProbeVertexMaxCount = SceneProbeVertexCount + WorldProbeMaxWalls * 6 + WorldDrawMaxWalls * WorldDrawTextureVerticesPerWall,
 		WorldAtlasTileSize = 128,
 		WorldAtlasTilesPerRow = 8,
@@ -2574,22 +2576,55 @@ namespace
 			return &tile;
 		}
 
-		bool AppendTexturedWorldWall(SceneProbeVertex *vertices, unsigned int &count, const line_t *line)
+		double WallTextureV(const line_t *line, int texturePart, const WorldAtlasTile &tile,
+			double top, double bottom, double z, double yOffset) const
 		{
-			if (line == NULL || line->v1 == NULL || line->v2 == NULL || line->frontsector == NULL || line->backsector != NULL || line->sidedef[0] == NULL)
+			bool bottomPegged = false;
+			if (line != NULL)
+			{
+				if (texturePart == side_t::top)
+				{
+					bottomPegged = (line->flags & ML_DONTPEGTOP) == 0;
+				}
+				else
+				{
+					bottomPegged = (line->flags & ML_DONTPEGBOTTOM) != 0;
+				}
+			}
+			if (bottomPegged)
+			{
+				return yOffset + (double)tile.Height - (z - bottom);
+			}
+			return yOffset + (top - z);
+		}
+
+		bool AppendTexturedWorldWallSection(SceneProbeVertex *vertices, unsigned int &count,
+			const line_t *line, side_t *side, int texturePart,
+			double sectionTop1, double sectionTop2, double sectionBottom1, double sectionBottom2,
+			bool allowDefaultTexture)
+		{
+			if (line == NULL || line->v1 == NULL || line->v2 == NULL || line->frontsector == NULL || side == NULL)
 			{
 				return false;
 			}
-			if (count + WorldDrawTextureVerticesPerWall > ProbeVertexMaxCount)
+			if (count + WorldDrawTextureVerticesPerSection > ProbeVertexMaxCount)
+			{
+				return false;
+			}
+			if (sectionTop1 <= sectionBottom1 && sectionTop2 <= sectionBottom2)
 			{
 				return false;
 			}
 
-			FTextureID textureId = line->sidedef[0]->GetTexture(side_t::mid);
+			FTextureID textureId = side->GetTexture(texturePart);
 			FTexture *texture = textureId.isValid() ? TexMan[textureId] : NULL;
 			const BYTE *pixels = texture != NULL && texture->UseType != FTexture::TEX_Null ? texture->GetPixels() : NULL;
 			if (texture == NULL || pixels == NULL)
 			{
+				if (!allowDefaultTexture)
+				{
+					return false;
+				}
 				textureId = TexMan.GetDefaultTexture();
 				texture = TexMan[textureId];
 				pixels = texture != NULL ? texture->GetPixels() : NULL;
@@ -2604,10 +2639,10 @@ namespace
 			float y1 = FIXED2FLOAT(line->v1->y);
 			float x2 = FIXED2FLOAT(line->v2->x);
 			float y2 = FIXED2FLOAT(line->v2->y);
-			float floor1 = FIXED2FLOAT(line->frontsector->floorplane.ZatPoint(line->v1));
-			float floor2 = FIXED2FLOAT(line->frontsector->floorplane.ZatPoint(line->v2));
-			float ceiling1 = FIXED2FLOAT(line->frontsector->ceilingplane.ZatPoint(line->v1));
-			float ceiling2 = FIXED2FLOAT(line->frontsector->ceilingplane.ZatPoint(line->v2));
+			double top1 = sectionTop1;
+			double top2 = sectionTop2;
+			double bottom1 = sectionBottom1;
+			double bottom2 = sectionBottom2;
 
 			const double pi = 3.14159265358979323846;
 			const double yawRadians = ANGLE2DBL(viewangle) * (pi / 180.0);
@@ -2646,15 +2681,15 @@ namespace
 				{
 					x1 += (x2 - x1) * t;
 					y1 += (y2 - y1) * t;
-					floor1 += (floor2 - floor1) * t;
-					ceiling1 += (ceiling2 - ceiling1) * t;
+					top1 += (top2 - top1) * t;
+					bottom1 += (bottom2 - bottom1) * t;
 				}
 				else
 				{
 					x2 = x1 + (x2 - x1) * t;
 					y2 = y1 + (y2 - y1) * t;
-					floor2 = floor1 + (floor2 - floor1) * t;
-					ceiling2 = ceiling1 + (ceiling2 - ceiling1) * t;
+					top2 = top1 + (top2 - top1) * t;
+					bottom2 = bottom1 + (bottom2 - bottom1) * t;
 				}
 				relX1 = x1 - camX;
 				relY1 = y1 - camY;
@@ -2697,8 +2732,8 @@ namespace
 					{
 						x1 += (x2 - x1) * t;
 						y1 += (y2 - y1) * t;
-						floor1 += (floor2 - floor1) * t;
-						ceiling1 += (ceiling2 - ceiling1) * t;
+						top1 += (top2 - top1) * t;
+						bottom1 += (bottom2 - bottom1) * t;
 						depth1 += (depth2 - depth1) * t;
 						side1 += (side2 - side1) * t;
 					}
@@ -2706,8 +2741,8 @@ namespace
 					{
 						x2 = x1 + (x2 - x1) * t;
 						y2 = y1 + (y2 - y1) * t;
-						floor2 = floor1 + (floor2 - floor1) * t;
-						ceiling2 = ceiling1 + (ceiling2 - ceiling1) * t;
+						top2 = top1 + (top2 - top1) * t;
+						bottom2 = bottom1 + (bottom2 - bottom1) * t;
 						depth2 = depth1 + (depth2 - depth1) * t;
 						side2 = side1 + (side2 - side1) * t;
 					}
@@ -2723,8 +2758,8 @@ namespace
 			const double invLengthSquared = originalLength > 0.001 ? 1.0 / (originalLength * originalLength) : 0.0;
 			const double clippedU1 = ((x1 - originalX1) * lineDx + (y1 - originalY1) * lineDy) * invLengthSquared * originalLength;
 			const double clippedU2 = ((x2 - originalX1) * lineDx + (y2 - originalY1) * lineDy) * invLengthSquared * originalLength;
-			const double xOffset = FIXED2FLOAT(line->sidedef[0]->GetTextureXOffset(side_t::mid));
-			const double yOffset = FIXED2FLOAT(line->sidedef[0]->GetTextureYOffset(side_t::mid));
+			const double xOffset = FIXED2FLOAT(side->GetTextureXOffset(texturePart));
+			const double yOffset = FIXED2FLOAT(side->GetTextureYOffset(texturePart));
 			const float light = line->frontsector->lightlevel <= 0 ? 0.20f : (line->frontsector->lightlevel / 255.0f);
 
 			for (int column = 0; column < WorldDrawTextureColumns; ++column)
@@ -2735,10 +2770,10 @@ namespace
 				const double ay = y1 + (y2 - y1) * columnA;
 				const double bx = x1 + (x2 - x1) * columnB;
 				const double by = y1 + (y2 - y1) * columnB;
-				const double topA = ceiling1 + (ceiling2 - ceiling1) * columnA;
-				const double topB = ceiling1 + (ceiling2 - ceiling1) * columnB;
-				const double bottomA = floor1 + (floor2 - floor1) * columnA;
-				const double bottomB = floor1 + (floor2 - floor1) * columnB;
+				const double topA = top1 + (top2 - top1) * columnA;
+				const double topB = top1 + (top2 - top1) * columnB;
+				const double bottomA = bottom1 + (bottom2 - bottom1) * columnA;
+				const double bottomB = bottom1 + (bottom2 - bottom1) * columnB;
 
 				for (int row = 0; row < WorldDrawTextureRows; ++row)
 				{
@@ -2748,25 +2783,56 @@ namespace
 					const double zTopB = topB + (bottomB - topB) * rowA;
 					const double zBottomA = topA + (bottomA - topA) * rowB;
 					const double zBottomB = topB + (bottomB - topB) * rowB;
-					const double wallHeightA = topA - bottomA;
-					const double wallHeightB = topB - bottomB;
-					const double vTopA = yOffset + wallHeightA * rowA;
-					const double vTopB = yOffset + wallHeightB * rowA;
-					const double vBottomA = yOffset + wallHeightA * rowB;
-					const double vBottomB = yOffset + wallHeightB * rowB;
 					const double uA = xOffset + clippedU1 + (clippedU2 - clippedU1) * columnA;
 					const double uB = xOffset + clippedU1 + (clippedU2 - clippedU1) * columnB;
 					AppendTexturedCell(vertices, count, ax, ay, bx, by,
 						zTopA, zTopB, zBottomA, zBottomB,
-						uA, vTopA,
-						uB, vTopB,
-						uA, vBottomA,
-						uB, vBottomB,
+						uA, WallTextureV(line, texturePart, *tile, topA, bottomA, zTopA, yOffset),
+						uB, WallTextureV(line, texturePart, *tile, topB, bottomB, zTopB, yOffset),
+						uA, WallTextureV(line, texturePart, *tile, topA, bottomA, zBottomA, yOffset),
+						uB, WallTextureV(line, texturePart, *tile, topB, bottomB, zBottomB, yOffset),
 						*tile,
 						light);
 				}
 			}
 			return true;
+		}
+
+		bool AppendTexturedWorldWall(SceneProbeVertex *vertices, unsigned int &count, const line_t *line)
+		{
+			if (line == NULL || line->v1 == NULL || line->v2 == NULL || line->frontsector == NULL || line->sidedef[0] == NULL)
+			{
+				return false;
+			}
+
+			const double frontFloor1 = FIXED2FLOAT(line->frontsector->floorplane.ZatPoint(line->v1));
+			const double frontFloor2 = FIXED2FLOAT(line->frontsector->floorplane.ZatPoint(line->v2));
+			const double frontCeiling1 = FIXED2FLOAT(line->frontsector->ceilingplane.ZatPoint(line->v1));
+			const double frontCeiling2 = FIXED2FLOAT(line->frontsector->ceilingplane.ZatPoint(line->v2));
+
+			if (line->backsector == NULL)
+			{
+				return AppendTexturedWorldWallSection(vertices, count, line, line->sidedef[0], side_t::mid,
+					frontCeiling1, frontCeiling2, frontFloor1, frontFloor2, true);
+			}
+
+			bool drew = false;
+			const double backFloor1 = FIXED2FLOAT(line->backsector->floorplane.ZatPoint(line->v1));
+			const double backFloor2 = FIXED2FLOAT(line->backsector->floorplane.ZatPoint(line->v2));
+			const double backCeiling1 = FIXED2FLOAT(line->backsector->ceilingplane.ZatPoint(line->v1));
+			const double backCeiling2 = FIXED2FLOAT(line->backsector->ceilingplane.ZatPoint(line->v2));
+
+			if (frontCeiling1 > backCeiling1 || frontCeiling2 > backCeiling2)
+			{
+				drew |= AppendTexturedWorldWallSection(vertices, count, line, line->sidedef[0], side_t::top,
+					frontCeiling1, frontCeiling2, backCeiling1, backCeiling2, false);
+			}
+			if (backFloor1 > frontFloor1 || backFloor2 > frontFloor2)
+			{
+				drew |= AppendTexturedWorldWallSection(vertices, count, line, line->sidedef[0], side_t::bottom,
+					backFloor1, backFloor2, frontFloor1, frontFloor2, false);
+			}
+			return drew;
 		}
 
 		void AppendWorldProbeVertices(SceneProbeVertex *vertices, unsigned int &count)
@@ -2817,7 +2883,7 @@ namespace
 			for (int i = 0; i < numlines && walls < WorldDrawMaxWalls; ++i)
 			{
 				const line_t *line = &lines[i];
-				if (line->v1 == NULL || line->v2 == NULL || line->frontsector == NULL || line->backsector != NULL)
+				if (line->v1 == NULL || line->v2 == NULL || line->frontsector == NULL)
 				{
 					continue;
 				}
