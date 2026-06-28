@@ -5124,7 +5124,8 @@ namespace
 			scissor.extent = SwapchainExtent;
 			Vk.CmdSetViewport(CommandBuffer, 0, 1, &viewport);
 			Vk.CmdSetScissor(CommandBuffer, 0, 1, &scissor);
-			const bool drawSoftwareFrame = !vk_hide_software_frame || WorldDrawDrawCount == 0 || menuactive != MENU_Off;
+			const bool hasVulkanWorld = WorldFlatDrawCount > 0 || WorldDrawDrawCount > 0;
+			const bool drawSoftwareFrame = !vk_hide_software_frame || !hasVulkanWorld;
 			if (drawSoftwareFrame)
 			{
 				Vk.CmdBindPipeline(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, GraphicsPipeline);

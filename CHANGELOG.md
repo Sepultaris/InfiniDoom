@@ -1,5 +1,12 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.70 - 2026-06-28
+
+- Made `vk_hide_software_frame` fully suppress the old software framebuffer
+  whenever Vulkan world geometry is available, including while menus are open.
+- This keeps menu and old-renderer pixels from showing through missing Vulkan
+  floor/ceiling coverage while diagnosing the temporary world renderer.
+
 ## 3.3-alpha-vdoom.69 - 2026-06-28
 
 - Added near-plane clipping for temporary Vulkan floor and ceiling triangles

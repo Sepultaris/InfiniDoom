@@ -160,6 +160,11 @@ UZDoom's mature path can rely on its established hardware projection and
 indexed flat mesh path. The temporary vDoom Vulkan path now clips flat triangles
 against the same near-depth used by temporary wall submission so floor and
 ceiling triangles crossing the camera do not create missing wedges.
+The menu showing through flat holes proved the software framebuffer was still
+being composited during menu-active isolation tests. `vk_hide_software_frame`
+now suppresses the software frame whenever Vulkan world geometry exists, even
+with menus open, so missing Vulkan coverage reveals the clear color instead of
+old-renderer or menu pixels.
 The ordered-loop checkpoint improved coverage but still left wedges, so the
 next pass accepts reversed seg links during loop reconstruction and uses
 ear-clipping for ordered non-convex loops before falling back to the center fan.
