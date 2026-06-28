@@ -2955,7 +2955,7 @@ namespace
 
 		bool WorldSegBlocksClipper(const seg_t *seg, sector_t *currentSector) const
 		{
-			if (seg == NULL || seg->sidedef == NULL)
+			if (seg == NULL || seg->sidedef == NULL || seg->v1 == NULL || seg->v2 == NULL)
 			{
 				return false;
 			}
@@ -2963,13 +2963,22 @@ namespace
 			{
 				return true;
 			}
+			if (seg->frontsector == NULL)
+			{
+				return false;
+			}
 			if (seg->sidedef->Flags & WALLF_POLYOBJ)
 			{
 				return false;
 			}
 			if (currentSector != NULL && currentSector->sectornum == seg->backsector->sectornum)
 			{
-				FTexture *tex = TexMan(seg->sidedef->GetTexture(side_t::mid));
+				FTextureID midTexture = seg->sidedef->GetTexture(side_t::mid);
+				if (!midTexture.isValid())
+				{
+					return false;
+				}
+				FTexture *tex = TexMan(midTexture);
 				return tex != NULL && tex->UseType != FTexture::TEX_Null;
 			}
 
@@ -2986,9 +2995,14 @@ namespace
 				backFloor1 >= frontCeiling1 || backFloor2 >= frontCeiling2;
 		}
 
+		bool IsWorldSubsectorPointerValid(const subsector_t *subsector) const
+		{
+			return subsectors != NULL && subsector >= subsectors && subsector < subsectors + numsubsectors;
+		}
+
 		bool AppendWorldClipperSubsector(const subsector_t *subsector)
 		{
-			if (subsector == NULL || subsector->firstline == NULL || subsector->sector == NULL)
+			if (!IsWorldSubsectorPointerValid(subsector) || subsector->firstline == NULL || subsector->sector == NULL)
 			{
 				return false;
 			}
