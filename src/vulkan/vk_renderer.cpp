@@ -3277,52 +3277,7 @@ namespace
 				return 0;
 			}
 
-			bool used[WorldDrawFlatMaxSegs];
-			memset(used, 0, sizeof(used));
-
 			unsigned int pointCount = 0;
-			const seg_t *first = &subsector->firstline[0];
-			if (first->v1 != NULL && first->v2 != NULL)
-			{
-				SetWorldFlatPoint(points[pointCount++], first->v1);
-				const vertex_t *current = first->v2;
-				used[0] = true;
-
-				for (unsigned int step = 1; step < subsector->numlines && pointCount < WorldDrawFlatMaxSegs; ++step)
-				{
-					unsigned int nextIndex = WorldDrawFlatMaxSegs;
-					for (unsigned int i = 1; i < subsector->numlines; ++i)
-					{
-						const seg_t *seg = &subsector->firstline[i];
-						if (!used[i] && SameWorldFlatVertex(seg->v1, current) && seg->v2 != NULL)
-						{
-							nextIndex = i;
-							break;
-						}
-						if (!used[i] && SameWorldFlatVertex(seg->v2, current) && seg->v1 != NULL)
-						{
-							nextIndex = i;
-							break;
-						}
-					}
-					if (nextIndex == WorldDrawFlatMaxSegs)
-					{
-						break;
-					}
-
-					SetWorldFlatPoint(points[pointCount++], current);
-					current = SameWorldFlatVertex(subsector->firstline[nextIndex].v1, current) ?
-						subsector->firstline[nextIndex].v2 :
-						subsector->firstline[nextIndex].v1;
-					used[nextIndex] = true;
-				}
-				if (pointCount == subsector->numlines && SameWorldFlatVertex(current, first->v1))
-				{
-					return pointCount;
-				}
-			}
-
-			pointCount = 0;
 			for (unsigned int i = 0; i < subsector->numlines && pointCount < WorldDrawFlatMaxSegs; ++i)
 			{
 				const vertex_t *vertex = subsector->firstline[i].v1;
@@ -3543,13 +3498,8 @@ namespace
 			}
 
 			const float baseLight = textureSector->lightlevel <= 0 ? 0.20f : (textureSector->lightlevel / 255.0f);
-			const bool useEarClipping = !WorldFlatIsConvex(points, pointCount);
-			if (useEarClipping)
-			{
-				++WorldDrawFlatNonConvexCount;
-			}
 			const float lightScale = plane == sector_t::ceiling ? 0.80f : 1.0f;
-			const bool drew = AppendWorldFlatPolygon(vertices, count, planeSector, textureSector, plane, points, pointCount, *tile, baseLight * lightScale, useEarClipping);
+			const bool drew = AppendWorldFlatPolygon(vertices, count, planeSector, textureSector, plane, points, pointCount, *tile, baseLight * lightScale, false);
 			if (!drew)
 			{
 				++WorldDrawFlatBuildSkipCount;

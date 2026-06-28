@@ -1,5 +1,13 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.71 - 2026-06-28
+
+- Returned the temporary Vulkan flat polygon source to the proven
+  GL/UZDoom-style subsector vertex order, using each seg's `v1` directly.
+- Disabled the speculative flat loop reconstruction and ear-clipping path from
+  active floor/ceiling submission so wedge diagnosis follows the established
+  subsector fan model.
+
 ## 3.3-alpha-vdoom.70 - 2026-06-28
 
 - Made `vk_hide_software_frame` fully suppress the old software framebuffer

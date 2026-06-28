@@ -165,6 +165,11 @@ being composited during menu-active isolation tests. `vk_hide_software_frame`
 now suppresses the software frame whenever Vulkan world geometry exists, even
 with menus open, so missing Vulkan coverage reveals the clear color instead of
 old-renderer or menu pixels.
+The remaining floor/ceiling wedges are being chased with the established flat
+geometry path first: the active Vulkan flat builder now uses
+`subsector->firstline[k].v1` in order, matching the old GL triangle-fan source
+and UZDoom's non-hole subsector vertex builder, instead of reconstructing a
+separate loop or choosing ear clipping from our own convexity tests.
 The ordered-loop checkpoint improved coverage but still left wedges, so the
 next pass accepts reversed seg links during loop reconstruction and uses
 ear-clipping for ordered non-convex loops before falling back to the center fan.
