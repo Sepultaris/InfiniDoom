@@ -266,6 +266,7 @@ namespace
 		WorldDrawTextureVerticesPerSection = WorldDrawTextureColumns * WorldDrawTextureRows * 6,
 		WorldDrawTextureVerticesPerWall = WorldDrawTextureSectionsPerWall * WorldDrawTextureVerticesPerSection,
 		WorldDrawMaxFlats = 1024,
+		WorldDrawMaxBspDepth = 256,
 		WorldDrawFlatMaxSegs = 128,
 		WorldDrawFlatVerticesPerSubsector = WorldDrawFlatMaxSegs * 3 * 2,
 		ProbeVertexMaxCount = SceneProbeVertexCount + WorldProbeMaxWalls * 6 + WorldDrawMaxWalls * WorldDrawTextureVerticesPerWall + WorldDrawMaxFlats * WorldDrawFlatVerticesPerSubsector,
@@ -3248,16 +3249,115 @@ namespace
 			}
 		}
 
+		bool AppendWorldFlatSubsectorForDraw(SceneProbeVertex *vertices, unsigned int &count, const subsector_t *subsector, unsigned int &flats)
+		{
+			if (subsector == NULL || subsector->firstline == NULL || subsector->numlines < 3)
+			{
+				return false;
+			}
+			if (subsector->numlines > WorldDrawFlatMaxSegs)
+			{
+				++WorldDrawFlatTooLargeSkipCount;
+				return false;
+			}
+			if (flats >= WorldDrawMaxFlats)
+			{
+				++WorldDrawFlatBudgetSkipCount;
+				return false;
+			}
+			if (AppendWorldFlatSubsector(vertices, count, subsector))
+			{
+				++flats;
+				++WorldDrawFlatCount;
+				return true;
+			}
+			++WorldDrawFlatBudgetSkipCount;
+			return false;
+		}
+
+		void AppendWorldFlatBspNode(SceneProbeVertex *vertices, unsigned int &count, void *node, unsigned int depth, unsigned int &flats)
+		{
+			if (node == NULL || flats >= WorldDrawMaxFlats)
+			{
+				return;
+			}
+			if (depth > WorldDrawMaxBspDepth)
+			{
+				++WorldDrawFlatBudgetSkipCount;
+				return;
+			}
+			while (!((size_t)node & 1))
+			{
+				const node_t *bsp = static_cast<const node_t *>(node);
+				const int side = R_PointOnSide(viewx, viewy, bsp);
+				AppendWorldFlatBspNode(vertices, count, bsp->children[side], depth + 1, flats);
+				if (flats >= WorldDrawMaxFlats)
+				{
+					return;
+				}
+				node = bsp->children[side ^ 1];
+				if (node == NULL)
+				{
+					return;
+				}
+				if (++depth > WorldDrawMaxBspDepth)
+				{
+					++WorldDrawFlatBudgetSkipCount;
+					return;
+				}
+			}
+			AppendWorldFlatSubsectorForDraw(vertices, count, reinterpret_cast<const subsector_t *>(reinterpret_cast<const BYTE *>(node) - 1), flats);
+		}
+
+		void AppendWorldFlatFallbackScan(SceneProbeVertex *vertices, unsigned int &count, unsigned int &flats)
+		{
+			const double camX = FIXED2FLOAT(viewx);
+			const double camY = FIXED2FLOAT(viewy);
+			const double maxDistance = 4096.0;
+			const double maxDistanceSquared = maxDistance * maxDistance;
+			for (int i = 0; i < numsubsectors && flats < WorldDrawMaxFlats; ++i)
+			{
+				const subsector_t *subsector = &subsectors[i];
+				if (subsector->firstline == NULL || subsector->numlines < 3)
+				{
+					continue;
+				}
+				double centerX = 0.0;
+				double centerY = 0.0;
+				unsigned int centerPoints = 0;
+				for (unsigned int j = 0; j < subsector->numlines; ++j)
+				{
+					const vertex_t *vertex = subsector->firstline[j].v1;
+					if (vertex != NULL)
+					{
+						centerX += FIXED2FLOAT(vertex->x);
+						centerY += FIXED2FLOAT(vertex->y);
+						++centerPoints;
+					}
+				}
+				if (centerPoints == 0)
+				{
+					continue;
+				}
+				centerX /= (double)centerPoints;
+				centerY /= (double)centerPoints;
+				const double dx = centerX - camX;
+				const double dy = centerY - camY;
+				if (dx * dx + dy * dy > maxDistanceSquared)
+				{
+					++WorldDrawFlatRangeSkipCount;
+					continue;
+				}
+				AppendWorldFlatSubsectorForDraw(vertices, count, subsector, flats);
+			}
+		}
+
 		void AppendWorldDrawVertices(SceneProbeVertex *vertices, unsigned int &count)
 		{
 			if (lines == NULL || numlines <= 0)
 			{
 				return;
 			}
-			const double camX = FIXED2FLOAT(viewx);
-			const double camY = FIXED2FLOAT(viewy);
-			const double maxDistance = 4096.0;
-			const double maxDistanceSquared = maxDistance * maxDistance;
 			WorldDrawFlatCount = 0;
 			WorldDrawFlatRangeSkipCount = 0;
 			WorldDrawFlatTooLargeSkipCount = 0;
@@ -3265,56 +3365,20 @@ namespace
 			if (subsectors != NULL && numsubsectors > 0)
 			{
 				unsigned int flats = 0;
-				for (int i = 0; i < numsubsectors && flats < WorldDrawMaxFlats; ++i)
+				if (nodes != NULL && numnodes > 0)
 				{
-					const subsector_t *subsector = &subsectors[i];
-					if (subsector->firstline == NULL || subsector->numlines < 3)
-					{
-						continue;
-					}
-					if (subsector->numlines > WorldDrawFlatMaxSegs)
-					{
-						++WorldDrawFlatTooLargeSkipCount;
-						continue;
-					}
-					double centerX = 0.0;
-					double centerY = 0.0;
-					unsigned int centerPoints = 0;
-					for (unsigned int j = 0; j < subsector->numlines; ++j)
-					{
-						const vertex_t *vertex = subsector->firstline[j].v1;
-						if (vertex != NULL)
-						{
-							centerX += FIXED2FLOAT(vertex->x);
-							centerY += FIXED2FLOAT(vertex->y);
-							++centerPoints;
-						}
-					}
-					if (centerPoints == 0)
-					{
-						continue;
-					}
-					centerX /= (double)centerPoints;
-					centerY /= (double)centerPoints;
-					const double dx = centerX - camX;
-					const double dy = centerY - camY;
-					if (dx * dx + dy * dy > maxDistanceSquared)
-					{
-						++WorldDrawFlatRangeSkipCount;
-						continue;
-					}
-					if (AppendWorldFlatSubsector(vertices, count, subsector))
-					{
-						++flats;
-						++WorldDrawFlatCount;
-					}
-					else
-					{
-						++WorldDrawFlatBudgetSkipCount;
-					}
+					AppendWorldFlatBspNode(vertices, count, nodes + numnodes - 1, 0, flats);
+				}
+				else
+				{
+					AppendWorldFlatFallbackScan(vertices, count, flats);
 				}
 			}
 
+			const double camX = FIXED2FLOAT(viewx);
+			const double camY = FIXED2FLOAT(viewy);
+			const double maxDistance = 4096.0;
+			const double maxDistanceSquared = maxDistance * maxDistance;
 			unsigned int walls = 0;
 			for (int i = 0; i < numlines && walls < WorldDrawMaxWalls; ++i)
 			{

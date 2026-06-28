@@ -118,7 +118,10 @@ Current Vulkan direction:
   temporary flat pass now draws a much wider 4096-unit range with up to 1024
   subsectors and reports drawn/range/large/budget counts through
   `stat renderer`, but the long-term path should replace this broad sampling
-  with UZDoom-style indexed visible flat batches. `vk_debug_solid_flats`
+  with UZDoom-style indexed visible flat batches. The temporary pass now walks
+  the BSP front-to-back for flat subsectors instead of scanning the map's
+  subsector array in storage order, with the old distance scan retained only as
+  a no-BSP fallback. `vk_debug_solid_flats`
   temporarily replaces floor/ceiling textures with constant atlas tiles and
   stable UVs so texture-wrap artifacts can be separated from geometry or
   visibility holes during bring-up. The speculative CPU-side flat frustum

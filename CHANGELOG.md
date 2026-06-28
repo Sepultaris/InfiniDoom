@@ -1,5 +1,13 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.48 - 2026-06-28
+
+- Replaced the temporary Vulkan flat pass's map-array-order subsector scan with
+  a front-to-back BSP subsector walk, matching the way the established hardware
+  renderers discover flat geometry more closely.
+- Kept the old distance-limited flat scan only as a fallback for maps without
+  BSP nodes.
+
 ## 3.3-alpha-vdoom.47 - 2026-06-28
 
 - Matched the temporary Vulkan flat submission more closely to the proven
