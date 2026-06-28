@@ -3541,13 +3541,6 @@ namespace
 				return false;
 			}
 
-			const WorldAtlasTile *tile = vk_debug_flat_colors ? NULL : GetWorldPlaneTile(sector, plane);
-			if (!vk_debug_flat_colors && tile == NULL)
-			{
-				++WorldDrawFlatTextureSkipCount;
-				return false;
-			}
-
 			bool drewAny = false;
 			for (int i = 0; i < sector->subsectorcount && flats < WorldDrawMaxFlats; ++i)
 			{
@@ -3580,9 +3573,6 @@ namespace
 				return;
 			}
 
-			const double camX = FIXED2FLOAT(viewx);
-			const double camY = FIXED2FLOAT(viewy);
-			const double camZ = FIXED2FLOAT(viewz);
 			for (int i = 0; i < numsectors && flats < WorldDrawMaxFlats; ++i)
 			{
 				sector_t *sector = &sectors[i];
@@ -3590,18 +3580,12 @@ namespace
 				{
 					continue;
 				}
-				if (sector->GetSecPlane(sector_t::floor).ZatPoint(camX, camY) <= camZ)
-				{
-					AppendWorldFlatSectorSubsectors(vertices, count, sector, sector_t::floor, flats);
-				}
+				AppendWorldFlatSectorSubsectors(vertices, count, sector, sector_t::floor, flats);
 				if (flats >= WorldDrawMaxFlats)
 				{
 					break;
 				}
-				if (sector->GetSecPlane(sector_t::ceiling).ZatPoint(camX, camY) >= camZ)
-				{
-					AppendWorldFlatSectorSubsectors(vertices, count, sector, sector_t::ceiling, flats);
-				}
+				AppendWorldFlatSectorSubsectors(vertices, count, sector, sector_t::ceiling, flats);
 			}
 		}
 

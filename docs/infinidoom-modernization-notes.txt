@@ -142,6 +142,9 @@ Current Vulkan direction:
   submitted for the matching plane. This mirrors the established OpenGL flat
   batching model more closely than drawing each BSP leaf as an independent
   floor/ceiling pair.
+  The first sector checkpoint no longer uses a camera-XY sector plane cull;
+  floors and ceilings are submitted broadly so coverage can be tested before
+  UZDoom-style visible flat clipping is rebuilt.
 - `vk_hide_software_frame` no longer hides the software frame while menus are
   active or when no Vulkan world draw was produced, so the title/main menus
   remain navigable during isolation-mode testing.

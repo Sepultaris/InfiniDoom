@@ -1,5 +1,13 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.64 - 2026-06-28
+
+- Loosened the temporary Vulkan sector-flat checkpoint so sector floors and
+  ceilings are submitted without the overly broad camera-XY sector cull that
+  could suppress the entire flat pass.
+- Removed a redundant sector-level flat texture pre-check; texture and sky
+  rejection now happens at the actual submitted plane.
+
 ## 3.3-alpha-vdoom.63 - 2026-06-28
 
 - Changed temporary Vulkan floor and ceiling submission from BSP-leaf flat
