@@ -114,6 +114,7 @@ CUSTOM_CVAR(Float, vk_present_aspect, 0.f, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CV
 
 CVAR(Bool, vk_present_force_aspect, false, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINITCALL)
 CVAR(Bool, vk_draw_world, false, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINITCALL)
+CVAR(Bool, vk_hide_software_frame, false, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINITCALL)
 CVAR(Bool, vk_scene_probe, false, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINITCALL)
 CVAR(Bool, vk_world_probe, false, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINITCALL)
 
@@ -555,6 +556,11 @@ namespace
 		bool IsGpuPresentationReady() const
 		{
 			return GpuPresentationReady;
+		}
+
+		bool IsSoftwareFrameHidden() const
+		{
+			return vk_hide_software_frame;
 		}
 
 		bool IsSceneProbeActive() const
@@ -4071,11 +4077,14 @@ namespace
 			scissor.extent = SwapchainExtent;
 			Vk.CmdSetViewport(CommandBuffer, 0, 1, &viewport);
 			Vk.CmdSetScissor(CommandBuffer, 0, 1, &scissor);
-			Vk.CmdBindPipeline(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, GraphicsPipeline);
-			Vk.CmdBindDescriptorSets(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, PipelineLayout, 0, 1, &DescriptorSet, 0, NULL);
-			PresentPushConstants constants = BuildPresentPushConstants(width, height);
-			Vk.CmdPushConstants(CommandBuffer, PipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(constants), &constants);
-			Vk.CmdDraw(CommandBuffer, 3, 1, 0, 0);
+			if (!vk_hide_software_frame)
+			{
+				Vk.CmdBindPipeline(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, GraphicsPipeline);
+				Vk.CmdBindDescriptorSets(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, PipelineLayout, 0, 1, &DescriptorSet, 0, NULL);
+				PresentPushConstants constants = BuildPresentPushConstants(width, height);
+				Vk.CmdPushConstants(CommandBuffer, PipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(constants), &constants);
+				Vk.CmdDraw(CommandBuffer, 3, 1, 0, 0);
+			}
 			if (ProbeVertexBuffer != VK_NULL_HANDLE && ProbeVertexDrawCount > 0)
 			{
 				VkDeviceSize vertexOffsets[1] = { 0 };
@@ -4527,6 +4536,7 @@ namespace
 		VulkanStats.SwapchainRecreateCount = runtime->GetSwapchainRecreateCount();
 		VulkanStats.OutOfDateCount = runtime->GetOutOfDateCount();
 		VulkanStats.GpuPresentationActive = runtime->IsGpuPresentationReady();
+		VulkanStats.SoftwareFrameHidden = runtime->IsSoftwareFrameHidden();
 		VulkanStats.WindowMinimized = runtime->IsWindowMinimized();
 		VulkanStats.TimestampQueriesAvailable = runtime->AreTimestampQueriesAvailable();
 		VulkanStats.LastGpuFrameMS = runtime->GetLastGpuFrameMS();

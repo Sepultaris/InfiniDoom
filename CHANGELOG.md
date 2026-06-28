@@ -1,5 +1,13 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.38 - 2026-06-27
+
+- Added `vk_hide_software_frame` for Vulkan renderer bring-up.
+- When enabled, Vulkan presentation clears the swapchain but skips drawing the
+  old paletted software framebuffer, making GPU-owned world geometry visible
+  against black for easier renderer debugging.
+- `stat renderer` now reports whether the software frame is visible or hidden.
+
 ## 3.3-alpha-vdoom.37 - 2026-06-27
 
 - Added two-sided wall section extraction to the Vulkan `vk_draw_world` path.

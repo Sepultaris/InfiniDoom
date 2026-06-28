@@ -179,6 +179,7 @@ ADD_STAT(renderer)
 				VulkanPresentFilterName(vk.PresentFilterMode),
 				VulkanScaleModeName(vk.PresentScaleMode),
 				FormatPresentAspect(vk.PresentAspect).GetChars());
+			out.AppendFormat("Software frame: %s\n", vk.SoftwareFrameHidden ? "hidden by vk_hide_software_frame" : "visible");
 			if (vk.PresentFilterMode == 2)
 			{
 				out.AppendFormat("Present sharpness: %.2f\n", (double)vk.PresentSharpness);

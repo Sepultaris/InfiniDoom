@@ -102,6 +102,11 @@ Current Vulkan direction:
   sidedef textures. The first-pass UV anchoring honors the classic upper and
   lower unpegged line flags well enough for early renderer validation, though
   exact software parity still needs the renderer's full seg/opening logic.
+- `vk_hide_software_frame` is the Vulkan bring-up isolation switch. It keeps
+  the Vulkan presentation path alive but skips the fullscreen paletted
+  software-frame draw, leaving a black clear behind GPU-owned geometry. Use it
+  with `vk_draw_world 1` when judging which pixels are actually produced by the
+  Vulkan world path.
 - Live Vulkan basis calibration CVars were removed after sign changes in the
   projection path could crash the diagnostic renderer when changed in-game.
   Continue matching Doom's software-space camera basis through fixed,
