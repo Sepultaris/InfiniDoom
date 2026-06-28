@@ -1,5 +1,13 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.46 - 2026-06-28
+
+- Extended Vulkan flat clipping to the left and right view-frustum planes, so
+  large floor and ceiling triangles are clipped in the same horizontal space as
+  the temporary wall draw path before upload.
+- Expanded the temporary Vulkan flat vertex budget again for flats split by
+  side-frustum clipping.
+
 ## 3.3-alpha-vdoom.45 - 2026-06-28
 
 - Added Vulkan near-plane clipping for floor and ceiling triangles so flat

@@ -122,8 +122,9 @@ Current Vulkan direction:
   temporarily replaces floor/ceiling textures with constant atlas tiles and
   stable UVs so texture-wrap artifacts can be separated from geometry or
   visibility holes during bring-up. Flat triangles are now clipped against the
-  same near depth used by the temporary wall draw path before they are submitted
-  to Vulkan, avoiding camera-crossing floor/ceiling triangles during bring-up.
+  same near depth and horizontal frustum used by the temporary wall draw path
+  before they are submitted to Vulkan, avoiding camera-crossing and side-frustum
+  floor/ceiling triangles during bring-up.
 - `vk_hide_software_frame` no longer hides the software frame while menus are
   active or when no Vulkan world draw was produced, so the title/main menus
   remain navigable during isolation-mode testing.

@@ -267,7 +267,7 @@ namespace
 		WorldDrawTextureVerticesPerWall = WorldDrawTextureSectionsPerWall * WorldDrawTextureVerticesPerSection,
 		WorldDrawMaxFlats = 1024,
 		WorldDrawFlatMaxSegs = 128,
-		WorldDrawFlatVerticesPerSubsector = WorldDrawFlatMaxSegs * 6 * 2,
+		WorldDrawFlatVerticesPerSubsector = WorldDrawFlatMaxSegs * 12 * 2,
 		ProbeVertexMaxCount = SceneProbeVertexCount + WorldProbeMaxWalls * 6 + WorldDrawMaxWalls * WorldDrawTextureVerticesPerWall + WorldDrawMaxFlats * WorldDrawFlatVerticesPerSubsector,
 		WorldAtlasTileSize = 128,
 		WorldAtlasTilesPerRow = 8,
@@ -2978,58 +2978,83 @@ namespace
 			double ax, double ay, double bx, double by, double cx, double cy,
 			const WorldAtlasTile &tile, float light)
 		{
-			if (count + 3 > ProbeVertexMaxCount)
-			{
-				return;
-			}
-
 			struct WorldFlatClipPoint
 			{
 				double X;
 				double Y;
 				double Depth;
+				double Side;
 			};
 
 			const double pi = 3.14159265358979323846;
+			double fovDegrees = (double)R_GetFOV();
+			if (fovDegrees < 5.0)
+			{
+				fovDegrees = 5.0;
+			}
+			else if (fovDegrees > 170.0)
+			{
+				fovDegrees = 170.0;
+			}
 			const double yawRadians = ANGLE2DBL(viewangle) * (pi / 180.0);
 			const double forwardX = cos(yawRadians);
 			const double forwardY = sin(yawRadians);
+			const double rightX = forwardY;
+			const double rightY = -forwardX;
 			const double camX = FIXED2FLOAT(viewx);
 			const double camY = FIXED2FLOAT(viewy);
 			const double nearDepth = 8.0;
+			const double tanX = tan(fovDegrees * (pi / 360.0));
+			const double padding = 4.0;
 			WorldFlatClipPoint input[3] =
 			{
-				{ ax, ay, (ax - camX) * forwardX + (ay - camY) * forwardY },
-				{ bx, by, (bx - camX) * forwardX + (by - camY) * forwardY },
-				{ cx, cy, (cx - camX) * forwardX + (cy - camY) * forwardY }
+				{ ax, ay, (ax - camX) * forwardX + (ay - camY) * forwardY, (ax - camX) * rightX + (ay - camY) * rightY },
+				{ bx, by, (bx - camX) * forwardX + (by - camY) * forwardY, (bx - camX) * rightX + (by - camY) * rightY },
+				{ cx, cy, (cx - camX) * forwardX + (cy - camY) * forwardY, (cx - camX) * rightX + (cy - camY) * rightY }
 			};
-			WorldFlatClipPoint clipped[4];
-			unsigned int clippedCount = 0;
-			for (unsigned int i = 0; i < 3; ++i)
+
+			WorldFlatClipPoint clipA[8];
+			WorldFlatClipPoint clipB[8];
+			memcpy(clipA, input, sizeof(input));
+			unsigned int clippedCount = 3;
+
+			for (unsigned int clipPlane = 0; clipPlane < 3 && clippedCount >= 3; ++clipPlane)
 			{
-				const WorldFlatClipPoint &current = input[i];
-				const WorldFlatClipPoint &next = input[(i + 1) % 3];
-				const bool currentInside = current.Depth > nearDepth;
-				const bool nextInside = next.Depth > nearDepth;
-				if (currentInside)
+				unsigned int outCount = 0;
+				for (unsigned int i = 0; i < clippedCount; ++i)
 				{
-					clipped[clippedCount++] = current;
-				}
-				if (currentInside != nextInside)
-				{
-					const double denom = next.Depth - current.Depth;
-					if (fabs(denom) > 0.0001 && clippedCount < 4)
+					const WorldFlatClipPoint &current = clipA[i];
+					const WorldFlatClipPoint &next = clipA[(i + 1) % clippedCount];
+					const double currentValue = clipPlane == 0 ? current.Depth - nearDepth :
+						(clipPlane == 1 ? current.Side + current.Depth * tanX + padding : -current.Side + current.Depth * tanX + padding);
+					const double nextValue = clipPlane == 0 ? next.Depth - nearDepth :
+						(clipPlane == 1 ? next.Side + next.Depth * tanX + padding : -next.Side + next.Depth * tanX + padding);
+					const bool currentInside = currentValue >= 0.0;
+					const bool nextInside = nextValue >= 0.0;
+					if (currentInside && outCount < 8)
 					{
-						const double t = (nearDepth - current.Depth) / denom;
+						clipB[outCount++] = current;
+					}
+					if (currentInside != nextInside && outCount < 8)
+					{
+						const double denom = currentValue - nextValue;
+						if (fabs(denom) < 0.0001)
+						{
+							continue;
+						}
+						const double t = currentValue / denom;
 						WorldFlatClipPoint point =
 						{
 							current.X + (next.X - current.X) * t,
 							current.Y + (next.Y - current.Y) * t,
-							nearDepth
+							current.Depth + (next.Depth - current.Depth) * t,
+							current.Side + (next.Side - current.Side) * t
 						};
-						clipped[clippedCount++] = point;
+						clipB[outCount++] = point;
 					}
 				}
+				memcpy(clipA, clipB, sizeof(WorldFlatClipPoint) * outCount);
+				clippedCount = outCount;
 			}
 			if (clippedCount < 3 || count + (clippedCount - 2) * 3 > ProbeVertexMaxCount)
 			{
@@ -3038,9 +3063,9 @@ namespace
 
 			for (unsigned int i = 2; i < clippedCount; ++i)
 			{
-				const WorldFlatClipPoint &a = clipped[0];
-				const WorldFlatClipPoint &b = clipped[i - 1];
-				const WorldFlatClipPoint &c = clipped[i];
+				const WorldFlatClipPoint &a = clipA[0];
+				const WorldFlatClipPoint &b = clipA[i - 1];
+				const WorldFlatClipPoint &c = clipA[i];
 				if (plane == sector_t::ceiling)
 				{
 					AppendFlatPoint(vertices, count, sector, plane, a.X, a.Y, tile, light);
@@ -3235,7 +3260,7 @@ namespace
 			{
 				return false;
 			}
-			const unsigned int maxNeeded = subsector->numlines * 6 * 2;
+			const unsigned int maxNeeded = subsector->numlines * 12 * 2;
 			if (count + maxNeeded > ProbeVertexMaxCount)
 			{
 				return false;
