@@ -121,10 +121,11 @@ Current Vulkan direction:
   with UZDoom-style indexed visible flat batches. `vk_debug_solid_flats`
   temporarily replaces floor/ceiling textures with constant atlas tiles and
   stable UVs so texture-wrap artifacts can be separated from geometry or
-  visibility holes during bring-up. Flat triangles are now clipped against the
-  same near depth and horizontal frustum used by the temporary wall draw path
-  before they are submitted to Vulkan, avoiding camera-crossing and side-frustum
-  floor/ceiling triangles during bring-up.
+  visibility holes during bring-up. The speculative CPU-side flat frustum
+  clipper was removed after it failed to address the missing-triangle artifact;
+  flat submission now follows the UZDoom/OpenGL hardware rule that floors are
+  emitted only when the viewpoint is above the floor plane and ceilings are
+  emitted only when the viewpoint is below the ceiling plane.
 - `vk_hide_software_frame` no longer hides the software frame while menus are
   active or when no Vulkan world draw was produced, so the title/main menus
   remain navigable during isolation-mode testing.

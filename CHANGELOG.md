@@ -1,5 +1,14 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.47 - 2026-06-28
+
+- Matched the temporary Vulkan flat submission more closely to the proven
+  UZDoom/OpenGL hardware path by drawing floors only when the viewpoint is above
+  the floor plane, and ceilings only when the viewpoint is below the ceiling
+  plane.
+- Removed the speculative CPU-side flat frustum clipper so ordinary Vulkan flats
+  are submitted as ordered triangle-fan triangles again.
+
 ## 3.3-alpha-vdoom.46 - 2026-06-28
 
 - Extended Vulkan flat clipping to the left and right view-frustum planes, so

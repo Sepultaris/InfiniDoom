@@ -267,7 +267,7 @@ namespace
 		WorldDrawTextureVerticesPerWall = WorldDrawTextureSectionsPerWall * WorldDrawTextureVerticesPerSection,
 		WorldDrawMaxFlats = 1024,
 		WorldDrawFlatMaxSegs = 128,
-		WorldDrawFlatVerticesPerSubsector = WorldDrawFlatMaxSegs * 12 * 2,
+		WorldDrawFlatVerticesPerSubsector = WorldDrawFlatMaxSegs * 3 * 2,
 		ProbeVertexMaxCount = SceneProbeVertexCount + WorldProbeMaxWalls * 6 + WorldDrawMaxWalls * WorldDrawTextureVerticesPerWall + WorldDrawMaxFlats * WorldDrawFlatVerticesPerSubsector,
 		WorldAtlasTileSize = 128,
 		WorldAtlasTilesPerRow = 8,
@@ -2978,106 +2978,21 @@ namespace
 			double ax, double ay, double bx, double by, double cx, double cy,
 			const WorldAtlasTile &tile, float light)
 		{
-			struct WorldFlatClipPoint
-			{
-				double X;
-				double Y;
-				double Depth;
-				double Side;
-			};
-
-			const double pi = 3.14159265358979323846;
-			double fovDegrees = (double)R_GetFOV();
-			if (fovDegrees < 5.0)
-			{
-				fovDegrees = 5.0;
-			}
-			else if (fovDegrees > 170.0)
-			{
-				fovDegrees = 170.0;
-			}
-			const double yawRadians = ANGLE2DBL(viewangle) * (pi / 180.0);
-			const double forwardX = cos(yawRadians);
-			const double forwardY = sin(yawRadians);
-			const double rightX = forwardY;
-			const double rightY = -forwardX;
-			const double camX = FIXED2FLOAT(viewx);
-			const double camY = FIXED2FLOAT(viewy);
-			const double nearDepth = 8.0;
-			const double tanX = tan(fovDegrees * (pi / 360.0));
-			const double padding = 4.0;
-			WorldFlatClipPoint input[3] =
-			{
-				{ ax, ay, (ax - camX) * forwardX + (ay - camY) * forwardY, (ax - camX) * rightX + (ay - camY) * rightY },
-				{ bx, by, (bx - camX) * forwardX + (by - camY) * forwardY, (bx - camX) * rightX + (by - camY) * rightY },
-				{ cx, cy, (cx - camX) * forwardX + (cy - camY) * forwardY, (cx - camX) * rightX + (cy - camY) * rightY }
-			};
-
-			WorldFlatClipPoint clipA[8];
-			WorldFlatClipPoint clipB[8];
-			memcpy(clipA, input, sizeof(input));
-			unsigned int clippedCount = 3;
-
-			for (unsigned int clipPlane = 0; clipPlane < 3 && clippedCount >= 3; ++clipPlane)
-			{
-				unsigned int outCount = 0;
-				for (unsigned int i = 0; i < clippedCount; ++i)
-				{
-					const WorldFlatClipPoint &current = clipA[i];
-					const WorldFlatClipPoint &next = clipA[(i + 1) % clippedCount];
-					const double currentValue = clipPlane == 0 ? current.Depth - nearDepth :
-						(clipPlane == 1 ? current.Side + current.Depth * tanX + padding : -current.Side + current.Depth * tanX + padding);
-					const double nextValue = clipPlane == 0 ? next.Depth - nearDepth :
-						(clipPlane == 1 ? next.Side + next.Depth * tanX + padding : -next.Side + next.Depth * tanX + padding);
-					const bool currentInside = currentValue >= 0.0;
-					const bool nextInside = nextValue >= 0.0;
-					if (currentInside && outCount < 8)
-					{
-						clipB[outCount++] = current;
-					}
-					if (currentInside != nextInside && outCount < 8)
-					{
-						const double denom = currentValue - nextValue;
-						if (fabs(denom) < 0.0001)
-						{
-							continue;
-						}
-						const double t = currentValue / denom;
-						WorldFlatClipPoint point =
-						{
-							current.X + (next.X - current.X) * t,
-							current.Y + (next.Y - current.Y) * t,
-							current.Depth + (next.Depth - current.Depth) * t,
-							current.Side + (next.Side - current.Side) * t
-						};
-						clipB[outCount++] = point;
-					}
-				}
-				memcpy(clipA, clipB, sizeof(WorldFlatClipPoint) * outCount);
-				clippedCount = outCount;
-			}
-			if (clippedCount < 3 || count + (clippedCount - 2) * 3 > ProbeVertexMaxCount)
+			if (count + 3 > ProbeVertexMaxCount)
 			{
 				return;
 			}
-
-			for (unsigned int i = 2; i < clippedCount; ++i)
+			if (plane == sector_t::ceiling)
 			{
-				const WorldFlatClipPoint &a = clipA[0];
-				const WorldFlatClipPoint &b = clipA[i - 1];
-				const WorldFlatClipPoint &c = clipA[i];
-				if (plane == sector_t::ceiling)
-				{
-					AppendFlatPoint(vertices, count, sector, plane, a.X, a.Y, tile, light);
-					AppendFlatPoint(vertices, count, sector, plane, c.X, c.Y, tile, light);
-					AppendFlatPoint(vertices, count, sector, plane, b.X, b.Y, tile, light);
-				}
-				else
-				{
-					AppendFlatPoint(vertices, count, sector, plane, a.X, a.Y, tile, light);
-					AppendFlatPoint(vertices, count, sector, plane, b.X, b.Y, tile, light);
-					AppendFlatPoint(vertices, count, sector, plane, c.X, c.Y, tile, light);
-				}
+				AppendFlatPoint(vertices, count, sector, plane, ax, ay, tile, light);
+				AppendFlatPoint(vertices, count, sector, plane, cx, cy, tile, light);
+				AppendFlatPoint(vertices, count, sector, plane, bx, by, tile, light);
+			}
+			else
+			{
+				AppendFlatPoint(vertices, count, sector, plane, ax, ay, tile, light);
+				AppendFlatPoint(vertices, count, sector, plane, bx, by, tile, light);
+				AppendFlatPoint(vertices, count, sector, plane, cx, cy, tile, light);
 			}
 		}
 
@@ -3260,7 +3175,7 @@ namespace
 			{
 				return false;
 			}
-			const unsigned int maxNeeded = subsector->numlines * 12 * 2;
+			const unsigned int maxNeeded = subsector->numlines * 3 * 2;
 			if (count + maxNeeded > ProbeVertexMaxCount)
 			{
 				return false;
@@ -3282,12 +3197,17 @@ namespace
 
 			const float baseLight = sector->lightlevel <= 0 ? 0.20f : (sector->lightlevel / 255.0f);
 			const bool useEarClipping = false;
+			const double camX = FIXED2FLOAT(viewx);
+			const double camY = FIXED2FLOAT(viewy);
+			const double camZ = FIXED2FLOAT(viewz);
+			const bool drawFloor = floorTile != NULL && sector->GetSecPlane(sector_t::floor).ZatPoint(camX, camY) <= camZ;
+			const bool drawCeiling = ceilingTile != NULL && sector->GetSecPlane(sector_t::ceiling).ZatPoint(camX, camY) >= camZ;
 			bool drew = false;
-			if (floorTile != NULL)
+			if (drawFloor)
 			{
 				drew = AppendWorldFlatPolygon(vertices, count, sector, sector_t::floor, points, pointCount, *floorTile, baseLight, useEarClipping) || drew;
 			}
-			if (ceilingTile != NULL)
+			if (drawCeiling)
 			{
 				drew = AppendWorldFlatPolygon(vertices, count, sector, sector_t::ceiling, points, pointCount, *ceilingTile, baseLight * 0.80f, useEarClipping) || drew;
 			}
