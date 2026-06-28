@@ -1,5 +1,13 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.61 - 2026-06-28
+
+- Changed temporary Vulkan flat placement to use the subsector's real sector
+  for floor and ceiling plane height, while preserving the render sector for
+  flat texture selection, offsets, scale, and lighting.
+- This follows the established hardware flat geometry shape more closely and
+  avoids letting render-sector effects move the base floor/ceiling mesh.
+
 ## 3.3-alpha-vdoom.60 - 2026-06-28
 
 - Raised the temporary Vulkan flat subsector submission cap from 1024 to 4096

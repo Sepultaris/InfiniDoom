@@ -128,9 +128,12 @@ Current Vulkan direction:
   stable UVs so texture-wrap artifacts can be separated from geometry or
   visibility holes during bring-up. The speculative CPU-side flat frustum
   clipper was removed after it failed to address the missing-triangle artifact;
-  flat submission now follows the UZDoom/OpenGL hardware rule that floors are
-  emitted only when the viewpoint is above the floor plane and ceilings are
-  emitted only when the viewpoint is below the ceiling plane.
+  flat submission currently emits available floor and ceiling planes directly
+  while the renderer grows toward UZDoom/OpenGL-style visible flat batches.
+  The temporary Vulkan flat vertex path now separates plane geometry from
+  visual metadata: subsector vertices are placed against the real subsector
+  sector plane, while render-sector texture selection, offsets, scales, and
+  lighting are still used for the first-pass material look.
 - `vk_hide_software_frame` no longer hides the software frame while menus are
   active or when no Vulkan world draw was produced, so the title/main menus
   remain navigable during isolation-mode testing.

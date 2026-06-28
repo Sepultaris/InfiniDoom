@@ -3056,11 +3056,11 @@ namespace
 		}
 
 		void AppendFlatPoint(SceneProbeVertex *vertices, unsigned int &count,
-			sector_t *sector, int plane, double x, double y, const WorldAtlasTile &tile, float light)
+			sector_t *planeSector, sector_t *textureSector, int plane, double x, double y, const WorldAtlasTile &tile, float light)
 		{
-			const double z = sector->GetSecPlane(plane).ZatPoint(x, y);
-			double xScale = FIXED2FLOAT(sector->GetXScale(plane));
-			double yScale = FIXED2FLOAT(sector->GetYScale(plane));
+			const double z = planeSector->GetSecPlane(plane).ZatPoint(x, y);
+			double xScale = FIXED2FLOAT(textureSector->GetXScale(plane));
+			double yScale = FIXED2FLOAT(textureSector->GetYScale(plane));
 			if (fabs(xScale) < 0.001)
 			{
 				xScale = 1.0;
@@ -3069,8 +3069,8 @@ namespace
 			{
 				yScale = 1.0;
 			}
-			const double u = (x + FIXED2FLOAT(sector->GetXOffset(plane))) / xScale;
-			const double v = (-y + FIXED2FLOAT(sector->GetYOffset(plane))) / yScale;
+			const double u = (x + FIXED2FLOAT(textureSector->GetXOffset(plane))) / xScale;
+			const double v = (-y + FIXED2FLOAT(textureSector->GetYOffset(plane))) / yScale;
 			AppendTexturedVertex(vertices, count, x, y, z,
 				vk_debug_solid_flats ? 0.5 : u,
 				vk_debug_solid_flats ? 0.5 : v,
@@ -3078,7 +3078,7 @@ namespace
 		}
 
 		bool AppendWorldFlatTriangle(SceneProbeVertex *vertices, unsigned int &count,
-			sector_t *sector, int plane,
+			sector_t *planeSector, sector_t *textureSector, int plane,
 			double ax, double ay, double bx, double by, double cx, double cy,
 			const WorldAtlasTile &tile, float light)
 		{
@@ -3088,15 +3088,15 @@ namespace
 			}
 			if (plane == sector_t::ceiling)
 			{
-				AppendFlatPoint(vertices, count, sector, plane, ax, ay, tile, light);
-				AppendFlatPoint(vertices, count, sector, plane, cx, cy, tile, light);
-				AppendFlatPoint(vertices, count, sector, plane, bx, by, tile, light);
+				AppendFlatPoint(vertices, count, planeSector, textureSector, plane, ax, ay, tile, light);
+				AppendFlatPoint(vertices, count, planeSector, textureSector, plane, cx, cy, tile, light);
+				AppendFlatPoint(vertices, count, planeSector, textureSector, plane, bx, by, tile, light);
 			}
 			else
 			{
-				AppendFlatPoint(vertices, count, sector, plane, ax, ay, tile, light);
-				AppendFlatPoint(vertices, count, sector, plane, bx, by, tile, light);
-				AppendFlatPoint(vertices, count, sector, plane, cx, cy, tile, light);
+				AppendFlatPoint(vertices, count, planeSector, textureSector, plane, ax, ay, tile, light);
+				AppendFlatPoint(vertices, count, planeSector, textureSector, plane, bx, by, tile, light);
+				AppendFlatPoint(vertices, count, planeSector, textureSector, plane, cx, cy, tile, light);
 			}
 			return true;
 		}
@@ -3187,13 +3187,13 @@ namespace
 		}
 
 		bool AppendWorldFlatPolygonFan(SceneProbeVertex *vertices, unsigned int &count,
-			sector_t *sector, int plane, const WorldFlatPoint *points, unsigned int pointCount,
+			sector_t *planeSector, sector_t *textureSector, int plane, const WorldFlatPoint *points, unsigned int pointCount,
 			const WorldAtlasTile &tile, float light)
 		{
 			bool drew = false;
 			for (unsigned int i = 2; i < pointCount; ++i)
 			{
-				drew = AppendWorldFlatTriangle(vertices, count, sector, plane,
+				drew = AppendWorldFlatTriangle(vertices, count, planeSector, textureSector, plane,
 					points[0].X, points[0].Y,
 					points[i - 1].X, points[i - 1].Y,
 					points[i].X, points[i].Y,
@@ -3203,7 +3203,7 @@ namespace
 		}
 
 		bool AppendWorldFlatPolygon(SceneProbeVertex *vertices, unsigned int &count,
-			sector_t *sector, int plane, const WorldFlatPoint *points, unsigned int pointCount,
+			sector_t *planeSector, sector_t *textureSector, int plane, const WorldFlatPoint *points, unsigned int pointCount,
 			const WorldAtlasTile &tile, float light, bool useEarClipping)
 		{
 			if (pointCount < 3 || count + (pointCount - 2) * 3 > ProbeVertexMaxCount)
@@ -3212,7 +3212,7 @@ namespace
 			}
 			if (!useEarClipping)
 			{
-				return AppendWorldFlatPolygonFan(vertices, count, sector, plane, points, pointCount, tile, light);
+				return AppendWorldFlatPolygonFan(vertices, count, planeSector, textureSector, plane, points, pointCount, tile, light);
 			}
 
 			const double area = WorldFlatArea(points, pointCount);
@@ -3268,7 +3268,7 @@ namespace
 						continue;
 					}
 
-					if (!AppendWorldFlatTriangle(vertices, count, sector, plane,
+					if (!AppendWorldFlatTriangle(vertices, count, planeSector, textureSector, plane,
 						prev.X, prev.Y,
 						curr.X, curr.Y,
 						next.X, next.Y,
@@ -3289,14 +3289,14 @@ namespace
 				if (!clipped)
 				{
 					count = startCount;
-					return AppendWorldFlatPolygonFan(vertices, count, sector, plane, points, pointCount, tile, light);
+					return AppendWorldFlatPolygonFan(vertices, count, planeSector, textureSector, plane, points, pointCount, tile, light);
 				}
 			}
 			return drew;
 		}
 
 		bool AppendWorldFlatIndexedFan(SceneProbeVertex *vertices, unsigned int &count,
-			sector_t *sector, int plane, const WorldFlatPoint *points, unsigned int pointCount,
+			sector_t *planeSector, sector_t *textureSector, int plane, const WorldFlatPoint *points, unsigned int pointCount,
 			const WorldAtlasTile &tile, float light)
 		{
 			if (pointCount < 3 || count + (pointCount - 2) * 3 > ProbeVertexMaxCount)
@@ -3305,9 +3305,9 @@ namespace
 			}
 			for (unsigned int i = 2; i < pointCount; ++i)
 			{
-				AppendFlatPoint(vertices, count, sector, plane, points[0].X, points[0].Y, tile, light);
-				AppendFlatPoint(vertices, count, sector, plane, points[i - 1].X, points[i - 1].Y, tile, light);
-				AppendFlatPoint(vertices, count, sector, plane, points[i].X, points[i].Y, tile, light);
+				AppendFlatPoint(vertices, count, planeSector, textureSector, plane, points[0].X, points[0].Y, tile, light);
+				AppendFlatPoint(vertices, count, planeSector, textureSector, plane, points[i - 1].X, points[i - 1].Y, tile, light);
+				AppendFlatPoint(vertices, count, planeSector, textureSector, plane, points[i].X, points[i].Y, tile, light);
 			}
 			return true;
 		}
@@ -3323,8 +3323,9 @@ namespace
 				++WorldDrawFlatDegenerateSkipCount;
 				return false;
 			}
-			sector_t *sector = subsector->render_sector != NULL ? subsector->render_sector : subsector->sector;
-			if (sector == NULL)
+			sector_t *planeSector = subsector->sector;
+			sector_t *textureSector = subsector->render_sector != NULL ? subsector->render_sector : planeSector;
+			if (planeSector == NULL || textureSector == NULL)
 			{
 				++WorldDrawFlatBuildSkipCount;
 				return false;
@@ -3336,8 +3337,8 @@ namespace
 				return false;
 			}
 
-			const WorldAtlasTile *floorTile = vk_debug_flat_colors ? GetWorldDebugFlatTile(subsector, sector_t::floor) : GetWorldPlaneTile(sector, sector_t::floor);
-			const WorldAtlasTile *ceilingTile = vk_debug_flat_colors ? GetWorldDebugFlatTile(subsector, sector_t::ceiling) : GetWorldPlaneTile(sector, sector_t::ceiling);
+			const WorldAtlasTile *floorTile = vk_debug_flat_colors ? GetWorldDebugFlatTile(subsector, sector_t::floor) : GetWorldPlaneTile(textureSector, sector_t::floor);
+			const WorldAtlasTile *ceilingTile = vk_debug_flat_colors ? GetWorldDebugFlatTile(subsector, sector_t::ceiling) : GetWorldPlaneTile(textureSector, sector_t::ceiling);
 			if (floorTile == NULL && ceilingTile == NULL)
 			{
 				++WorldDrawFlatTextureSkipCount;
@@ -3357,7 +3358,7 @@ namespace
 				return false;
 			}
 
-			const float baseLight = sector->lightlevel <= 0 ? 0.20f : (sector->lightlevel / 255.0f);
+			const float baseLight = textureSector->lightlevel <= 0 ? 0.20f : (textureSector->lightlevel / 255.0f);
 			const bool drawFloor = floorTile != NULL;
 			const bool drawCeiling = ceilingTile != NULL;
 			const bool useEarClipping = !WorldFlatIsConvex(points, pointCount);
@@ -3368,7 +3369,7 @@ namespace
 			bool drew = false;
 			if (drawFloor)
 			{
-				const bool floorDrew = AppendWorldFlatPolygon(vertices, count, sector, sector_t::floor, points, pointCount, *floorTile, baseLight, useEarClipping);
+				const bool floorDrew = AppendWorldFlatPolygon(vertices, count, planeSector, textureSector, sector_t::floor, points, pointCount, *floorTile, baseLight, useEarClipping);
 				if (!floorDrew)
 				{
 					++WorldDrawFlatBuildSkipCount;
@@ -3377,7 +3378,7 @@ namespace
 			}
 			if (drawCeiling)
 			{
-				const bool ceilingDrew = AppendWorldFlatPolygon(vertices, count, sector, sector_t::ceiling, points, pointCount, *ceilingTile, baseLight * 0.80f, useEarClipping);
+				const bool ceilingDrew = AppendWorldFlatPolygon(vertices, count, planeSector, textureSector, sector_t::ceiling, points, pointCount, *ceilingTile, baseLight * 0.80f, useEarClipping);
 				if (!ceilingDrew)
 				{
 					++WorldDrawFlatBuildSkipCount;
