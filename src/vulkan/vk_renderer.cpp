@@ -119,6 +119,7 @@ CVAR(Bool, vk_present_force_aspect, false, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CV
 CVAR(Bool, vk_draw_world, false, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINITCALL)
 CVAR(Bool, vk_hide_software_frame, false, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINITCALL)
 CVAR(Bool, vk_debug_solid_flats, false, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINITCALL)
+CVAR(Bool, vk_debug_flat_colors, false, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINITCALL)
 CVAR(Bool, vk_scene_probe, false, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINITCALL)
 CVAR(Bool, vk_world_probe, false, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINITCALL)
 
@@ -329,6 +330,7 @@ namespace
 			  TimestampQueryPending(false), TimestampPeriod(0.0), LastGpuFrameMS(0.0), MemoryBudgetSupported(false),
 			  DeviceLocalMemoryBudgetBytes(0), DeviceLocalMemoryUsageBytes(0),
 			  WorldDrawFlatCount(0), WorldDrawFlatRangeSkipCount(0), WorldDrawFlatTooLargeSkipCount(0), WorldDrawFlatBudgetSkipCount(0),
+			  WorldDrawFlatDegenerateSkipCount(0), WorldDrawFlatTextureSkipCount(0), WorldDrawFlatBuildSkipCount(0), WorldDrawFlatNonConvexCount(0),
 			  PresentScaleMode(1), PresentViewportX(0), PresentViewportY(0), PresentViewportWidth(0), PresentViewportHeight(0),
 			  GraphicsQueueFamily(~0u), DeviceCount(0), SwapchainImageCount(0), SwapchainViewCount(0),
 			  SwapchainFormat(VK_FORMAT_UNDEFINED), SwapchainColorSpace(VK_COLOR_SPACE_SRGB_NONLINEAR_KHR),
@@ -577,6 +579,11 @@ namespace
 			return vk_debug_solid_flats;
 		}
 
+		bool IsDebugFlatColors() const
+		{
+			return vk_debug_flat_colors;
+		}
+
 		bool IsSceneProbeActive() const
 		{
 			return vk_scene_probe && ProbePipeline != VK_NULL_HANDLE && ProbeVertexBuffer != VK_NULL_HANDLE && SceneProbeDrawCount > 0;
@@ -626,6 +633,26 @@ namespace
 		unsigned int GetWorldDrawFlatBudgetSkipCount() const
 		{
 			return IsWorldDrawActive() ? WorldDrawFlatBudgetSkipCount : 0;
+		}
+
+		unsigned int GetWorldDrawFlatDegenerateSkipCount() const
+		{
+			return IsWorldDrawActive() ? WorldDrawFlatDegenerateSkipCount : 0;
+		}
+
+		unsigned int GetWorldDrawFlatTextureSkipCount() const
+		{
+			return IsWorldDrawActive() ? WorldDrawFlatTextureSkipCount : 0;
+		}
+
+		unsigned int GetWorldDrawFlatBuildSkipCount() const
+		{
+			return IsWorldDrawActive() ? WorldDrawFlatBuildSkipCount : 0;
+		}
+
+		unsigned int GetWorldDrawFlatNonConvexCount() const
+		{
+			return IsWorldDrawActive() ? WorldDrawFlatNonConvexCount : 0;
 		}
 
 		bool WantsProbeDraw() const
@@ -2327,6 +2354,10 @@ namespace
 				WorldDrawFlatRangeSkipCount = 0;
 				WorldDrawFlatTooLargeSkipCount = 0;
 				WorldDrawFlatBudgetSkipCount = 0;
+				WorldDrawFlatDegenerateSkipCount = 0;
+				WorldDrawFlatTextureSkipCount = 0;
+				WorldDrawFlatBuildSkipCount = 0;
+				WorldDrawFlatNonConvexCount = 0;
 				SceneProbeFirstVertex = 0;
 				SceneProbeDrawCount = 0;
 				WorldProbeFirstVertex = 0;
@@ -3004,6 +3035,26 @@ namespace
 			return GetWorldAtlasTile(textureId, texture, pixels);
 		}
 
+		const WorldAtlasTile *GetWorldDebugFlatTile(const subsector_t *subsector, int plane)
+		{
+			static const BYTE colors[16][3] =
+			{
+				{ 228,  88,  88 }, {  88, 200, 104 }, {  86, 142, 232 }, { 224, 194,  70 },
+				{ 212,  92, 220 }, {  80, 206, 214 }, { 238, 144,  72 }, { 162, 126, 232 },
+				{ 116, 214, 130 }, { 234, 112, 152 }, { 104, 188, 238 }, { 198, 210,  90 },
+				{ 232, 132,  96 }, { 150, 214, 214 }, { 188, 144, 232 }, { 214, 178, 116 }
+			};
+			unsigned int index = 0;
+			if (subsectors != NULL && subsector >= subsectors && subsector < subsectors + numsubsectors)
+			{
+				index = (unsigned int)(subsector - subsectors);
+			}
+			const unsigned int colorIndex = (index * 7u + (plane == sector_t::ceiling ? 3u : 0u)) & 15u;
+			const BYTE *color = colors[colorIndex];
+			return GetWorldSolidAtlasTile(-3000 - (int)(colorIndex * 2u + (plane == sector_t::ceiling ? 1u : 0u)),
+				color[0], color[1], color[2]);
+		}
+
 		void AppendFlatPoint(SceneProbeVertex *vertices, unsigned int &count,
 			sector_t *sector, int plane, double x, double y, const WorldAtlasTile &tile, float light)
 		{
@@ -3267,21 +3318,29 @@ namespace
 			{
 				return false;
 			}
+			if (subsector->flags & SSECF_DEGENERATE)
+			{
+				++WorldDrawFlatDegenerateSkipCount;
+				return false;
+			}
 			sector_t *sector = subsector->render_sector != NULL ? subsector->render_sector : subsector->sector;
 			if (sector == NULL)
 			{
+				++WorldDrawFlatBuildSkipCount;
 				return false;
 			}
 			const unsigned int maxNeeded = subsector->numlines * 3 * 2;
 			if (count + maxNeeded > ProbeVertexMaxCount)
 			{
+				++WorldDrawFlatBudgetSkipCount;
 				return false;
 			}
 
-			const WorldAtlasTile *floorTile = GetWorldPlaneTile(sector, sector_t::floor);
-			const WorldAtlasTile *ceilingTile = GetWorldPlaneTile(sector, sector_t::ceiling);
+			const WorldAtlasTile *floorTile = vk_debug_flat_colors ? GetWorldDebugFlatTile(subsector, sector_t::floor) : GetWorldPlaneTile(sector, sector_t::floor);
+			const WorldAtlasTile *ceilingTile = vk_debug_flat_colors ? GetWorldDebugFlatTile(subsector, sector_t::ceiling) : GetWorldPlaneTile(sector, sector_t::ceiling);
 			if (floorTile == NULL && ceilingTile == NULL)
 			{
+				++WorldDrawFlatTextureSkipCount;
 				return false;
 			}
 
@@ -3289,10 +3348,12 @@ namespace
 			const unsigned int pointCount = BuildWorldFlatPolygon(subsector, points);
 			if (pointCount < 3)
 			{
+				++WorldDrawFlatDegenerateSkipCount;
 				return false;
 			}
 			if (fabs(WorldFlatArea(points, pointCount)) < 0.001)
 			{
+				++WorldDrawFlatDegenerateSkipCount;
 				return false;
 			}
 
@@ -3303,14 +3364,32 @@ namespace
 			const bool drawFloor = floorTile != NULL && sector->GetSecPlane(sector_t::floor).ZatPoint(camX, camY) <= camZ;
 			const bool drawCeiling = ceilingTile != NULL && sector->GetSecPlane(sector_t::ceiling).ZatPoint(camX, camY) >= camZ;
 			const bool useEarClipping = !WorldFlatIsConvex(points, pointCount);
+			if (useEarClipping)
+			{
+				++WorldDrawFlatNonConvexCount;
+			}
 			bool drew = false;
 			if (drawFloor)
 			{
-				drew = AppendWorldFlatPolygon(vertices, count, sector, sector_t::floor, points, pointCount, *floorTile, baseLight, useEarClipping) || drew;
+				const bool floorDrew = AppendWorldFlatPolygon(vertices, count, sector, sector_t::floor, points, pointCount, *floorTile, baseLight, useEarClipping);
+				if (!floorDrew)
+				{
+					++WorldDrawFlatBuildSkipCount;
+				}
+				drew = floorDrew || drew;
 			}
 			if (drawCeiling)
 			{
-				drew = AppendWorldFlatPolygon(vertices, count, sector, sector_t::ceiling, points, pointCount, *ceilingTile, baseLight * 0.80f, useEarClipping) || drew;
+				const bool ceilingDrew = AppendWorldFlatPolygon(vertices, count, sector, sector_t::ceiling, points, pointCount, *ceilingTile, baseLight * 0.80f, useEarClipping);
+				if (!ceilingDrew)
+				{
+					++WorldDrawFlatBuildSkipCount;
+				}
+				drew = ceilingDrew || drew;
+			}
+			if (!drew && !drawFloor && !drawCeiling)
+			{
+				++WorldDrawFlatBuildSkipCount;
 			}
 			return drew;
 		}
@@ -3371,7 +3450,6 @@ namespace
 				++WorldDrawFlatCount;
 				return true;
 			}
-			++WorldDrawFlatBudgetSkipCount;
 			return false;
 		}
 
@@ -3586,6 +3664,10 @@ namespace
 			WorldDrawFlatRangeSkipCount = 0;
 			WorldDrawFlatTooLargeSkipCount = 0;
 			WorldDrawFlatBudgetSkipCount = 0;
+			WorldDrawFlatDegenerateSkipCount = 0;
+			WorldDrawFlatTextureSkipCount = 0;
+			WorldDrawFlatBuildSkipCount = 0;
+			WorldDrawFlatNonConvexCount = 0;
 			if (subsectors != NULL && numsubsectors > 0)
 			{
 				unsigned int flats = 0;
@@ -3662,6 +3744,14 @@ namespace
 				WorldFlatDrawCount = 0;
 				WorldDrawFirstVertex = 0;
 				WorldDrawDrawCount = 0;
+				WorldDrawFlatCount = 0;
+				WorldDrawFlatRangeSkipCount = 0;
+				WorldDrawFlatTooLargeSkipCount = 0;
+				WorldDrawFlatBudgetSkipCount = 0;
+				WorldDrawFlatDegenerateSkipCount = 0;
+				WorldDrawFlatTextureSkipCount = 0;
+				WorldDrawFlatBuildSkipCount = 0;
+				WorldDrawFlatNonConvexCount = 0;
 				SceneProbeFirstVertex = 0;
 				SceneProbeDrawCount = 0;
 				WorldProbeFirstVertex = 0;
@@ -3679,6 +3769,10 @@ namespace
 			WorldDrawFlatRangeSkipCount = 0;
 			WorldDrawFlatTooLargeSkipCount = 0;
 			WorldDrawFlatBudgetSkipCount = 0;
+			WorldDrawFlatDegenerateSkipCount = 0;
+			WorldDrawFlatTextureSkipCount = 0;
+			WorldDrawFlatBuildSkipCount = 0;
+			WorldDrawFlatNonConvexCount = 0;
 			SceneProbeFirstVertex = 0;
 			SceneProbeDrawCount = 0;
 			WorldProbeFirstVertex = 0;
@@ -5216,6 +5310,10 @@ namespace
 		unsigned int WorldDrawFlatRangeSkipCount;
 		unsigned int WorldDrawFlatTooLargeSkipCount;
 		unsigned int WorldDrawFlatBudgetSkipCount;
+		unsigned int WorldDrawFlatDegenerateSkipCount;
+		unsigned int WorldDrawFlatTextureSkipCount;
+		unsigned int WorldDrawFlatBuildSkipCount;
+		unsigned int WorldDrawFlatNonConvexCount;
 		unsigned int PresentScaleMode;
 		unsigned int PresentViewportX;
 		unsigned int PresentViewportY;
@@ -5272,6 +5370,7 @@ namespace
 		VulkanStats.GpuPresentationActive = runtime->IsGpuPresentationReady();
 		VulkanStats.SoftwareFrameHidden = runtime->IsSoftwareFrameHidden();
 		VulkanStats.DebugSolidFlats = runtime->IsDebugSolidFlats();
+		VulkanStats.DebugFlatColors = runtime->IsDebugFlatColors();
 		VulkanStats.WindowMinimized = runtime->IsWindowMinimized();
 		VulkanStats.TimestampQueriesAvailable = runtime->AreTimestampQueriesAvailable();
 		VulkanStats.LastGpuFrameMS = runtime->GetLastGpuFrameMS();
@@ -5294,6 +5393,10 @@ namespace
 		VulkanStats.WorldDrawFlatRangeSkipCount = runtime->GetWorldDrawFlatRangeSkipCount();
 		VulkanStats.WorldDrawFlatTooLargeSkipCount = runtime->GetWorldDrawFlatTooLargeSkipCount();
 		VulkanStats.WorldDrawFlatBudgetSkipCount = runtime->GetWorldDrawFlatBudgetSkipCount();
+		VulkanStats.WorldDrawFlatDegenerateSkipCount = runtime->GetWorldDrawFlatDegenerateSkipCount();
+		VulkanStats.WorldDrawFlatTextureSkipCount = runtime->GetWorldDrawFlatTextureSkipCount();
+		VulkanStats.WorldDrawFlatBuildSkipCount = runtime->GetWorldDrawFlatBuildSkipCount();
+		VulkanStats.WorldDrawFlatNonConvexCount = runtime->GetWorldDrawFlatNonConvexCount();
 		VulkanStats.SceneProbeActive = runtime->IsSceneProbeActive();
 		VulkanStats.SceneProbeVertexCount = runtime->GetSceneProbeVertexCount();
 		VulkanStats.WorldProbeActive = runtime->IsWorldProbeActive();

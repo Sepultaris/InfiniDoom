@@ -202,7 +202,16 @@ ADD_STAT(renderer)
 						vk.WorldDrawFlatRangeSkipCount,
 						vk.WorldDrawFlatTooLargeSkipCount,
 						vk.WorldDrawFlatBudgetSkipCount);
+					out.AppendFormat("GPU flat rejects: %u degenerate, %u texture, %u build; %u non-convex\n",
+						vk.WorldDrawFlatDegenerateSkipCount,
+						vk.WorldDrawFlatTextureSkipCount,
+						vk.WorldDrawFlatBuildSkipCount,
+						vk.WorldDrawFlatNonConvexCount);
 					out.AppendFormat("GPU flat texture mode: %s\n", vk.DebugSolidFlats ? "solid diagnostic" : "atlas textured");
+					if (vk.DebugFlatColors)
+					{
+						out.AppendFormat("GPU flat colors: subsector diagnostic\n");
+					}
 				}
 				else
 				{

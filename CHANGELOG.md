@@ -1,5 +1,13 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.58 - 2026-06-28
+
+- Added `vk_debug_flat_colors`, a Vulkan flat diagnostic mode that tints
+  submitted floor and ceiling subsectors with stable solid colors.
+- Split Vulkan flat rejection stats into degenerate, texture, build, budget,
+  range, and oversized counts so missing floor/ceiling regions can be traced
+  to skipped subsectors versus malformed submitted triangles.
+
 ## 3.3-alpha-vdoom.57 - 2026-06-28
 
 - Tightened the temporary Vulkan flat builder to match the established

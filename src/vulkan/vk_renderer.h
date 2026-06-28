@@ -45,6 +45,10 @@ struct FVulkanBackendStats
 	unsigned int WorldDrawFlatRangeSkipCount;
 	unsigned int WorldDrawFlatTooLargeSkipCount;
 	unsigned int WorldDrawFlatBudgetSkipCount;
+	unsigned int WorldDrawFlatDegenerateSkipCount;
+	unsigned int WorldDrawFlatTextureSkipCount;
+	unsigned int WorldDrawFlatBuildSkipCount;
+	unsigned int WorldDrawFlatNonConvexCount;
 	unsigned int SceneProbeVertexCount;
 	unsigned int WorldProbeVertexCount;
 	bool WorldDrawActive;
@@ -53,6 +57,7 @@ struct FVulkanBackendStats
 	bool GpuPresentationActive;
 	bool SoftwareFrameHidden;
 	bool DebugSolidFlats;
+	bool DebugFlatColors;
 	bool TimestampQueriesAvailable;
 	bool MemoryBudgetAvailable;
 	bool LastPresentSucceeded;
