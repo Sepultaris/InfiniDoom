@@ -3179,19 +3179,74 @@ namespace
 			return !(hasNegative && hasPositive);
 		}
 
+		void SetWorldFlatPoint(WorldFlatPoint &point, const vertex_t *vertex)
+		{
+			point.X = FIXED2FLOAT(vertex->x);
+			point.Y = FIXED2FLOAT(vertex->y);
+		}
+
+		bool SameWorldFlatVertex(const vertex_t *a, const vertex_t *b)
+		{
+			if (a == b)
+			{
+				return true;
+			}
+			return a != NULL && b != NULL && a->x == b->x && a->y == b->y;
+		}
+
 		unsigned int BuildWorldFlatPolygon(const subsector_t *subsector, WorldFlatPoint *points)
 		{
+			if (subsector == NULL || subsector->firstline == NULL || subsector->numlines == 0)
+			{
+				return 0;
+			}
+
+			bool used[WorldDrawFlatMaxSegs];
+			memset(used, 0, sizeof(used));
+
 			unsigned int pointCount = 0;
+			const seg_t *first = &subsector->firstline[0];
+			if (first->v1 != NULL && first->v2 != NULL)
+			{
+				SetWorldFlatPoint(points[pointCount++], first->v1);
+				const vertex_t *current = first->v2;
+				used[0] = true;
+
+				for (unsigned int step = 1; step < subsector->numlines && pointCount < WorldDrawFlatMaxSegs; ++step)
+				{
+					unsigned int nextIndex = WorldDrawFlatMaxSegs;
+					for (unsigned int i = 1; i < subsector->numlines; ++i)
+					{
+						const seg_t *seg = &subsector->firstline[i];
+						if (!used[i] && SameWorldFlatVertex(seg->v1, current) && seg->v2 != NULL)
+						{
+							nextIndex = i;
+							break;
+						}
+					}
+					if (nextIndex == WorldDrawFlatMaxSegs)
+					{
+						break;
+					}
+
+					SetWorldFlatPoint(points[pointCount++], current);
+					current = subsector->firstline[nextIndex].v2;
+					used[nextIndex] = true;
+				}
+				if (pointCount == subsector->numlines && SameWorldFlatVertex(current, first->v1))
+				{
+					return pointCount;
+				}
+			}
+
+			pointCount = 0;
 			for (unsigned int i = 0; i < subsector->numlines && pointCount < WorldDrawFlatMaxSegs; ++i)
 			{
 				const vertex_t *vertex = subsector->firstline[i].v1;
-				if (vertex == NULL)
+				if (vertex != NULL)
 				{
-					continue;
+					SetWorldFlatPoint(points[pointCount++], vertex);
 				}
-				points[pointCount].X = FIXED2FLOAT(vertex->x);
-				points[pointCount].Y = FIXED2FLOAT(vertex->y);
-				++pointCount;
 			}
 			return pointCount;
 		}
@@ -3254,7 +3309,7 @@ namespace
 			const WorldAtlasTile &tile, float light, bool useEarClipping)
 		{
 			(void)useEarClipping;
-			return AppendWorldFlatPolygonCenterFan(vertices, count, planeSector, textureSector, plane, points, pointCount, tile, light);
+			return AppendWorldFlatPolygonFan(vertices, count, planeSector, textureSector, plane, points, pointCount, tile, light);
 		}
 
 		bool AppendWorldFlatIndexedFan(SceneProbeVertex *vertices, unsigned int &count,
@@ -3291,7 +3346,7 @@ namespace
 				++WorldDrawFlatBuildSkipCount;
 				return false;
 			}
-			const unsigned int maxNeeded = subsector->numlines * 3;
+			const unsigned int maxNeeded = (subsector->numlines - 2) * 3;
 			if (count + maxNeeded > ProbeVertexMaxCount)
 			{
 				++WorldDrawFlatBudgetSkipCount;

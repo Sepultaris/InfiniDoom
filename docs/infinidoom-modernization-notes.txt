@@ -152,6 +152,10 @@ proper visible flat clipping path is rebuilt.
 Flat triangulation is temporarily using a center fan per subsector instead of
 anchoring the fan at the first boundary vertex. This is a diagnostic coverage
 step to separate polygon construction holes from texture/visibility failures.
+The center-fan diagnostic changed the wedge pattern, confirming flat holes are
+coming from polygon construction. The next checkpoint reconstructs a continuous
+subsector edge loop before building a boundary fan, mirroring the GL flat
+vertex buffer's reliance on subsector boundary order.
 - `vk_hide_software_frame` no longer hides the software frame while menus are
   active or when no Vulkan world draw was produced, so the title/main menus
   remain navigable during isolation-mode testing.

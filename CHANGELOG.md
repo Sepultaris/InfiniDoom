@@ -1,5 +1,13 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.67 - 2026-06-28
+
+- Rebuilt the temporary Vulkan flat polygon source so subsector vertices are
+  ordered by following each seg's `v1 -> v2` edge loop before triangulation.
+- Returned active flat triangulation to a boundary fan after the center-fan
+  test proved the missing floor and ceiling wedges are tied to polygon
+  construction rather than texture lookup.
+
 ## 3.3-alpha-vdoom.66 - 2026-06-28
 
 - Changed the temporary Vulkan flat triangulation from a boundary-vertex fan
