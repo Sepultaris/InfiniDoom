@@ -31,6 +31,7 @@
 #endif
 
 #include "r_swrenderer.h"
+#include "hwrenderer/vd_scene.h"
 #include "version.h"
 #include "c_cvars.h"
 #include "doomstat.h"
@@ -4217,6 +4218,30 @@ namespace
 			AppendWorldFlatMissingTexturePlanes(vertices, count, flats);
 		}
 
+		void AppendWorldFlatSceneCommands(SceneProbeVertex *vertices, unsigned int &count, const vdoom::VdHwScene &scene, unsigned int &flats)
+		{
+			const vdoom::VdHwFlatCommand *commands = scene.GetFlats();
+			const unsigned int commandCount = scene.GetFlatCount();
+			for (unsigned int i = 0; i < commandCount && flats < WorldDrawMaxFlats; ++i)
+			{
+				const vdoom::VdHwFlatCommand &command = commands[i];
+				if (command.Subsector != NULL && command.Subsector->numlines > WorldDrawFlatMaxSegs)
+				{
+					++WorldDrawFlatTooLargeSkipCount;
+					continue;
+				}
+				if (AppendWorldFlatSubsectorPlane(vertices, count, command.Subsector, command.PlaneSector, command.TextureSector, command.Plane))
+				{
+					++flats;
+					++WorldDrawFlatCount;
+				}
+			}
+			if (commandCount > WorldDrawMaxFlats)
+			{
+				WorldDrawFlatBudgetSkipCount += commandCount - WorldDrawMaxFlats;
+			}
+		}
+
 		bool AppendWorldWallSubsectorForDraw(SceneProbeVertex *vertices, unsigned int &count, const subsector_t *subsector, unsigned int &walls)
 		{
 			if (subsector == NULL || subsector->firstline == NULL)
@@ -4357,7 +4382,9 @@ namespace
 			{
 				BuildWorldFlatMesh();
 				unsigned int flats = 0;
-				AppendWorldFlatSectorScan(vertices, count, flats);
+				vdoom::VdHwScene scene;
+				scene.CollectWorld();
+				AppendWorldFlatSceneCommands(vertices, count, scene, flats);
 			}
 		}
 

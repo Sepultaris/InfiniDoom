@@ -1,5 +1,14 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.88 - 2026-06-28
+
+- Added the first backend-agnostic vDoom hardware scene collector under
+  `src/hwrenderer`, starting with floor/ceiling flat commands and
+  missing-texture other-plane candidates.
+- Routed Vulkan flat submission through the collected flat command list so Doom
+  scene interpretation can move out of `vk_renderer.cpp` before the remaining
+  UZDoom-style BSP, flat, wall, and render-hack passes are built.
+
 ## 3.3-alpha-vdoom.87 - 2026-06-28
 
 - Added a Vulkan missing-texture flat pass based on the legacy GL/UZDoom

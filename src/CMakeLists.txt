@@ -959,6 +959,8 @@ else( NOT NO_GL )
 endif( NOT NO_GL )
 
 set( VULKAN_SOURCES
+	hwrenderer/vd_scene.cpp
+	hwrenderer/vd_scene.h
 	vulkan/vk_renderer.cpp
 	vulkan/vk_palette_present_shaders.h
 	vulkan/shaders/palette_present.frag

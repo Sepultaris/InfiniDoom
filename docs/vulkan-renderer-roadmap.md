@@ -102,6 +102,10 @@ The first API boundary can be deliberately small:
 - bind vertex/index buffers
 - draw arrays / draw indexed
 
+Status: `3.3-alpha-vdoom.88` starts this split with `src/hwrenderer/vd_scene.*`,
+which collects backend-agnostic flat commands before Vulkan converts them into
+its current temporary vertices.
+
 ### 2. Reuse Doom's Visibility Model Instead Of Rebuilding It In Vulkan
 
 Build visible scene data through the same concepts UZDoom uses:
