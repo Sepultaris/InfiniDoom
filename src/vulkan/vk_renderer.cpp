@@ -2214,7 +2214,7 @@ namespace
 			Vk.UpdateDescriptorSets(Device, 1, &write, 0, NULL);
 		}
 
-		bool CreateWorldTexturePipeline(VkPipeline &pipeline, VkPrimitiveTopology topology, const char *label)
+		bool CreateWorldTexturePipeline(VkPipeline &pipeline, VkPrimitiveTopology topology, bool enableDepthTest, bool enableDepthWrite, const char *label)
 		{
 			if (RenderPass == VK_NULL_HANDLE && !CreateRenderPass())
 			{
@@ -2314,8 +2314,8 @@ namespace
 			VkPipelineDepthStencilStateCreateInfo depthStencil;
 			memset(&depthStencil, 0, sizeof(depthStencil));
 			depthStencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
-			depthStencil.depthTestEnable = VK_TRUE;
-			depthStencil.depthWriteEnable = VK_TRUE;
+			depthStencil.depthTestEnable = enableDepthTest ? VK_TRUE : VK_FALSE;
+			depthStencil.depthWriteEnable = enableDepthWrite ? VK_TRUE : VK_FALSE;
 			depthStencil.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
 
 			VkDynamicState dynamicStates[2] = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
@@ -2382,12 +2382,12 @@ namespace
 
 		bool CreateWallTexturePipeline()
 		{
-			return CreateWorldTexturePipeline(WallTexturePipeline, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST, "wall texture");
+			return CreateWorldTexturePipeline(WallTexturePipeline, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST, true, true, "wall texture");
 		}
 
 		bool CreateFlatTexturePipeline()
 		{
-			return CreateWorldTexturePipeline(FlatTexturePipeline, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN, "flat texture fan");
+			return CreateWorldTexturePipeline(FlatTexturePipeline, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN, false, false, "flat texture fan");
 		}
 
 		void DestroyProbeVertexBuffer()

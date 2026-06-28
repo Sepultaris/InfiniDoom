@@ -1,5 +1,12 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.86 - 2026-06-28
+
+- Changed the Vulkan flat pipeline to render without depth test/write while
+  leaving wall rendering depth-tested, isolating whether missing floors and
+  ceilings are caused by flat geometry generation or depth/projection
+  rejection.
+
 ## 3.3-alpha-vdoom.85 - 2026-06-28
 
 - Switched active Vulkan flat submission to dedicated triangle-fan draw ranges

@@ -295,3 +295,10 @@ plane now records one fan range, and command-buffer recording emits one
 `vkCmdDraw` per fan with `VK_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN`, matching the
 legacy GL flat primitive closely enough to isolate remaining gaps to plane
 selection or special-plane hack handling.
+
+The `.86` checkpoint disables depth test/write only for the Vulkan flat
+pipeline while keeping walls depth-tested. This deliberately separates two
+failure modes: if the black floor/ceiling gaps fill in, flat geometry exists
+but was being rejected by depth/projection state; if the gaps remain black, the
+missing coverage is upstream in flat plane selection, sector ownership, or the
+special "other plane" hack pass.
