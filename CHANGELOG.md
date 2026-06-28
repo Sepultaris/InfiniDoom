@@ -1,5 +1,32 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.55 - 2026-06-28
+
+- Changed temporary Vulkan floor/ceiling submission from per-plane
+  `VK_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN` draws to explicit triangle-list geometry
+  using the same subsector fan index order that UZDoom's flat vertex builder
+  emits into its indexed flat batches.
+- Removed the temporary BSP clipper gate from Vulkan flat submission because
+  walls are not yet submitted from the same visible seg walk; using that
+  incomplete clipper caused visible movement artifacts.
+
+## 3.3-alpha-vdoom.54 - 2026-06-28
+
+- Fixed `Clipper` member initialization so non-global clipper instances start
+  with a null silhouette list instead of relying on static zero-initialization.
+
+## 3.3-alpha-vdoom.53 - 2026-06-28
+
+- Hardened the temporary Vulkan BSP clipper experiment against partial seg and
+  subsector state encountered during map startup.
+
+## 3.3-alpha-vdoom.52 - 2026-06-28
+
+- Added an experimental BSP clipper pass for Vulkan flat visibility using the
+  existing OpenGL clipper shape. This was later removed from the temporary flat
+  path because the wall renderer was not yet driven by the same visible seg
+  traversal.
+
 ## 3.3-alpha-vdoom.51 - 2026-06-28
 
 - Moved temporary Vulkan flat rendering to a dedicated `VK_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN`

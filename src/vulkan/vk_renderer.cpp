@@ -41,7 +41,6 @@
 #include "r_sky.h"
 #include "r_state.h"
 #include "textures/textures.h"
-#include "gl/scene/gl_clipper.h"
 #include "vulkan/vk_palette_present_shaders.h"
 #ifdef _WIN32
 #include "win32/i_system.h"
@@ -256,12 +255,6 @@ namespace
 		float Row3[4];
 	};
 
-	struct WorldFlatFanDraw
-	{
-		unsigned int FirstVertex;
-		unsigned int VertexCount;
-	};
-
 	enum
 	{
 		SceneProbeVertexCount = 3,
@@ -273,7 +266,6 @@ namespace
 		WorldDrawTextureVerticesPerSection = WorldDrawTextureColumns * WorldDrawTextureRows * 6,
 		WorldDrawTextureVerticesPerWall = WorldDrawTextureSectionsPerWall * WorldDrawTextureVerticesPerSection,
 		WorldDrawMaxFlats = 1024,
-		WorldDrawMaxFlatFanDraws = WorldDrawMaxFlats * 2,
 		WorldDrawMaxBspDepth = 256,
 		WorldDrawFlatMaxSegs = 128,
 		WorldDrawFlatVerticesPerSubsector = WorldDrawFlatMaxSegs * 3 * 2,
@@ -320,7 +312,7 @@ namespace
 			  ImageAvailableSemaphore(VK_NULL_HANDLE), RenderFinishedSemaphore(VK_NULL_HANDLE), RenderFence(VK_NULL_HANDLE),
 			  UploadBuffer(VK_NULL_HANDLE), UploadMemory(VK_NULL_HANDLE), UploadPtr(NULL), UploadSize(0),
 			  ProbeVertexBuffer(VK_NULL_HANDLE), ProbeVertexMemory(VK_NULL_HANDLE), ProbeVertexPtr(NULL), ProbeVertexBufferSize(0),
-			  ProbeVertexDrawCount(0), WorldDrawFirstVertex(0), WorldDrawDrawCount(0), SceneProbeFirstVertex(0), SceneProbeDrawCount(0), WorldProbeFirstVertex(0), WorldProbeDrawCount(0),
+			  ProbeVertexDrawCount(0), WorldFlatFirstVertex(0), WorldFlatDrawCount(0), WorldDrawFirstVertex(0), WorldDrawDrawCount(0), SceneProbeFirstVertex(0), SceneProbeDrawCount(0), WorldProbeFirstVertex(0), WorldProbeDrawCount(0),
 			  SourceImage(VK_NULL_HANDLE), SourceImageMemory(VK_NULL_HANDLE), SourceImageView(VK_NULL_HANDLE),
 			  PaletteImage(VK_NULL_HANDLE), PaletteImageMemory(VK_NULL_HANDLE), PaletteImageView(VK_NULL_HANDLE),
 			  WallAtlasImage(VK_NULL_HANDLE), WallAtlasImageMemory(VK_NULL_HANDLE), WallAtlasImageView(VK_NULL_HANDLE),
@@ -332,12 +324,10 @@ namespace
 			  WorldProbePipelineLayout(VK_NULL_HANDLE), WorldProbePipeline(VK_NULL_HANDLE),
 			  WallTextureDescriptorSetLayout(VK_NULL_HANDLE), WallTextureDescriptorPool(VK_NULL_HANDLE),
 			  WallTextureDescriptorSet(VK_NULL_HANDLE), WallTexturePipelineLayout(VK_NULL_HANDLE), WallTexturePipeline(VK_NULL_HANDLE),
-			  WorldFlatFanPipeline(VK_NULL_HANDLE),
 			  SourceImageWidth(0), SourceImageHeight(0), GpuPresentationReady(false),
 			  PresentFilterMode(-1), TimestampQueryPool(VK_NULL_HANDLE), TimestampQueriesSupported(false),
 			  TimestampQueryPending(false), TimestampPeriod(0.0), LastGpuFrameMS(0.0), MemoryBudgetSupported(false),
 			  DeviceLocalMemoryBudgetBytes(0), DeviceLocalMemoryUsageBytes(0),
-			  WorldFlatFanDrawCount(0), WorldFlatFanVertexCount(0),
 			  WorldDrawFlatCount(0), WorldDrawFlatRangeSkipCount(0), WorldDrawFlatTooLargeSkipCount(0), WorldDrawFlatBudgetSkipCount(0),
 			  PresentScaleMode(1), PresentViewportX(0), PresentViewportY(0), PresentViewportWidth(0), PresentViewportHeight(0),
 			  GraphicsQueueFamily(~0u), DeviceCount(0), SwapchainImageCount(0), SwapchainViewCount(0),
@@ -609,13 +599,13 @@ namespace
 
 		bool IsWorldDrawActive() const
 		{
-			return vk_draw_world && WallTexturePipeline != VK_NULL_HANDLE && WorldFlatFanPipeline != VK_NULL_HANDLE &&
-				ProbeVertexBuffer != VK_NULL_HANDLE && (WorldDrawDrawCount > 0 || WorldFlatFanDrawCount > 0);
+			return vk_draw_world && WallTexturePipeline != VK_NULL_HANDLE &&
+				ProbeVertexBuffer != VK_NULL_HANDLE && (WorldDrawDrawCount > 0 || WorldFlatDrawCount > 0);
 		}
 
 		unsigned int GetWorldDrawVertexCount() const
 		{
-			return IsWorldDrawActive() ? WorldDrawDrawCount + WorldFlatFanVertexCount : 0;
+			return IsWorldDrawActive() ? WorldDrawDrawCount + WorldFlatDrawCount : 0;
 		}
 
 		unsigned int GetWorldDrawFlatCount() const
@@ -2320,11 +2310,6 @@ namespace
 			return CreateWorldTexturePipeline(WallTexturePipeline, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST, "wall texture");
 		}
 
-		bool CreateWorldFlatFanPipeline()
-		{
-			return CreateWorldTexturePipeline(WorldFlatFanPipeline, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN, "flat fan");
-		}
-
 		void DestroyProbeVertexBuffer()
 		{
 			if (Device == NULL)
@@ -2334,10 +2319,10 @@ namespace
 				ProbeVertexPtr = NULL;
 				ProbeVertexBufferSize = 0;
 				ProbeVertexDrawCount = 0;
+				WorldFlatFirstVertex = 0;
+				WorldFlatDrawCount = 0;
 				WorldDrawFirstVertex = 0;
 				WorldDrawDrawCount = 0;
-				WorldFlatFanDrawCount = 0;
-				WorldFlatFanVertexCount = 0;
 				WorldDrawFlatCount = 0;
 				WorldDrawFlatRangeSkipCount = 0;
 				WorldDrawFlatTooLargeSkipCount = 0;
@@ -2365,10 +2350,10 @@ namespace
 			ProbeVertexMemory = VK_NULL_HANDLE;
 			ProbeVertexBufferSize = 0;
 			ProbeVertexDrawCount = 0;
+			WorldFlatFirstVertex = 0;
+			WorldFlatDrawCount = 0;
 			WorldDrawFirstVertex = 0;
 			WorldDrawDrawCount = 0;
-			WorldFlatFanDrawCount = 0;
-			WorldFlatFanVertexCount = 0;
 			SceneProbeFirstVertex = 0;
 			SceneProbeDrawCount = 0;
 			WorldProbeFirstVertex = 0;
@@ -2953,87 +2938,6 @@ namespace
 			return drew;
 		}
 
-		bool WorldSegBlocksClipper(const seg_t *seg, sector_t *currentSector) const
-		{
-			if (seg == NULL || seg->sidedef == NULL || seg->v1 == NULL || seg->v2 == NULL)
-			{
-				return false;
-			}
-			if (seg->backsector == NULL)
-			{
-				return true;
-			}
-			if (seg->frontsector == NULL)
-			{
-				return false;
-			}
-			if (seg->sidedef->Flags & WALLF_POLYOBJ)
-			{
-				return false;
-			}
-			if (currentSector != NULL && currentSector->sectornum == seg->backsector->sectornum)
-			{
-				FTextureID midTexture = seg->sidedef->GetTexture(side_t::mid);
-				if (!midTexture.isValid())
-				{
-					return false;
-				}
-				FTexture *tex = TexMan(midTexture);
-				return tex != NULL && tex->UseType != FTexture::TEX_Null;
-			}
-
-			const double frontFloor1 = FIXED2FLOAT(seg->frontsector->floorplane.ZatPoint(seg->v1));
-			const double frontFloor2 = FIXED2FLOAT(seg->frontsector->floorplane.ZatPoint(seg->v2));
-			const double frontCeiling1 = FIXED2FLOAT(seg->frontsector->ceilingplane.ZatPoint(seg->v1));
-			const double frontCeiling2 = FIXED2FLOAT(seg->frontsector->ceilingplane.ZatPoint(seg->v2));
-			const double backFloor1 = FIXED2FLOAT(seg->backsector->floorplane.ZatPoint(seg->v1));
-			const double backFloor2 = FIXED2FLOAT(seg->backsector->floorplane.ZatPoint(seg->v2));
-			const double backCeiling1 = FIXED2FLOAT(seg->backsector->ceilingplane.ZatPoint(seg->v1));
-			const double backCeiling2 = FIXED2FLOAT(seg->backsector->ceilingplane.ZatPoint(seg->v2));
-
-			return frontFloor1 >= backCeiling1 || frontFloor2 >= backCeiling2 ||
-				backFloor1 >= frontCeiling1 || backFloor2 >= frontCeiling2;
-		}
-
-		bool IsWorldSubsectorPointerValid(const subsector_t *subsector) const
-		{
-			return subsectors != NULL && subsector >= subsectors && subsector < subsectors + numsubsectors;
-		}
-
-		bool AppendWorldClipperSubsector(const subsector_t *subsector)
-		{
-			if (!IsWorldSubsectorPointerValid(subsector) || subsector->firstline == NULL || subsector->sector == NULL)
-			{
-				return false;
-			}
-			sector_t *currentSector = subsector->render_sector != NULL ? subsector->render_sector : subsector->sector;
-			bool visible = false;
-			for (unsigned int i = 0; i < subsector->numlines; ++i)
-			{
-				const seg_t *seg = &subsector->firstline[i];
-				if (seg->v1 == NULL || seg->v2 == NULL)
-				{
-					continue;
-				}
-				const angle_t startAngle = seg->v2->GetClipAngle();
-				const angle_t endAngle = seg->v1->GetClipAngle();
-				if (startAngle - endAngle < ANGLE_180)
-				{
-					continue;
-				}
-				if (!WorldClipper.SafeCheckRange(startAngle, endAngle))
-				{
-					continue;
-				}
-				visible = true;
-				if (WorldSegBlocksClipper(seg, currentSector))
-				{
-					WorldClipper.SafeAddClipRange(startAngle, endAngle);
-				}
-			}
-			return visible;
-		}
-
 		const WorldAtlasTile *GetWorldPlaneTile(sector_t *sector, int plane)
 		{
 			if (sector == NULL)
@@ -3302,23 +3206,29 @@ namespace
 			return drew;
 		}
 
-		bool AppendWorldFlatFan(SceneProbeVertex *vertices, unsigned int &count,
+		bool AppendWorldFlatIndexedFan(SceneProbeVertex *vertices, unsigned int &count,
 			sector_t *sector, int plane, const WorldFlatPoint *points, unsigned int pointCount,
 			const WorldAtlasTile &tile, float light)
 		{
-			if (pointCount < 3 || count + pointCount > ProbeVertexMaxCount || WorldFlatFanDrawCount >= WorldDrawMaxFlatFanDraws)
+			if (pointCount < 3 || count + (pointCount - 2) * 3 > ProbeVertexMaxCount)
 			{
 				return false;
 			}
-			const unsigned int firstVertex = count;
-			for (unsigned int i = 0; i < pointCount; ++i)
+			for (unsigned int i = 2; i < pointCount; ++i)
 			{
-				AppendFlatPoint(vertices, count, sector, plane, points[i].X, points[i].Y, tile, light);
+				if (plane == sector_t::ceiling)
+				{
+					AppendFlatPoint(vertices, count, sector, plane, points[0].X, points[0].Y, tile, light);
+					AppendFlatPoint(vertices, count, sector, plane, points[i].X, points[i].Y, tile, light);
+					AppendFlatPoint(vertices, count, sector, plane, points[i - 1].X, points[i - 1].Y, tile, light);
+				}
+				else
+				{
+					AppendFlatPoint(vertices, count, sector, plane, points[0].X, points[0].Y, tile, light);
+					AppendFlatPoint(vertices, count, sector, plane, points[i - 1].X, points[i - 1].Y, tile, light);
+					AppendFlatPoint(vertices, count, sector, plane, points[i].X, points[i].Y, tile, light);
+				}
 			}
-			WorldFlatFanDraws[WorldFlatFanDrawCount].FirstVertex = firstVertex;
-			WorldFlatFanDraws[WorldFlatFanDrawCount].VertexCount = pointCount;
-			++WorldFlatFanDrawCount;
-			WorldFlatFanVertexCount += pointCount;
 			return true;
 		}
 
@@ -3362,11 +3272,11 @@ namespace
 			bool drew = false;
 			if (drawFloor)
 			{
-				drew = AppendWorldFlatFan(vertices, count, sector, sector_t::floor, points, pointCount, *floorTile, baseLight) || drew;
+				drew = AppendWorldFlatIndexedFan(vertices, count, sector, sector_t::floor, points, pointCount, *floorTile, baseLight) || drew;
 			}
 			if (drawCeiling)
 			{
-				drew = AppendWorldFlatFan(vertices, count, sector, sector_t::ceiling, points, pointCount, *ceilingTile, baseLight * 0.80f) || drew;
+				drew = AppendWorldFlatIndexedFan(vertices, count, sector, sector_t::ceiling, points, pointCount, *ceilingTile, baseLight * 0.80f) || drew;
 			}
 			return drew;
 		}
@@ -3451,10 +3361,6 @@ namespace
 				{
 					return;
 				}
-				if (!WorldClipper.CheckBox(bsp->bbox[side ^ 1]))
-				{
-					return;
-				}
 				node = bsp->children[side ^ 1];
 				if (node == NULL)
 				{
@@ -3467,10 +3373,7 @@ namespace
 				}
 			}
 			const subsector_t *subsector = reinterpret_cast<const subsector_t *>(reinterpret_cast<const BYTE *>(node) - 1);
-			if (AppendWorldClipperSubsector(subsector))
-			{
-				AppendWorldFlatSubsectorForDraw(vertices, count, subsector, flats);
-			}
+			AppendWorldFlatSubsectorForDraw(vertices, count, subsector, flats);
 		}
 
 		void AppendWorldFlatFallbackScan(SceneProbeVertex *vertices, unsigned int &count, unsigned int &flats)
@@ -3522,8 +3425,8 @@ namespace
 			{
 				return;
 			}
-			WorldFlatFanDrawCount = 0;
-			WorldFlatFanVertexCount = 0;
+			WorldFlatFirstVertex = count;
+			WorldFlatDrawCount = 0;
 			WorldDrawFlatCount = 0;
 			WorldDrawFlatRangeSkipCount = 0;
 			WorldDrawFlatTooLargeSkipCount = 0;
@@ -3533,7 +3436,6 @@ namespace
 				unsigned int flats = 0;
 				if (nodes != NULL && numnodes > 0)
 				{
-					WorldClipper.Clear();
 					AppendWorldFlatBspNode(vertices, count, nodes + numnodes - 1, 0, flats);
 				}
 				else
@@ -3541,6 +3443,7 @@ namespace
 					AppendWorldFlatFallbackScan(vertices, count, flats);
 				}
 			}
+			WorldFlatDrawCount = count - WorldFlatFirstVertex;
 
 			WorldDrawFirstVertex = count;
 			const unsigned int wallStart = count;
@@ -3609,10 +3512,10 @@ namespace
 			if (ProbeVertexPtr == NULL)
 			{
 				ProbeVertexDrawCount = 0;
+				WorldFlatFirstVertex = 0;
+				WorldFlatDrawCount = 0;
 				WorldDrawFirstVertex = 0;
 				WorldDrawDrawCount = 0;
-				WorldFlatFanDrawCount = 0;
-				WorldFlatFanVertexCount = 0;
 				SceneProbeFirstVertex = 0;
 				SceneProbeDrawCount = 0;
 				WorldProbeFirstVertex = 0;
@@ -3622,10 +3525,10 @@ namespace
 
 			SceneProbeVertex *vertices = static_cast<SceneProbeVertex *>(ProbeVertexPtr);
 			unsigned int count = 0;
+			WorldFlatFirstVertex = 0;
+			WorldFlatDrawCount = 0;
 			WorldDrawFirstVertex = 0;
 			WorldDrawDrawCount = 0;
-			WorldFlatFanDrawCount = 0;
-			WorldFlatFanVertexCount = 0;
 			WorldDrawFlatCount = 0;
 			WorldDrawFlatRangeSkipCount = 0;
 			WorldDrawFlatTooLargeSkipCount = 0;
@@ -4250,11 +4153,6 @@ namespace
 
 		void DestroyWallTextureResources()
 		{
-			if (WorldFlatFanPipeline != VK_NULL_HANDLE && Vk.DestroyPipeline != NULL)
-			{
-				Vk.DestroyPipeline(Device, WorldFlatFanPipeline, NULL);
-			}
-			WorldFlatFanPipeline = VK_NULL_HANDLE;
 			if (WallTexturePipeline != VK_NULL_HANDLE && Vk.DestroyPipeline != NULL)
 			{
 				Vk.DestroyPipeline(Device, WallTexturePipeline, NULL);
@@ -4358,10 +4256,6 @@ namespace
 			}
 			UpdateWallTextureDescriptorSet();
 			if (WallTexturePipeline == VK_NULL_HANDLE && !CreateWallTexturePipeline())
-			{
-				return false;
-			}
-			if (WorldFlatFanPipeline == VK_NULL_HANDLE && !CreateWorldFlatFanPipeline())
 			{
 				return false;
 			}
@@ -4769,16 +4663,13 @@ namespace
 			{
 				VkDeviceSize vertexOffsets[1] = { 0 };
 				SceneProbePushConstants probeConstants = BuildSceneProbePushConstants();
-				if (vk_draw_world && WorldFlatFanPipeline != VK_NULL_HANDLE && WallTextureDescriptorSet != VK_NULL_HANDLE && WorldFlatFanDrawCount > 0)
+				if (vk_draw_world && WallTexturePipeline != VK_NULL_HANDLE && WallTextureDescriptorSet != VK_NULL_HANDLE && WorldFlatDrawCount > 0)
 				{
-					Vk.CmdBindPipeline(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, WorldFlatFanPipeline);
+					Vk.CmdBindPipeline(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, WallTexturePipeline);
 					Vk.CmdBindDescriptorSets(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, WallTexturePipelineLayout, 0, 1, &WallTextureDescriptorSet, 0, NULL);
 					Vk.CmdPushConstants(CommandBuffer, WallTexturePipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(probeConstants), &probeConstants);
 					Vk.CmdBindVertexBuffers(CommandBuffer, 0, 1, &ProbeVertexBuffer, vertexOffsets);
-					for (unsigned int i = 0; i < WorldFlatFanDrawCount; ++i)
-					{
-						Vk.CmdDraw(CommandBuffer, WorldFlatFanDraws[i].VertexCount, 1, WorldFlatFanDraws[i].FirstVertex, 0);
-					}
+					Vk.CmdDraw(CommandBuffer, WorldFlatDrawCount, 1, WorldFlatFirstVertex, 0);
 				}
 				if (vk_draw_world && WallTexturePipeline != VK_NULL_HANDLE && WallTextureDescriptorSet != VK_NULL_HANDLE && WorldDrawDrawCount > 0)
 				{
@@ -5123,6 +5014,8 @@ namespace
 		void *ProbeVertexPtr;
 		VkDeviceSize ProbeVertexBufferSize;
 		unsigned int ProbeVertexDrawCount;
+		unsigned int WorldFlatFirstVertex;
+		unsigned int WorldFlatDrawCount;
 		unsigned int WorldDrawFirstVertex;
 		unsigned int WorldDrawDrawCount;
 		unsigned int SceneProbeFirstVertex;
@@ -5161,7 +5054,6 @@ namespace
 		VkDescriptorSet WallTextureDescriptorSet;
 		VkPipelineLayout WallTexturePipelineLayout;
 		VkPipeline WallTexturePipeline;
-		VkPipeline WorldFlatFanPipeline;
 		unsigned int SourceImageWidth;
 		unsigned int SourceImageHeight;
 		bool GpuPresentationReady;
@@ -5174,10 +5066,6 @@ namespace
 		bool MemoryBudgetSupported;
 		unsigned long long DeviceLocalMemoryBudgetBytes;
 		unsigned long long DeviceLocalMemoryUsageBytes;
-		WorldFlatFanDraw WorldFlatFanDraws[WorldDrawMaxFlatFanDraws];
-		unsigned int WorldFlatFanDrawCount;
-		unsigned int WorldFlatFanVertexCount;
-		Clipper WorldClipper;
 		unsigned int WorldDrawFlatCount;
 		unsigned int WorldDrawFlatRangeSkipCount;
 		unsigned int WorldDrawFlatTooLargeSkipCount;
