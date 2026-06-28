@@ -1,5 +1,13 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.57 - 2026-06-28
+
+- Tightened the temporary Vulkan flat builder to match the established
+  subsector fan order for normal convex floor and ceiling planes.
+- Enabled the existing ear-clipping fallback only for non-convex flat point
+  sequences, keeping the UZDoom-style normal path while handling pathological
+  subsector shapes more robustly.
+
 ## 3.3-alpha-vdoom.56 - 2026-06-28
 
 - Changed the temporary Vulkan wall submission to walk BSP subsector segs

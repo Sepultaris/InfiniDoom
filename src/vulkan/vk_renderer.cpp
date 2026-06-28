@@ -3254,18 +3254,9 @@ namespace
 			}
 			for (unsigned int i = 2; i < pointCount; ++i)
 			{
-				if (plane == sector_t::ceiling)
-				{
-					AppendFlatPoint(vertices, count, sector, plane, points[0].X, points[0].Y, tile, light);
-					AppendFlatPoint(vertices, count, sector, plane, points[i].X, points[i].Y, tile, light);
-					AppendFlatPoint(vertices, count, sector, plane, points[i - 1].X, points[i - 1].Y, tile, light);
-				}
-				else
-				{
-					AppendFlatPoint(vertices, count, sector, plane, points[0].X, points[0].Y, tile, light);
-					AppendFlatPoint(vertices, count, sector, plane, points[i - 1].X, points[i - 1].Y, tile, light);
-					AppendFlatPoint(vertices, count, sector, plane, points[i].X, points[i].Y, tile, light);
-				}
+				AppendFlatPoint(vertices, count, sector, plane, points[0].X, points[0].Y, tile, light);
+				AppendFlatPoint(vertices, count, sector, plane, points[i - 1].X, points[i - 1].Y, tile, light);
+				AppendFlatPoint(vertices, count, sector, plane, points[i].X, points[i].Y, tile, light);
 			}
 			return true;
 		}
@@ -3300,6 +3291,10 @@ namespace
 			{
 				return false;
 			}
+			if (fabs(WorldFlatArea(points, pointCount)) < 0.001)
+			{
+				return false;
+			}
 
 			const float baseLight = sector->lightlevel <= 0 ? 0.20f : (sector->lightlevel / 255.0f);
 			const double camX = FIXED2FLOAT(viewx);
@@ -3307,14 +3302,15 @@ namespace
 			const double camZ = FIXED2FLOAT(viewz);
 			const bool drawFloor = floorTile != NULL && sector->GetSecPlane(sector_t::floor).ZatPoint(camX, camY) <= camZ;
 			const bool drawCeiling = ceilingTile != NULL && sector->GetSecPlane(sector_t::ceiling).ZatPoint(camX, camY) >= camZ;
+			const bool useEarClipping = !WorldFlatIsConvex(points, pointCount);
 			bool drew = false;
 			if (drawFloor)
 			{
-				drew = AppendWorldFlatIndexedFan(vertices, count, sector, sector_t::floor, points, pointCount, *floorTile, baseLight) || drew;
+				drew = AppendWorldFlatPolygon(vertices, count, sector, sector_t::floor, points, pointCount, *floorTile, baseLight, useEarClipping) || drew;
 			}
 			if (drawCeiling)
 			{
-				drew = AppendWorldFlatIndexedFan(vertices, count, sector, sector_t::ceiling, points, pointCount, *ceilingTile, baseLight * 0.80f) || drew;
+				drew = AppendWorldFlatPolygon(vertices, count, sector, sector_t::ceiling, points, pointCount, *ceilingTile, baseLight * 0.80f, useEarClipping) || drew;
 			}
 			return drew;
 		}
