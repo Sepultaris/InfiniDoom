@@ -3322,7 +3322,8 @@ namespace
 			return true;
 		}
 
-		bool AppendWorldFlatSubsector(SceneProbeVertex *vertices, unsigned int &count, const subsector_t *subsector)
+		bool AppendWorldFlatSubsectorPlane(SceneProbeVertex *vertices, unsigned int &count,
+			const subsector_t *subsector, sector_t *planeSector, sector_t *textureSector, int plane)
 		{
 			if (subsector == NULL || subsector->firstline == NULL || subsector->numlines < 3 || subsector->numlines > WorldDrawFlatMaxSegs)
 			{
@@ -3333,23 +3334,20 @@ namespace
 				++WorldDrawFlatDegenerateSkipCount;
 				return false;
 			}
-			sector_t *planeSector = subsector->sector;
-			sector_t *textureSector = subsector->render_sector != NULL ? subsector->render_sector : planeSector;
 			if (planeSector == NULL || textureSector == NULL)
 			{
 				++WorldDrawFlatBuildSkipCount;
 				return false;
 			}
-			const unsigned int maxNeeded = subsector->numlines * 3 * 2;
+			const unsigned int maxNeeded = (subsector->numlines - 2) * 3;
 			if (count + maxNeeded > ProbeVertexMaxCount)
 			{
 				++WorldDrawFlatBudgetSkipCount;
 				return false;
 			}
 
-			const WorldAtlasTile *floorTile = vk_debug_flat_colors ? GetWorldDebugFlatTile(subsector, sector_t::floor) : GetWorldPlaneTile(textureSector, sector_t::floor);
-			const WorldAtlasTile *ceilingTile = vk_debug_flat_colors ? GetWorldDebugFlatTile(subsector, sector_t::ceiling) : GetWorldPlaneTile(textureSector, sector_t::ceiling);
-			if (floorTile == NULL && ceilingTile == NULL)
+			const WorldAtlasTile *tile = vk_debug_flat_colors ? GetWorldDebugFlatTile(subsector, plane) : GetWorldPlaneTile(textureSector, plane);
+			if (tile == NULL)
 			{
 				++WorldDrawFlatTextureSkipCount;
 				return false;
@@ -3369,36 +3367,27 @@ namespace
 			}
 
 			const float baseLight = textureSector->lightlevel <= 0 ? 0.20f : (textureSector->lightlevel / 255.0f);
-			const bool drawFloor = floorTile != NULL;
-			const bool drawCeiling = ceilingTile != NULL;
 			const bool useEarClipping = !WorldFlatIsConvex(points, pointCount);
 			if (useEarClipping)
 			{
 				++WorldDrawFlatNonConvexCount;
 			}
-			bool drew = false;
-			if (drawFloor)
-			{
-				const bool floorDrew = AppendWorldFlatPolygon(vertices, count, planeSector, textureSector, sector_t::floor, points, pointCount, *floorTile, baseLight, useEarClipping);
-				if (!floorDrew)
-				{
-					++WorldDrawFlatBuildSkipCount;
-				}
-				drew = floorDrew || drew;
-			}
-			if (drawCeiling)
-			{
-				const bool ceilingDrew = AppendWorldFlatPolygon(vertices, count, planeSector, textureSector, sector_t::ceiling, points, pointCount, *ceilingTile, baseLight * 0.80f, useEarClipping);
-				if (!ceilingDrew)
-				{
-					++WorldDrawFlatBuildSkipCount;
-				}
-				drew = ceilingDrew || drew;
-			}
-			if (!drew && !drawFloor && !drawCeiling)
+			const float lightScale = plane == sector_t::ceiling ? 0.80f : 1.0f;
+			const bool drew = AppendWorldFlatPolygon(vertices, count, planeSector, textureSector, plane, points, pointCount, *tile, baseLight * lightScale, useEarClipping);
+			if (!drew)
 			{
 				++WorldDrawFlatBuildSkipCount;
 			}
+			return drew;
+		}
+
+		bool AppendWorldFlatSubsector(SceneProbeVertex *vertices, unsigned int &count, const subsector_t *subsector)
+		{
+			sector_t *planeSector = subsector != NULL ? subsector->sector : NULL;
+			sector_t *textureSector = subsector != NULL && subsector->render_sector != NULL ? subsector->render_sector : planeSector;
+			bool drew = false;
+			drew = AppendWorldFlatSubsectorPlane(vertices, count, subsector, planeSector, textureSector, sector_t::floor) || drew;
+			drew = AppendWorldFlatSubsectorPlane(vertices, count, subsector, planeSector, textureSector, sector_t::ceiling) || drew;
 			return drew;
 		}
 
@@ -3536,6 +3525,83 @@ namespace
 					continue;
 				}
 				AppendWorldFlatSubsectorForDraw(vertices, count, subsector, flats);
+			}
+		}
+
+		bool AppendWorldFlatSectorSubsectors(SceneProbeVertex *vertices, unsigned int &count,
+			sector_t *sector, int plane, unsigned int &flats)
+		{
+			if (sector == NULL || sector->subsectors == NULL || sector->subsectorcount <= 0)
+			{
+				return false;
+			}
+			if (flats >= WorldDrawMaxFlats)
+			{
+				++WorldDrawFlatBudgetSkipCount;
+				return false;
+			}
+
+			const WorldAtlasTile *tile = vk_debug_flat_colors ? NULL : GetWorldPlaneTile(sector, plane);
+			if (!vk_debug_flat_colors && tile == NULL)
+			{
+				++WorldDrawFlatTextureSkipCount;
+				return false;
+			}
+
+			bool drewAny = false;
+			for (int i = 0; i < sector->subsectorcount && flats < WorldDrawMaxFlats; ++i)
+			{
+				const subsector_t *subsector = sector->subsectors[i];
+				if (subsector == NULL || subsector->numlines > WorldDrawFlatMaxSegs)
+				{
+					if (subsector != NULL && subsector->numlines > WorldDrawFlatMaxSegs)
+					{
+						++WorldDrawFlatTooLargeSkipCount;
+					}
+					continue;
+				}
+
+				const bool drew = AppendWorldFlatSubsectorPlane(vertices, count, subsector, sector, sector, plane);
+				if (drew)
+				{
+					++flats;
+					++WorldDrawFlatCount;
+					drewAny = true;
+				}
+			}
+			return drewAny;
+		}
+
+		void AppendWorldFlatSectorScan(SceneProbeVertex *vertices, unsigned int &count, unsigned int &flats)
+		{
+			if (sectors == NULL || numsectors <= 0)
+			{
+				AppendWorldFlatFallbackScan(vertices, count, flats);
+				return;
+			}
+
+			const double camX = FIXED2FLOAT(viewx);
+			const double camY = FIXED2FLOAT(viewy);
+			const double camZ = FIXED2FLOAT(viewz);
+			for (int i = 0; i < numsectors && flats < WorldDrawMaxFlats; ++i)
+			{
+				sector_t *sector = &sectors[i];
+				if (sector->subsectors == NULL || sector->subsectorcount <= 0)
+				{
+					continue;
+				}
+				if (sector->GetSecPlane(sector_t::floor).ZatPoint(camX, camY) <= camZ)
+				{
+					AppendWorldFlatSectorSubsectors(vertices, count, sector, sector_t::floor, flats);
+				}
+				if (flats >= WorldDrawMaxFlats)
+				{
+					break;
+				}
+				if (sector->GetSecPlane(sector_t::ceiling).ZatPoint(camX, camY) >= camZ)
+				{
+					AppendWorldFlatSectorSubsectors(vertices, count, sector, sector_t::ceiling, flats);
+				}
 			}
 		}
 
@@ -3679,14 +3745,7 @@ namespace
 			if (subsectors != NULL && numsubsectors > 0)
 			{
 				unsigned int flats = 0;
-				if (nodes != NULL && numnodes > 0)
-				{
-					AppendWorldFlatBspNode(vertices, count, nodes + numnodes - 1, 0, flats);
-				}
-				else
-				{
-					AppendWorldFlatFallbackScan(vertices, count, flats);
-				}
+				AppendWorldFlatSectorScan(vertices, count, flats);
 			}
 			WorldFlatDrawCount = count - WorldFlatFirstVertex;
 

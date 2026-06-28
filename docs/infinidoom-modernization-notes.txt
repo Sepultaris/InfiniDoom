@@ -137,6 +137,11 @@ Current Vulkan direction:
   The temporary shared world atlas has been expanded to 256 slots and reports
   tile occupancy through `stat renderer`; this keeps atlas pressure visible
   while floor/ceiling gaps are separated from texture upload failures.
+  Floor and ceiling submission now has a sector-based checkpoint path: sectors
+  are tested against the viewer, then their owned subsector polygons are
+  submitted for the matching plane. This mirrors the established OpenGL flat
+  batching model more closely than drawing each BSP leaf as an independent
+  floor/ceiling pair.
 - `vk_hide_software_frame` no longer hides the software frame while menus are
   active or when no Vulkan world draw was produced, so the title/main menus
   remain navigable during isolation-mode testing.

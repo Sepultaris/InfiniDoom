@@ -1,5 +1,14 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.63 - 2026-06-28
+
+- Changed temporary Vulkan floor and ceiling submission from BSP-leaf flat
+  emission to a sector-based pass that draws each visible sector plane through
+  its sector-owned subsector list, matching the shape of the established
+  OpenGL flat batching path more closely.
+- Kept the existing BSP wall submission path unchanged so this checkpoint
+  isolates flat coverage from wall rendering.
+
 ## 3.3-alpha-vdoom.62 - 2026-06-28
 
 - Expanded the temporary Vulkan world texture atlas from 64 to 256 slots so
