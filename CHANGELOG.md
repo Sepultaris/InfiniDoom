@@ -1,5 +1,13 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.51 - 2026-06-28
+
+- Moved temporary Vulkan flat rendering to a dedicated `VK_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN`
+  pipeline with one draw range per submitted floor or ceiling plane, matching
+  the established OpenGL/UZDoom flat submission model much more directly.
+- Split GPU world submission so flats draw through the fan pipeline and wall
+  sections continue to draw through the existing triangle-list texture pipeline.
+
 ## 3.3-alpha-vdoom.50 - 2026-06-28
 
 - Kept the temporary Vulkan flat path on the UZDoom/OpenGL-style triangle fan
