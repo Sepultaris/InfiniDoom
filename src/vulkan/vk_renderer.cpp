@@ -41,6 +41,7 @@
 #include "r_sky.h"
 #include "r_state.h"
 #include "textures/textures.h"
+#include "gl/scene/gl_clipper.h"
 #include "vulkan/vk_palette_present_shaders.h"
 #ifdef _WIN32
 #include "win32/i_system.h"
@@ -2952,6 +2953,73 @@ namespace
 			return drew;
 		}
 
+		bool WorldSegBlocksClipper(const seg_t *seg, sector_t *currentSector) const
+		{
+			if (seg == NULL || seg->sidedef == NULL)
+			{
+				return false;
+			}
+			if (seg->backsector == NULL)
+			{
+				return true;
+			}
+			if (seg->sidedef->Flags & WALLF_POLYOBJ)
+			{
+				return false;
+			}
+			if (currentSector != NULL && currentSector->sectornum == seg->backsector->sectornum)
+			{
+				FTexture *tex = TexMan(seg->sidedef->GetTexture(side_t::mid));
+				return tex != NULL && tex->UseType != FTexture::TEX_Null;
+			}
+
+			const double frontFloor1 = FIXED2FLOAT(seg->frontsector->floorplane.ZatPoint(seg->v1));
+			const double frontFloor2 = FIXED2FLOAT(seg->frontsector->floorplane.ZatPoint(seg->v2));
+			const double frontCeiling1 = FIXED2FLOAT(seg->frontsector->ceilingplane.ZatPoint(seg->v1));
+			const double frontCeiling2 = FIXED2FLOAT(seg->frontsector->ceilingplane.ZatPoint(seg->v2));
+			const double backFloor1 = FIXED2FLOAT(seg->backsector->floorplane.ZatPoint(seg->v1));
+			const double backFloor2 = FIXED2FLOAT(seg->backsector->floorplane.ZatPoint(seg->v2));
+			const double backCeiling1 = FIXED2FLOAT(seg->backsector->ceilingplane.ZatPoint(seg->v1));
+			const double backCeiling2 = FIXED2FLOAT(seg->backsector->ceilingplane.ZatPoint(seg->v2));
+
+			return frontFloor1 >= backCeiling1 || frontFloor2 >= backCeiling2 ||
+				backFloor1 >= frontCeiling1 || backFloor2 >= frontCeiling2;
+		}
+
+		bool AppendWorldClipperSubsector(const subsector_t *subsector)
+		{
+			if (subsector == NULL || subsector->firstline == NULL || subsector->sector == NULL)
+			{
+				return false;
+			}
+			sector_t *currentSector = subsector->render_sector != NULL ? subsector->render_sector : subsector->sector;
+			bool visible = false;
+			for (unsigned int i = 0; i < subsector->numlines; ++i)
+			{
+				const seg_t *seg = &subsector->firstline[i];
+				if (seg->v1 == NULL || seg->v2 == NULL)
+				{
+					continue;
+				}
+				const angle_t startAngle = seg->v2->GetClipAngle();
+				const angle_t endAngle = seg->v1->GetClipAngle();
+				if (startAngle - endAngle < ANGLE_180)
+				{
+					continue;
+				}
+				if (!WorldClipper.SafeCheckRange(startAngle, endAngle))
+				{
+					continue;
+				}
+				visible = true;
+				if (WorldSegBlocksClipper(seg, currentSector))
+				{
+					WorldClipper.SafeAddClipRange(startAngle, endAngle);
+				}
+			}
+			return visible;
+		}
+
 		const WorldAtlasTile *GetWorldPlaneTile(sector_t *sector, int plane)
 		{
 			if (sector == NULL)
@@ -3369,6 +3437,10 @@ namespace
 				{
 					return;
 				}
+				if (!WorldClipper.CheckBox(bsp->bbox[side ^ 1]))
+				{
+					return;
+				}
 				node = bsp->children[side ^ 1];
 				if (node == NULL)
 				{
@@ -3380,7 +3452,11 @@ namespace
 					return;
 				}
 			}
-			AppendWorldFlatSubsectorForDraw(vertices, count, reinterpret_cast<const subsector_t *>(reinterpret_cast<const BYTE *>(node) - 1), flats);
+			const subsector_t *subsector = reinterpret_cast<const subsector_t *>(reinterpret_cast<const BYTE *>(node) - 1);
+			if (AppendWorldClipperSubsector(subsector))
+			{
+				AppendWorldFlatSubsectorForDraw(vertices, count, subsector, flats);
+			}
 		}
 
 		void AppendWorldFlatFallbackScan(SceneProbeVertex *vertices, unsigned int &count, unsigned int &flats)
@@ -3443,6 +3519,7 @@ namespace
 				unsigned int flats = 0;
 				if (nodes != NULL && numnodes > 0)
 				{
+					WorldClipper.Clear();
 					AppendWorldFlatBspNode(vertices, count, nodes + numnodes - 1, 0, flats);
 				}
 				else
@@ -5086,6 +5163,7 @@ namespace
 		WorldFlatFanDraw WorldFlatFanDraws[WorldDrawMaxFlatFanDraws];
 		unsigned int WorldFlatFanDrawCount;
 		unsigned int WorldFlatFanVertexCount;
+		Clipper WorldClipper;
 		unsigned int WorldDrawFlatCount;
 		unsigned int WorldDrawFlatRangeSkipCount;
 		unsigned int WorldDrawFlatTooLargeSkipCount;
