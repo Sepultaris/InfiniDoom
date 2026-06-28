@@ -255,3 +255,11 @@ temporary Vulkan vertex stream. This is a stepping stone: the geometry
 construction now resembles UZDoom's flat mesh approach, but the next renderer
 milestone is to store the cached mesh in Vulkan vertex/index buffers and issue
 indexed draw calls directly.
+
+The `.81` checkpoint adds the first real Vulkan indexed draw path for native
+world flats. vDoom now loads `vkCmdBindIndexBuffer` and `vkCmdDrawIndexed`,
+keeps a host-visible flat index buffer beside the temporary vertex buffer, and
+uses indexed flat submission when the buffer is valid. This intentionally keeps
+the current flat vertices in the temporary stream for one checkpoint so the
+submission path can be validated separately from the coming mesh-storage
+change.

@@ -1,5 +1,14 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.81 - 2026-06-28
+
+- Added Vulkan index-buffer plumbing for native world flats: vDoom now loads
+  `vkCmdBindIndexBuffer`/`vkCmdDrawIndexed`, maintains a host-visible flat
+  index buffer, and submits flat geometry through indexed draws when available.
+- The indexed path currently targets the cached flat triangles after they are
+  expanded into the temporary vertex stream; the next renderer step is moving
+  cached flat vertices and indices into dedicated Vulkan-owned mesh buffers.
+
 ## 3.3-alpha-vdoom.80 - 2026-06-28
 
 - Added the first cached Vulkan flat mesh path: subsector floor and ceiling

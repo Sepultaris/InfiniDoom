@@ -210,7 +210,9 @@ namespace
 		PFN_vkCmdBindPipeline CmdBindPipeline;
 		PFN_vkCmdBindDescriptorSets CmdBindDescriptorSets;
 		PFN_vkCmdBindVertexBuffers CmdBindVertexBuffers;
+		PFN_vkCmdBindIndexBuffer CmdBindIndexBuffer;
 		PFN_vkCmdDraw CmdDraw;
+		PFN_vkCmdDrawIndexed CmdDrawIndexed;
 		PFN_vkCmdSetViewport CmdSetViewport;
 		PFN_vkCmdSetScissor CmdSetScissor;
 		PFN_vkCmdPushConstants CmdPushConstants;
@@ -326,6 +328,7 @@ namespace
 			  ImageAvailableSemaphore(VK_NULL_HANDLE), RenderFinishedSemaphore(VK_NULL_HANDLE), RenderFence(VK_NULL_HANDLE),
 			  UploadBuffer(VK_NULL_HANDLE), UploadMemory(VK_NULL_HANDLE), UploadPtr(NULL), UploadSize(0),
 			  ProbeVertexBuffer(VK_NULL_HANDLE), ProbeVertexMemory(VK_NULL_HANDLE), ProbeVertexPtr(NULL), ProbeVertexBufferSize(0),
+			  WorldFlatIndexBuffer(VK_NULL_HANDLE), WorldFlatIndexMemory(VK_NULL_HANDLE), WorldFlatIndexPtr(NULL), WorldFlatIndexBufferSize(0), WorldFlatIndexCount(0),
 			  ProbeVertexDrawCount(0), WorldFlatFirstVertex(0), WorldFlatDrawCount(0), WorldFlatFanCount(0), WorldDrawFirstVertex(0), WorldDrawDrawCount(0), SceneProbeFirstVertex(0), SceneProbeDrawCount(0), WorldProbeFirstVertex(0), WorldProbeDrawCount(0),
 			  SourceImage(VK_NULL_HANDLE), SourceImageMemory(VK_NULL_HANDLE), SourceImageView(VK_NULL_HANDLE),
 			  PaletteImage(VK_NULL_HANDLE), PaletteImageMemory(VK_NULL_HANDLE), PaletteImageView(VK_NULL_HANDLE),
@@ -1143,7 +1146,9 @@ namespace
 			Vk.CmdBindPipeline = reinterpret_cast<PFN_vkCmdBindPipeline>(Vk.GetDeviceProcAddr(Device, "vkCmdBindPipeline"));
 			Vk.CmdBindDescriptorSets = reinterpret_cast<PFN_vkCmdBindDescriptorSets>(Vk.GetDeviceProcAddr(Device, "vkCmdBindDescriptorSets"));
 			Vk.CmdBindVertexBuffers = reinterpret_cast<PFN_vkCmdBindVertexBuffers>(Vk.GetDeviceProcAddr(Device, "vkCmdBindVertexBuffers"));
+			Vk.CmdBindIndexBuffer = reinterpret_cast<PFN_vkCmdBindIndexBuffer>(Vk.GetDeviceProcAddr(Device, "vkCmdBindIndexBuffer"));
 			Vk.CmdDraw = reinterpret_cast<PFN_vkCmdDraw>(Vk.GetDeviceProcAddr(Device, "vkCmdDraw"));
+			Vk.CmdDrawIndexed = reinterpret_cast<PFN_vkCmdDrawIndexed>(Vk.GetDeviceProcAddr(Device, "vkCmdDrawIndexed"));
 			Vk.CmdSetViewport = reinterpret_cast<PFN_vkCmdSetViewport>(Vk.GetDeviceProcAddr(Device, "vkCmdSetViewport"));
 			Vk.CmdSetScissor = reinterpret_cast<PFN_vkCmdSetScissor>(Vk.GetDeviceProcAddr(Device, "vkCmdSetScissor"));
 			Vk.CmdPushConstants = reinterpret_cast<PFN_vkCmdPushConstants>(Vk.GetDeviceProcAddr(Device, "vkCmdPushConstants"));
@@ -1213,7 +1218,9 @@ namespace
 				Vk.CmdBindPipeline != NULL &&
 				Vk.CmdBindDescriptorSets != NULL &&
 				Vk.CmdBindVertexBuffers != NULL &&
+				Vk.CmdBindIndexBuffer != NULL &&
 				Vk.CmdDraw != NULL &&
+				Vk.CmdDrawIndexed != NULL &&
 				Vk.CmdSetViewport != NULL &&
 				Vk.CmdSetScissor != NULL &&
 				Vk.CmdPushConstants != NULL;
@@ -2381,6 +2388,7 @@ namespace
 
 		void DestroyProbeVertexBuffer()
 		{
+			DestroyWorldFlatIndexBuffer();
 			if (Device == NULL)
 			{
 				ProbeVertexBuffer = VK_NULL_HANDLE;
@@ -2433,6 +2441,36 @@ namespace
 			SceneProbeDrawCount = 0;
 			WorldProbeFirstVertex = 0;
 			WorldProbeDrawCount = 0;
+		}
+
+		void DestroyWorldFlatIndexBuffer()
+		{
+			if (Device == NULL)
+			{
+				WorldFlatIndexBuffer = VK_NULL_HANDLE;
+				WorldFlatIndexMemory = VK_NULL_HANDLE;
+				WorldFlatIndexPtr = NULL;
+				WorldFlatIndexBufferSize = 0;
+				WorldFlatIndexCount = 0;
+				return;
+			}
+			if (WorldFlatIndexMemory != VK_NULL_HANDLE && WorldFlatIndexPtr != NULL && Vk.UnmapMemory != NULL)
+			{
+				Vk.UnmapMemory(Device, WorldFlatIndexMemory);
+			}
+			WorldFlatIndexPtr = NULL;
+			if (WorldFlatIndexBuffer != VK_NULL_HANDLE && Vk.DestroyBuffer != NULL)
+			{
+				Vk.DestroyBuffer(Device, WorldFlatIndexBuffer, NULL);
+			}
+			WorldFlatIndexBuffer = VK_NULL_HANDLE;
+			if (WorldFlatIndexMemory != VK_NULL_HANDLE && Vk.FreeMemory != NULL)
+			{
+				Vk.FreeMemory(Device, WorldFlatIndexMemory, NULL);
+			}
+			WorldFlatIndexMemory = VK_NULL_HANDLE;
+			WorldFlatIndexBufferSize = 0;
+			WorldFlatIndexCount = 0;
 		}
 
 		void AppendProbeVertex(SceneProbeVertex *vertices, unsigned int &count, float x, float y, float z, float r, float g, float b)
@@ -4339,6 +4377,96 @@ namespace
 				SceneProbeDrawCount = count - SceneProbeFirstVertex;
 			}
 			ProbeVertexDrawCount = count;
+			UpdateWorldFlatIndexBuffer();
+		}
+
+		bool EnsureWorldFlatIndexBuffer(unsigned int indexCount)
+		{
+			if (indexCount == 0)
+			{
+				WorldFlatIndexCount = 0;
+				return true;
+			}
+			const VkDeviceSize needed = sizeof(unsigned int) * (VkDeviceSize)indexCount;
+			if (WorldFlatIndexBuffer != VK_NULL_HANDLE && WorldFlatIndexPtr != NULL && WorldFlatIndexBufferSize >= needed)
+			{
+				return true;
+			}
+
+			DestroyWorldFlatIndexBuffer();
+
+			VkBufferCreateInfo bufferInfo;
+			memset(&bufferInfo, 0, sizeof(bufferInfo));
+			bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+			bufferInfo.size = needed;
+			bufferInfo.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+			bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+			VkResult result = Vk.CreateBuffer(Device, &bufferInfo, NULL, &WorldFlatIndexBuffer);
+			if (result != VK_SUCCESS)
+			{
+				Printf(TEXTCOLOR_RED "Vulkan: flat index vkCreateBuffer failed (%d).\n", (int)result);
+				return false;
+			}
+
+			VkMemoryRequirements requirements;
+			Vk.GetBufferMemoryRequirements(Device, WorldFlatIndexBuffer, &requirements);
+			unsigned int memoryType = FindMemoryType(requirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+			if (memoryType == ~0u)
+			{
+				Printf(TEXTCOLOR_RED "Vulkan: no host-visible flat index memory type found.\n");
+				DestroyWorldFlatIndexBuffer();
+				return false;
+			}
+
+			VkMemoryAllocateInfo allocInfo;
+			memset(&allocInfo, 0, sizeof(allocInfo));
+			allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+			allocInfo.allocationSize = requirements.size;
+			allocInfo.memoryTypeIndex = memoryType;
+
+			result = Vk.AllocateMemory(Device, &allocInfo, NULL, &WorldFlatIndexMemory);
+			if (result != VK_SUCCESS)
+			{
+				Printf(TEXTCOLOR_RED "Vulkan: flat index vkAllocateMemory failed (%d).\n", (int)result);
+				DestroyWorldFlatIndexBuffer();
+				return false;
+			}
+			result = Vk.BindBufferMemory(Device, WorldFlatIndexBuffer, WorldFlatIndexMemory, 0);
+			if (result != VK_SUCCESS)
+			{
+				Printf(TEXTCOLOR_RED "Vulkan: flat index vkBindBufferMemory failed (%d).\n", (int)result);
+				DestroyWorldFlatIndexBuffer();
+				return false;
+			}
+			result = Vk.MapMemory(Device, WorldFlatIndexMemory, 0, needed, 0, &WorldFlatIndexPtr);
+			if (result != VK_SUCCESS)
+			{
+				Printf(TEXTCOLOR_RED "Vulkan: flat index vkMapMemory failed (%d).\n", (int)result);
+				DestroyWorldFlatIndexBuffer();
+				return false;
+			}
+			WorldFlatIndexBufferSize = needed;
+			return true;
+		}
+
+		void UpdateWorldFlatIndexBuffer()
+		{
+			WorldFlatIndexCount = 0;
+			if (WorldFlatDrawCount == 0)
+			{
+				return;
+			}
+			if (!EnsureWorldFlatIndexBuffer(WorldFlatDrawCount) || WorldFlatIndexPtr == NULL)
+			{
+				return;
+			}
+			unsigned int *indices = static_cast<unsigned int *>(WorldFlatIndexPtr);
+			for (unsigned int i = 0; i < WorldFlatDrawCount; ++i)
+			{
+				indices[i] = i;
+			}
+			WorldFlatIndexCount = WorldFlatDrawCount;
 		}
 
 		bool EnsureProbeVertexBuffer()
@@ -5463,7 +5591,15 @@ namespace
 					Vk.CmdBindDescriptorSets(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, WallTexturePipelineLayout, 0, 1, &WallTextureDescriptorSet, 0, NULL);
 					Vk.CmdPushConstants(CommandBuffer, WallTexturePipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(probeConstants), &probeConstants);
 					Vk.CmdBindVertexBuffers(CommandBuffer, 0, 1, &ProbeVertexBuffer, vertexOffsets);
-					Vk.CmdDraw(CommandBuffer, WorldFlatDrawCount, 1, WorldFlatFirstVertex, 0);
+					if (WorldFlatIndexBuffer != VK_NULL_HANDLE && WorldFlatIndexCount == WorldFlatDrawCount)
+					{
+						Vk.CmdBindIndexBuffer(CommandBuffer, WorldFlatIndexBuffer, 0, VK_INDEX_TYPE_UINT32);
+						Vk.CmdDrawIndexed(CommandBuffer, WorldFlatIndexCount, 1, 0, (int)WorldFlatFirstVertex, 0);
+					}
+					else
+					{
+						Vk.CmdDraw(CommandBuffer, WorldFlatDrawCount, 1, WorldFlatFirstVertex, 0);
+					}
 				}
 				if (vk_draw_world && WallTexturePipeline != VK_NULL_HANDLE && WallTextureDescriptorSet != VK_NULL_HANDLE && WorldDrawDrawCount > 0)
 				{
@@ -5807,6 +5943,11 @@ namespace
 		VkDeviceMemory ProbeVertexMemory;
 		void *ProbeVertexPtr;
 		VkDeviceSize ProbeVertexBufferSize;
+		VkBuffer WorldFlatIndexBuffer;
+		VkDeviceMemory WorldFlatIndexMemory;
+		void *WorldFlatIndexPtr;
+		VkDeviceSize WorldFlatIndexBufferSize;
+		unsigned int WorldFlatIndexCount;
 		unsigned int ProbeVertexDrawCount;
 		unsigned int WorldFlatFirstVertex;
 		unsigned int WorldFlatDrawCount;
