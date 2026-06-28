@@ -2974,14 +2974,14 @@ namespace
 				tile, light);
 		}
 
-		void AppendWorldFlatTriangle(SceneProbeVertex *vertices, unsigned int &count,
+		bool AppendWorldFlatTriangle(SceneProbeVertex *vertices, unsigned int &count,
 			sector_t *sector, int plane,
 			double ax, double ay, double bx, double by, double cx, double cy,
 			const WorldAtlasTile &tile, float light)
 		{
 			if (count + 3 > ProbeVertexMaxCount)
 			{
-				return;
+				return false;
 			}
 			if (plane == sector_t::ceiling)
 			{
@@ -2995,6 +2995,7 @@ namespace
 				AppendFlatPoint(vertices, count, sector, plane, bx, by, tile, light);
 				AppendFlatPoint(vertices, count, sector, plane, cx, cy, tile, light);
 			}
+			return true;
 		}
 
 		struct WorldFlatPoint
@@ -3023,6 +3024,36 @@ namespace
 				area += a.X * b.Y - b.X * a.Y;
 			}
 			return area;
+		}
+
+		bool WorldFlatIsConvex(const WorldFlatPoint *points, unsigned int count)
+		{
+			if (count < 4)
+			{
+				return true;
+			}
+			int sign = 0;
+			for (unsigned int i = 0; i < count; ++i)
+			{
+				const WorldFlatPoint &a = points[i];
+				const WorldFlatPoint &b = points[(i + 1) % count];
+				const WorldFlatPoint &c = points[(i + 2) % count];
+				const double cross = WorldFlatCross(a, b, c);
+				if (fabs(cross) <= 0.001)
+				{
+					continue;
+				}
+				const int currentSign = cross > 0.0 ? 1 : -1;
+				if (sign == 0)
+				{
+					sign = currentSign;
+				}
+				else if (sign != currentSign)
+				{
+					return false;
+				}
+			}
+			return true;
 		}
 
 		bool WorldFlatPointInTriangle(const WorldFlatPoint &p, const WorldFlatPoint &a, const WorldFlatPoint &b, const WorldFlatPoint &c)
@@ -3059,12 +3090,11 @@ namespace
 			bool drew = false;
 			for (unsigned int i = 2; i < pointCount; ++i)
 			{
-				AppendWorldFlatTriangle(vertices, count, sector, plane,
+				drew = AppendWorldFlatTriangle(vertices, count, sector, plane,
 					points[0].X, points[0].Y,
 					points[i - 1].X, points[i - 1].Y,
 					points[i].X, points[i].Y,
-					tile, light);
-				drew = true;
+					tile, light) || drew;
 			}
 			return drew;
 		}
@@ -3135,11 +3165,15 @@ namespace
 						continue;
 					}
 
-					AppendWorldFlatTriangle(vertices, count, sector, plane,
+					if (!AppendWorldFlatTriangle(vertices, count, sector, plane,
 						prev.X, prev.Y,
 						curr.X, curr.Y,
 						next.X, next.Y,
-						tile, light);
+						tile, light))
+					{
+						count = startCount;
+						return false;
+					}
 					drew = true;
 					for (unsigned int j = i; j + 1 < remaining; ++j)
 					{
@@ -3190,7 +3224,7 @@ namespace
 			}
 
 			const float baseLight = sector->lightlevel <= 0 ? 0.20f : (sector->lightlevel / 255.0f);
-			const bool useEarClipping = false;
+			const bool useEarClipping = !WorldFlatIsConvex(points, pointCount);
 			const double camX = FIXED2FLOAT(viewx);
 			const double camY = FIXED2FLOAT(viewy);
 			const double camZ = FIXED2FLOAT(viewz);

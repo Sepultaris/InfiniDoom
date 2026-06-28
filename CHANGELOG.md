@@ -1,5 +1,14 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.50 - 2026-06-28
+
+- Kept the temporary Vulkan flat path on the UZDoom/OpenGL-style triangle fan
+  for convex subsectors, but now detects non-convex subsector polygons and uses
+  the local triangulator only for those fallback cases.
+- Made flat triangle append failures propagate back to the flat draw accounting
+  instead of counting a flat as drawn when the shared Vulkan vertex budget
+  prevented one of its triangles from being emitted.
+
 ## 3.3-alpha-vdoom.49 - 2026-06-28
 
 - Changed the temporary Vulkan flat builder to preserve each subsector's

@@ -112,7 +112,10 @@ Current Vulkan direction:
   matching the model used by the established OpenGL path and UZDoom's hardware
   vertex builder. Normal subsectors draw as triangle fans, and the temporary
   Vulkan builder now preserves that subsector vertex stream exactly instead of
-  removing duplicate vertices before fan emission.
+  removing duplicate vertices before fan emission. If a subsector polygon is
+  detected as non-convex, the temporary path uses its local triangulator as a
+  fallback rather than forcing the normal triangle-fan path onto non-fan-shaped
+  data.
   The pass intentionally skips sky flats and does not yet use the software
   renderer's full visplane/opening rules, fake flats, portals, or complete
   plane transforms; it is a visibility milestone for GPU-owned planes. The
