@@ -1,5 +1,14 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.79 - 2026-06-28
+
+- Reintroduced near-plane clipping for temporary Vulkan flat triangles so
+  floor/ceiling geometry crossing the camera does not leave undrawn Hall-effect
+  wedges in the native world pass.
+- Restored UZDoom-style flat triangulation policy for ordinary subsectors:
+  convex flats use the subsector fan order, with ear clipping reserved for
+  non-convex flat point loops.
+
 ## 3.3-alpha-vdoom.78 - 2026-06-28
 
 - Changed the temporary Vulkan world pass to submit floor and ceiling flats

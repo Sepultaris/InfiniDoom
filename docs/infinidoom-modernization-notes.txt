@@ -240,3 +240,9 @@ The `.78` Vulkan flat diagnostic changes the active world draw order to submit
 floor and ceiling flats before walls. This preserves `.77` triangle-list flat
 geometry and `.76` masked-texel discard while testing whether early wall depth
 writes are contributing to the remaining black floor/ceiling wedges.
+
+The `.79` flat path treats the black/Hall-effect areas as missing coverage
+rather than missing flat textures. Temporary Vulkan flat triangles are clipped
+against the camera near plane again, and ordinary convex subsectors return to
+the UZDoom/OpenGL fan triangulation policy. Ear clipping remains available only
+for non-convex flat point loops.
