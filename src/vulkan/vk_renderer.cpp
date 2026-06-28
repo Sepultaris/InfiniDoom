@@ -264,8 +264,8 @@ namespace
 		WorldDrawTextureSectionsPerWall = 2,
 		WorldDrawTextureVerticesPerSection = WorldDrawTextureColumns * WorldDrawTextureRows * 6,
 		WorldDrawTextureVerticesPerWall = WorldDrawTextureSectionsPerWall * WorldDrawTextureVerticesPerSection,
-		WorldDrawMaxFlats = 192,
-		WorldDrawFlatMaxSegs = 24,
+		WorldDrawMaxFlats = 256,
+		WorldDrawFlatMaxSegs = 64,
 		WorldDrawFlatVerticesPerSubsector = WorldDrawFlatMaxSegs * 3 * 2,
 		ProbeVertexMaxCount = SceneProbeVertexCount + WorldProbeMaxWalls * 6 + WorldDrawMaxWalls * WorldDrawTextureVerticesPerWall + WorldDrawMaxFlats * WorldDrawFlatVerticesPerSubsector,
 		WorldAtlasTileSize = 128,
@@ -2911,6 +2911,168 @@ namespace
 			}
 		}
 
+		struct WorldFlatPoint
+		{
+			double X;
+			double Y;
+		};
+
+		bool WorldFlatSamePoint(const WorldFlatPoint &a, const WorldFlatPoint &b)
+		{
+			return fabs(a.X - b.X) < 0.001 && fabs(a.Y - b.Y) < 0.001;
+		}
+
+		double WorldFlatCross(const WorldFlatPoint &a, const WorldFlatPoint &b, const WorldFlatPoint &c)
+		{
+			return (b.X - a.X) * (c.Y - a.Y) - (b.Y - a.Y) * (c.X - a.X);
+		}
+
+		double WorldFlatArea(const WorldFlatPoint *points, unsigned int count)
+		{
+			double area = 0.0;
+			for (unsigned int i = 0; i < count; ++i)
+			{
+				const WorldFlatPoint &a = points[i];
+				const WorldFlatPoint &b = points[(i + 1) % count];
+				area += a.X * b.Y - b.X * a.Y;
+			}
+			return area;
+		}
+
+		bool WorldFlatPointInTriangle(const WorldFlatPoint &p, const WorldFlatPoint &a, const WorldFlatPoint &b, const WorldFlatPoint &c)
+		{
+			const double c1 = WorldFlatCross(a, b, p);
+			const double c2 = WorldFlatCross(b, c, p);
+			const double c3 = WorldFlatCross(c, a, p);
+			const bool hasNegative = c1 < -0.001 || c2 < -0.001 || c3 < -0.001;
+			const bool hasPositive = c1 > 0.001 || c2 > 0.001 || c3 > 0.001;
+			return !(hasNegative && hasPositive);
+		}
+
+		unsigned int BuildWorldFlatPolygon(const subsector_t *subsector, WorldFlatPoint *points)
+		{
+			unsigned int pointCount = 0;
+			for (unsigned int i = 0; i < subsector->numlines && pointCount < WorldDrawFlatMaxSegs; ++i)
+			{
+				const vertex_t *vertex = subsector->firstline[i].v1;
+				if (vertex == NULL)
+				{
+					continue;
+				}
+				WorldFlatPoint point = { FIXED2FLOAT(vertex->x), FIXED2FLOAT(vertex->y) };
+				if (pointCount > 0 && WorldFlatSamePoint(points[pointCount - 1], point))
+				{
+					continue;
+				}
+				points[pointCount++] = point;
+			}
+			if (pointCount > 2 && WorldFlatSamePoint(points[0], points[pointCount - 1]))
+			{
+				--pointCount;
+			}
+			return pointCount;
+		}
+
+		bool AppendWorldFlatPolygonFan(SceneProbeVertex *vertices, unsigned int &count,
+			sector_t *sector, int plane, const WorldFlatPoint *points, unsigned int pointCount,
+			const WorldAtlasTile &tile, float light)
+		{
+			bool drew = false;
+			for (unsigned int i = 2; i < pointCount; ++i)
+			{
+				AppendWorldFlatTriangle(vertices, count, sector, plane,
+					points[0].X, points[0].Y,
+					points[i - 1].X, points[i - 1].Y,
+					points[i].X, points[i].Y,
+					tile, light);
+				drew = true;
+			}
+			return drew;
+		}
+
+		bool AppendWorldFlatPolygon(SceneProbeVertex *vertices, unsigned int &count,
+			sector_t *sector, int plane, const WorldFlatPoint *points, unsigned int pointCount,
+			const WorldAtlasTile &tile, float light)
+		{
+			if (pointCount < 3 || count + (pointCount - 2) * 3 > ProbeVertexMaxCount)
+			{
+				return false;
+			}
+
+			const double area = WorldFlatArea(points, pointCount);
+			if (fabs(area) < 0.001)
+			{
+				return false;
+			}
+
+			unsigned int indices[WorldDrawFlatMaxSegs];
+			for (unsigned int i = 0; i < pointCount; ++i)
+			{
+				indices[i] = i;
+			}
+
+			bool drew = false;
+			unsigned int remaining = pointCount;
+			const bool counterClockwise = area > 0.0;
+			unsigned int guard = 0;
+			while (remaining > 2 && guard++ < pointCount * pointCount)
+			{
+				bool clipped = false;
+				for (unsigned int i = 0; i < remaining; ++i)
+				{
+					const unsigned int prevIndex = indices[(i + remaining - 1) % remaining];
+					const unsigned int currIndex = indices[i];
+					const unsigned int nextIndex = indices[(i + 1) % remaining];
+					const WorldFlatPoint &prev = points[prevIndex];
+					const WorldFlatPoint &curr = points[currIndex];
+					const WorldFlatPoint &next = points[nextIndex];
+					const double cross = WorldFlatCross(prev, curr, next);
+					if ((counterClockwise && cross <= 0.001) || (!counterClockwise && cross >= -0.001))
+					{
+						continue;
+					}
+
+					bool containsPoint = false;
+					for (unsigned int j = 0; j < remaining; ++j)
+					{
+						const unsigned int testIndex = indices[j];
+						if (testIndex == prevIndex || testIndex == currIndex || testIndex == nextIndex)
+						{
+							continue;
+						}
+						if (WorldFlatPointInTriangle(points[testIndex], prev, curr, next))
+						{
+							containsPoint = true;
+							break;
+						}
+					}
+					if (containsPoint)
+					{
+						continue;
+					}
+
+					AppendWorldFlatTriangle(vertices, count, sector, plane,
+						prev.X, prev.Y,
+						curr.X, curr.Y,
+						next.X, next.Y,
+						tile, light);
+					drew = true;
+					for (unsigned int j = i; j + 1 < remaining; ++j)
+					{
+						indices[j] = indices[j + 1];
+					}
+					--remaining;
+					clipped = true;
+					break;
+				}
+				if (!clipped)
+				{
+					return drew || AppendWorldFlatPolygonFan(vertices, count, sector, plane, points, pointCount, tile, light);
+				}
+			}
+			return drew;
+		}
+
 		bool AppendWorldFlatSubsector(SceneProbeVertex *vertices, unsigned int &count, const subsector_t *subsector)
 		{
 			if (subsector == NULL || subsector->firstline == NULL || subsector->numlines < 3 || subsector->numlines > WorldDrawFlatMaxSegs)
@@ -2935,63 +3097,22 @@ namespace
 				return false;
 			}
 
-			const float baseLight = sector->lightlevel <= 0 ? 0.20f : (sector->lightlevel / 255.0f);
-			double centerX = 0.0;
-			double centerY = 0.0;
-			unsigned int centerPoints = 0;
-			for (unsigned int i = 0; i < subsector->numlines; ++i)
-			{
-				const vertex_t *v1 = subsector->firstline[i].v1;
-				const vertex_t *v2 = subsector->firstline[i].v2;
-				if (v1 != NULL)
-				{
-					centerX += FIXED2FLOAT(v1->x);
-					centerY += FIXED2FLOAT(v1->y);
-					++centerPoints;
-				}
-				if (v2 != NULL)
-				{
-					centerX += FIXED2FLOAT(v2->x);
-					centerY += FIXED2FLOAT(v2->y);
-					++centerPoints;
-				}
-			}
-			if (centerPoints == 0)
+			WorldFlatPoint points[WorldDrawFlatMaxSegs];
+			const unsigned int pointCount = BuildWorldFlatPolygon(subsector, points);
+			if (pointCount < 3)
 			{
 				return false;
 			}
-			centerX /= (double)centerPoints;
-			centerY /= (double)centerPoints;
 
+			const float baseLight = sector->lightlevel <= 0 ? 0.20f : (sector->lightlevel / 255.0f);
 			bool drew = false;
-			for (unsigned int i = 0; i < subsector->numlines; ++i)
+			if (floorTile != NULL)
 			{
-				const vertex_t *v1 = subsector->firstline[i].v1;
-				const vertex_t *v2 = subsector->firstline[i].v2;
-				if (v1 == NULL || v2 == NULL)
-				{
-					continue;
-				}
-				const double x1 = FIXED2FLOAT(v1->x);
-				const double y1 = FIXED2FLOAT(v1->y);
-				const double x2 = FIXED2FLOAT(v2->x);
-				const double y2 = FIXED2FLOAT(v2->y);
-				if (fabs(x2 - x1) + fabs(y2 - y1) < 0.001)
-				{
-					continue;
-				}
-				if (floorTile != NULL)
-				{
-					AppendWorldFlatTriangle(vertices, count, sector, sector_t::floor,
-						centerX, centerY, x1, y1, x2, y2, *floorTile, baseLight);
-					drew = true;
-				}
-				if (ceilingTile != NULL)
-				{
-					AppendWorldFlatTriangle(vertices, count, sector, sector_t::ceiling,
-						centerX, centerY, x1, y1, x2, y2, *ceilingTile, baseLight * 0.80f);
-					drew = true;
-				}
+				drew = AppendWorldFlatPolygon(vertices, count, sector, sector_t::floor, points, pointCount, *floorTile, baseLight) || drew;
+			}
+			if (ceilingTile != NULL)
+			{
+				drew = AppendWorldFlatPolygon(vertices, count, sector, sector_t::ceiling, points, pointCount, *ceilingTile, baseLight * 0.80f) || drew;
 			}
 			return drew;
 		}

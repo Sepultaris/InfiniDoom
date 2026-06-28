@@ -1,5 +1,16 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.41 - 2026-06-27
+
+- Reworked the Vulkan `vk_draw_world` flat pass to follow the established
+  hardware renderer model: ordered subsector vertices are triangulated into
+  floor and ceiling polygons instead of drawing center-to-seg wedges.
+- Added a small ear-clipping fallback for non-convex subsector polygons,
+  mirroring the UZDoom/GZDoom approach used for rare hole subsectors without
+  importing their renderer code.
+- Increased the temporary Vulkan flat debug budget so nearby floors and
+  ceilings are less likely to disappear while the GPU-owned world path grows.
+
 ## 3.3-alpha-vdoom.40 - 2026-06-27
 
 - Fixed `vk_hide_software_frame` hiding the menu when no Vulkan world is
