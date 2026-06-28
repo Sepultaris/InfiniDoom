@@ -42,6 +42,7 @@ struct FVulkanBackendStats
 	float PresentAspect;
 	unsigned int WorldDrawVertexCount;
 	unsigned int WorldDrawFlatCount;
+	unsigned int WorldDrawFlatFanCount;
 	unsigned int WorldDrawFlatRangeSkipCount;
 	unsigned int WorldDrawFlatTooLargeSkipCount;
 	unsigned int WorldDrawFlatBudgetSkipCount;

@@ -1,5 +1,12 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.74 - 2026-06-28
+
+- Added a dedicated Vulkan flat texture pipeline using `VK_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN`.
+- Changed active Vulkan floor/ceiling submission to record one GPU triangle fan
+  per subsector plane, matching the established GL flat draw primitive more
+  closely than CPU-expanded triangle lists.
+
 ## 3.3-alpha-vdoom.73 - 2026-06-28
 
 - Changed the temporary Vulkan world draw order to submit textured walls before
