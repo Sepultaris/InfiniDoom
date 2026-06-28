@@ -3457,7 +3457,8 @@ namespace
 				++WorldDrawFlatDegenerateSkipCount;
 				return false;
 			}
-			if (count + pointCount > ProbeVertexMaxCount || WorldFlatFanCount >= WorldDrawMaxFlatFans)
+			const unsigned int maxNeeded = (pointCount - 2) * 3;
+			if (count + maxNeeded > ProbeVertexMaxCount)
 			{
 				++WorldDrawFlatBudgetSkipCount;
 				return false;
@@ -3465,7 +3466,7 @@ namespace
 
 			const float baseLight = textureSector->lightlevel <= 0 ? 0.20f : (textureSector->lightlevel / 255.0f);
 			const float lightScale = plane == sector_t::ceiling ? 0.80f : 1.0f;
-			const bool drew = AppendWorldFlatGpuFan(vertices, count, planeSector, textureSector, plane, points, pointCount, *tile, baseLight * lightScale);
+			const bool drew = AppendWorldFlatPolygon(vertices, count, planeSector, textureSector, plane, points, pointCount, *tile, baseLight * lightScale, true);
 			if (!drew)
 			{
 				++WorldDrawFlatBuildSkipCount;
@@ -5072,16 +5073,13 @@ namespace
 					Vk.CmdBindVertexBuffers(CommandBuffer, 0, 1, &ProbeVertexBuffer, vertexOffsets);
 					Vk.CmdDraw(CommandBuffer, WorldDrawDrawCount, 1, WorldDrawFirstVertex, 0);
 				}
-				if (vk_draw_world && FlatTexturePipeline != VK_NULL_HANDLE && WallTextureDescriptorSet != VK_NULL_HANDLE && WorldFlatFanCount > 0)
+				if (vk_draw_world && WallTexturePipeline != VK_NULL_HANDLE && WallTextureDescriptorSet != VK_NULL_HANDLE && WorldFlatDrawCount > 0)
 				{
-					Vk.CmdBindPipeline(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, FlatTexturePipeline);
+					Vk.CmdBindPipeline(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, WallTexturePipeline);
 					Vk.CmdBindDescriptorSets(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, WallTexturePipelineLayout, 0, 1, &WallTextureDescriptorSet, 0, NULL);
 					Vk.CmdPushConstants(CommandBuffer, WallTexturePipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(probeConstants), &probeConstants);
 					Vk.CmdBindVertexBuffers(CommandBuffer, 0, 1, &ProbeVertexBuffer, vertexOffsets);
-					for (unsigned int i = 0; i < WorldFlatFanCount; ++i)
-					{
-						Vk.CmdDraw(CommandBuffer, WorldFlatFans[i].VertexCount, 1, WorldFlatFans[i].FirstVertex, 0);
-					}
+					Vk.CmdDraw(CommandBuffer, WorldFlatDrawCount, 1, WorldFlatFirstVertex, 0);
 				}
 				if (vk_world_probe && WorldProbePipeline != VK_NULL_HANDLE && WorldProbeDrawCount > 0)
 				{

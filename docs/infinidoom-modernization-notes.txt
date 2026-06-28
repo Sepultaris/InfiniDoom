@@ -193,6 +193,10 @@ more convincing issue was in textured wall presentation: the world fragment
 shader sampled texture alpha but did not discard masked texels, so transparent
 wall pixels could draw as opaque black and write depth over flats. The `.76`
 shader now discards low-alpha texels before writing color/depth.
+The `.77` flat path returns active submission to triangle lists and enables
+ear-clipping triangulation for subsector polygons. This keeps the view-local BSP
+collection and masked-texel discard while removing the assumption that every
+subsector can be rendered correctly as a GPU triangle fan.
 The ordered-loop checkpoint improved coverage but still left wedges, so the
 next pass accepts reversed seg links during loop reconstruction and uses
 ear-clipping for ordered non-convex loops before falling back to the center fan.

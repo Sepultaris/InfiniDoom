@@ -1,5 +1,12 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.77 - 2026-06-28
+
+- Changed active Vulkan floor/ceiling submission back to triangle-list drawing
+  and enabled ear-clipping triangulation for subsector flat polygons.
+- Keeps the `.76` masked-texel discard and view-local BSP collection while
+  removing the assumption that each subsector can be safely drawn as a fan.
+
 ## 3.3-alpha-vdoom.76 - 2026-06-28
 
 - Added alpha-test discard to the Vulkan world texture fragment shader so
