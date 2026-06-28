@@ -4093,6 +4093,105 @@ namespace
 			return drewAny;
 		}
 
+		struct WorldFlatHackKey
+		{
+			const subsector_t *Subsector;
+			sector_t *PlaneSector;
+			int Plane;
+		};
+
+		bool WorldSideTextureMissing(side_t *side, int texturePart)
+		{
+			if (side == NULL)
+			{
+				return true;
+			}
+			const FTextureID textureId = side->GetTexture(texturePart);
+			FTexture *texture = textureId.isValid() ? TexMan[textureId] : NULL;
+			return texture == NULL || texture->UseType == FTexture::TEX_Null;
+		}
+
+		bool AppendWorldFlatOtherPlane(SceneProbeVertex *vertices, unsigned int &count,
+			const subsector_t *subsector, sector_t *planeSector, int plane,
+			WorldFlatHackKey *keys, unsigned int &keyCount, unsigned int &flats)
+		{
+			if (subsector == NULL || planeSector == NULL || flats >= WorldDrawMaxFlats)
+			{
+				return false;
+			}
+			for (unsigned int i = 0; i < keyCount; ++i)
+			{
+				if (keys[i].Subsector == subsector && keys[i].PlaneSector == planeSector && keys[i].Plane == plane)
+				{
+					return false;
+				}
+			}
+			if (keyCount < WorldDrawMaxFlats)
+			{
+				keys[keyCount].Subsector = subsector;
+				keys[keyCount].PlaneSector = planeSector;
+				keys[keyCount].Plane = plane;
+				++keyCount;
+			}
+
+			if (AppendWorldFlatSubsectorPlane(vertices, count, subsector, planeSector, planeSector, plane))
+			{
+				++flats;
+				++WorldDrawFlatCount;
+				return true;
+			}
+			return false;
+		}
+
+		void AppendWorldFlatMissingTexturePlanes(SceneProbeVertex *vertices, unsigned int &count, unsigned int &flats)
+		{
+			if (subsectors == NULL || numsubsectors <= 0)
+			{
+				return;
+			}
+
+			WorldFlatHackKey keys[WorldDrawMaxFlats];
+			unsigned int keyCount = 0;
+			for (int i = 0; i < numsubsectors && flats < WorldDrawMaxFlats; ++i)
+			{
+				const subsector_t *subsector = &subsectors[i];
+				if (subsector->firstline == NULL || subsector->numlines < 3 || subsector->numlines > WorldDrawFlatMaxSegs)
+				{
+					continue;
+				}
+
+				for (unsigned int j = 0; j < subsector->numlines && flats < WorldDrawMaxFlats; ++j)
+				{
+					const seg_t *seg = &subsector->firstline[j];
+					if (seg == NULL || seg->v1 == NULL || seg->v2 == NULL || seg->frontsector == NULL ||
+						seg->backsector == NULL || seg->sidedef == NULL)
+					{
+						continue;
+					}
+
+					const double frontFloor1 = FIXED2FLOAT(seg->frontsector->floorplane.ZatPoint(seg->v1));
+					const double frontFloor2 = FIXED2FLOAT(seg->frontsector->floorplane.ZatPoint(seg->v2));
+					const double frontCeiling1 = FIXED2FLOAT(seg->frontsector->ceilingplane.ZatPoint(seg->v1));
+					const double frontCeiling2 = FIXED2FLOAT(seg->frontsector->ceilingplane.ZatPoint(seg->v2));
+					const double backFloor1 = FIXED2FLOAT(seg->backsector->floorplane.ZatPoint(seg->v1));
+					const double backFloor2 = FIXED2FLOAT(seg->backsector->floorplane.ZatPoint(seg->v2));
+					const double backCeiling1 = FIXED2FLOAT(seg->backsector->ceilingplane.ZatPoint(seg->v1));
+					const double backCeiling2 = FIXED2FLOAT(seg->backsector->ceilingplane.ZatPoint(seg->v2));
+
+					if ((frontCeiling1 > backCeiling1 || frontCeiling2 > backCeiling2) &&
+						WorldSideTextureMissing(seg->sidedef, side_t::top))
+					{
+						AppendWorldFlatOtherPlane(vertices, count, subsector, seg->backsector, sector_t::ceiling, keys, keyCount, flats);
+					}
+					if ((backFloor1 > frontFloor1 || backFloor2 > frontFloor2) &&
+						WorldSideTextureMissing(seg->sidedef, side_t::bottom))
+					{
+						AppendWorldFlatOtherPlane(vertices, count, subsector, seg->backsector, sector_t::floor, keys, keyCount, flats);
+					}
+				}
+			}
+		}
+
 		void AppendWorldFlatSectorScan(SceneProbeVertex *vertices, unsigned int &count, unsigned int &flats)
 		{
 			if (sectors == NULL || numsectors <= 0)
@@ -4115,6 +4214,7 @@ namespace
 				}
 				AppendWorldFlatSectorSubsectors(vertices, count, sector, sector_t::ceiling, flats);
 			}
+			AppendWorldFlatMissingTexturePlanes(vertices, count, flats);
 		}
 
 		bool AppendWorldWallSubsectorForDraw(SceneProbeVertex *vertices, unsigned int &count, const subsector_t *subsector, unsigned int &walls)

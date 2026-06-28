@@ -1,5 +1,12 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.87 - 2026-06-28
+
+- Added a Vulkan missing-texture flat pass based on the legacy GL/UZDoom
+  "other plane" approach: two-sided segs with missing upper/lower textures now
+  submit a deduplicated back-sector ceiling/floor fan for the affected
+  subsector, targeting the HOM-like black wedges in floors and ceilings.
+
 ## 3.3-alpha-vdoom.86 - 2026-06-28
 
 - Changed the Vulkan flat pipeline to render without depth test/write while
