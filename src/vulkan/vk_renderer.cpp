@@ -3252,44 +3252,20 @@ namespace
 			double ax, double ay, double bx, double by, double cx, double cy,
 			const WorldAtlasTile &tile, float light)
 		{
-			if (count + 6 > WorldFlatVertexMaxCount)
+			if (count + 3 > WorldFlatVertexMaxCount)
 			{
 				return false;
 			}
-			const double pi = 3.14159265358979323846;
-			const double yawRadians = ANGLE2DBL(viewangle) * (pi / 180.0);
-			const double forwardX = cos(yawRadians);
-			const double forwardY = sin(yawRadians);
-			const double camX = FIXED2FLOAT(viewx);
-			const double camY = FIXED2FLOAT(viewy);
-			const double nearDepth = 8.0;
-
-			WorldFlatClipPoint input[3];
 			if (plane == sector_t::ceiling)
 			{
-				input[0].X = ax; input[0].Y = ay;
-				input[1].X = cx; input[1].Y = cy;
-				input[2].X = bx; input[2].Y = by;
+				AppendFlatPoint(vertices, count, planeSector, textureSector, plane, ax, ay, tile, light);
+				AppendFlatPoint(vertices, count, planeSector, textureSector, plane, cx, cy, tile, light);
+				AppendFlatPoint(vertices, count, planeSector, textureSector, plane, bx, by, tile, light);
+				return true;
 			}
-			else
-			{
-				input[0].X = ax; input[0].Y = ay;
-				input[1].X = bx; input[1].Y = by;
-				input[2].X = cx; input[2].Y = cy;
-			}
-
-			WorldFlatClipPoint clipped[4];
-			const unsigned int clippedCount = ClipWorldFlatNearPlane(input, 3, clipped, forwardX, forwardY, camX, camY, nearDepth);
-			if (clippedCount < 3)
-			{
-				return false;
-			}
-			for (unsigned int i = 2; i < clippedCount; ++i)
-			{
-				AppendFlatPoint(vertices, count, planeSector, textureSector, plane, clipped[0].X, clipped[0].Y, tile, light);
-				AppendFlatPoint(vertices, count, planeSector, textureSector, plane, clipped[i - 1].X, clipped[i - 1].Y, tile, light);
-				AppendFlatPoint(vertices, count, planeSector, textureSector, plane, clipped[i].X, clipped[i].Y, tile, light);
-			}
+			AppendFlatPoint(vertices, count, planeSector, textureSector, plane, ax, ay, tile, light);
+			AppendFlatPoint(vertices, count, planeSector, textureSector, plane, bx, by, tile, light);
+			AppendFlatPoint(vertices, count, planeSector, textureSector, plane, cx, cy, tile, light);
 			return true;
 		}
 
@@ -3565,10 +3541,7 @@ namespace
 			}
 
 			range.FirstTriangle = WorldFlatMeshTriangleCount;
-			const bool nonConvex = !WorldFlatIsConvex(points, pointCount);
-			const bool drew = nonConvex ?
-				AddWorldFlatMeshEarClipped(subsector, planeSector, textureSector, plane, points, pointCount) :
-				AddWorldFlatMeshFan(subsector, planeSector, textureSector, plane, points, pointCount);
+			const bool drew = AddWorldFlatMeshFan(subsector, planeSector, textureSector, plane, points, pointCount);
 			range.TriangleCount = WorldFlatMeshTriangleCount - range.FirstTriangle;
 			if (!drew || range.TriangleCount == 0)
 			{

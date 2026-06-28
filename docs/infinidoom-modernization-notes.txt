@@ -271,3 +271,11 @@ frame, but flat submission no longer depends on the shared probe/wall vertex
 buffer. This matches the intended UZDoom-style direction more closely: flats
 now have their own vertex/index batch, while wall geometry can be separated and
 cached independently later.
+
+The `.83` checkpoint aligns active Vulkan flat triangulation with the proven
+GL/UZDoom behavior for ordinary subsectors: use the `firstline[0]`,
+`firstline[k - 1]`, `firstline[k]` fan order and let the GPU projection path
+clip the generated triangles. This removes the earlier experimental
+per-triangle CPU near-plane clipping and avoids ear-clipping ordinary
+subsectors, which could create camera-dependent missing wedges that did not
+match the hardware flat renderer path.

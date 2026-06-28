@@ -1,5 +1,15 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.83 - 2026-06-28
+
+- Changed cached Vulkan flat mesh construction to follow the established
+  GL/UZDoom subsector fan rule for normal subsectors instead of ear-clipping
+  every non-convex point loop.
+- Removed CPU near-plane clipping from active flat triangle emission so the GPU
+  projection path receives the same subsector fan triangles as the hardware
+  flat renderers, avoiding camera-dependent flat wedges caused by per-triangle
+  clipping.
+
 ## 3.3-alpha-vdoom.82 - 2026-06-28
 
 - Split native Vulkan flat geometry out of the shared probe/world vertex
