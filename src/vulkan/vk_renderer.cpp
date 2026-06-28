@@ -37,6 +37,8 @@
 #include "v_palette.h"
 #include "m_fixed.h"
 #include "r_utility.h"
+#include "r_sky.h"
+#include "r_state.h"
 #include "textures/textures.h"
 #include "vulkan/vk_palette_present_shaders.h"
 #ifdef _WIN32
@@ -261,7 +263,10 @@ namespace
 		WorldDrawTextureSectionsPerWall = 2,
 		WorldDrawTextureVerticesPerSection = WorldDrawTextureColumns * WorldDrawTextureRows * 6,
 		WorldDrawTextureVerticesPerWall = WorldDrawTextureSectionsPerWall * WorldDrawTextureVerticesPerSection,
-		ProbeVertexMaxCount = SceneProbeVertexCount + WorldProbeMaxWalls * 6 + WorldDrawMaxWalls * WorldDrawTextureVerticesPerWall,
+		WorldDrawMaxFlats = 192,
+		WorldDrawFlatMaxSegs = 24,
+		WorldDrawFlatVerticesPerSubsector = (WorldDrawFlatMaxSegs - 2) * 3 * 2,
+		ProbeVertexMaxCount = SceneProbeVertexCount + WorldProbeMaxWalls * 6 + WorldDrawMaxWalls * WorldDrawTextureVerticesPerWall + WorldDrawMaxFlats * WorldDrawFlatVerticesPerSubsector,
 		WorldAtlasTileSize = 128,
 		WorldAtlasTilesPerRow = 8,
 		WorldAtlasMaxTiles = 64,
@@ -2841,6 +2846,125 @@ namespace
 			return drew;
 		}
 
+		const WorldAtlasTile *GetWorldPlaneTile(sector_t *sector, int plane)
+		{
+			if (sector == NULL)
+			{
+				return NULL;
+			}
+			FTextureID textureId = sector->GetTexture(plane);
+			if (!textureId.isValid() || textureId == skyflatnum)
+			{
+				return NULL;
+			}
+			FTexture *texture = TexMan[textureId];
+			const BYTE *pixels = texture != NULL && texture->UseType != FTexture::TEX_Null ? texture->GetPixels() : NULL;
+			if (texture == NULL || pixels == NULL)
+			{
+				textureId = TexMan.GetDefaultTexture();
+				texture = TexMan[textureId];
+				pixels = texture != NULL ? texture->GetPixels() : NULL;
+			}
+			return GetWorldAtlasTile(textureId, texture, pixels);
+		}
+
+		void AppendFlatVertex(SceneProbeVertex *vertices, unsigned int &count,
+			sector_t *sector, int plane, const vertex_t *vertex, const WorldAtlasTile &tile, float light)
+		{
+			if (vertex == NULL)
+			{
+				return;
+			}
+			const double x = FIXED2FLOAT(vertex->x);
+			const double y = FIXED2FLOAT(vertex->y);
+			const double z = FIXED2FLOAT(sector->GetSecPlane(plane).ZatPoint(vertex));
+			double xScale = FIXED2FLOAT(sector->GetXScale(plane));
+			double yScale = FIXED2FLOAT(sector->GetYScale(plane));
+			if (fabs(xScale) < 0.001)
+			{
+				xScale = 1.0;
+			}
+			if (fabs(yScale) < 0.001)
+			{
+				yScale = 1.0;
+			}
+			const double u = (x + FIXED2FLOAT(sector->GetXOffset(plane))) / xScale;
+			const double v = (-y + FIXED2FLOAT(sector->GetYOffset(plane))) / yScale;
+			AppendTexturedVertex(vertices, count, x, y, z, u, v, tile, light);
+		}
+
+		void AppendWorldFlatTriangle(SceneProbeVertex *vertices, unsigned int &count,
+			sector_t *sector, int plane, const vertex_t *a, const vertex_t *b, const vertex_t *c,
+			const WorldAtlasTile &tile, float light)
+		{
+			if (count + 3 > ProbeVertexMaxCount)
+			{
+				return;
+			}
+			if (plane == sector_t::ceiling)
+			{
+				AppendFlatVertex(vertices, count, sector, plane, a, tile, light);
+				AppendFlatVertex(vertices, count, sector, plane, c, tile, light);
+				AppendFlatVertex(vertices, count, sector, plane, b, tile, light);
+			}
+			else
+			{
+				AppendFlatVertex(vertices, count, sector, plane, a, tile, light);
+				AppendFlatVertex(vertices, count, sector, plane, b, tile, light);
+				AppendFlatVertex(vertices, count, sector, plane, c, tile, light);
+			}
+		}
+
+		bool AppendWorldFlatSubsector(SceneProbeVertex *vertices, unsigned int &count, const subsector_t *subsector)
+		{
+			if (subsector == NULL || subsector->firstline == NULL || subsector->numlines < 3 || subsector->numlines > WorldDrawFlatMaxSegs)
+			{
+				return false;
+			}
+			sector_t *sector = subsector->render_sector != NULL ? subsector->render_sector : subsector->sector;
+			if (sector == NULL)
+			{
+				return false;
+			}
+			const unsigned int triangleCount = subsector->numlines - 2;
+			const unsigned int maxNeeded = triangleCount * 3 * 2;
+			if (count + maxNeeded > ProbeVertexMaxCount)
+			{
+				return false;
+			}
+
+			const WorldAtlasTile *floorTile = GetWorldPlaneTile(sector, sector_t::floor);
+			const WorldAtlasTile *ceilingTile = GetWorldPlaneTile(sector, sector_t::ceiling);
+			if (floorTile == NULL && ceilingTile == NULL)
+			{
+				return false;
+			}
+
+			const float baseLight = sector->lightlevel <= 0 ? 0.20f : (sector->lightlevel / 255.0f);
+			bool drew = false;
+			for (unsigned int i = 1; i + 1 < subsector->numlines; ++i)
+			{
+				const vertex_t *a = subsector->firstline[0].v1;
+				const vertex_t *b = subsector->firstline[i].v1;
+				const vertex_t *c = subsector->firstline[i + 1].v1;
+				if (a == NULL || b == NULL || c == NULL)
+				{
+					continue;
+				}
+				if (floorTile != NULL)
+				{
+					AppendWorldFlatTriangle(vertices, count, sector, sector_t::floor, a, b, c, *floorTile, baseLight);
+					drew = true;
+				}
+				if (ceilingTile != NULL)
+				{
+					AppendWorldFlatTriangle(vertices, count, sector, sector_t::ceiling, a, b, c, *ceilingTile, baseLight * 0.80f);
+					drew = true;
+				}
+			}
+			return drew;
+		}
+
 		void AppendWorldProbeVertices(SceneProbeVertex *vertices, unsigned int &count)
 		{
 			if (lines == NULL || numlines <= 0)
@@ -2885,6 +3009,42 @@ namespace
 			const double camY = FIXED2FLOAT(viewy);
 			const double maxDistance = 1024.0;
 			const double maxDistanceSquared = maxDistance * maxDistance;
+			if (subsectors != NULL && numsubsectors > 0)
+			{
+				unsigned int flats = 0;
+				for (int i = 0; i < numsubsectors && flats < WorldDrawMaxFlats; ++i)
+				{
+					const subsector_t *subsector = &subsectors[i];
+					if (subsector->firstline == NULL || subsector->numlines < 3 || subsector->numlines > WorldDrawFlatMaxSegs)
+					{
+						continue;
+					}
+					double centerX = 0.0;
+					double centerY = 0.0;
+					for (unsigned int j = 0; j < subsector->numlines; ++j)
+					{
+						const vertex_t *vertex = subsector->firstline[j].v1;
+						if (vertex != NULL)
+						{
+							centerX += FIXED2FLOAT(vertex->x);
+							centerY += FIXED2FLOAT(vertex->y);
+						}
+					}
+					centerX /= (double)subsector->numlines;
+					centerY /= (double)subsector->numlines;
+					const double dx = centerX - camX;
+					const double dy = centerY - camY;
+					if (dx * dx + dy * dy > maxDistanceSquared)
+					{
+						continue;
+					}
+					if (AppendWorldFlatSubsector(vertices, count, subsector))
+					{
+						++flats;
+					}
+				}
+			}
+
 			unsigned int walls = 0;
 			for (int i = 0; i < numlines && walls < WorldDrawMaxWalls; ++i)
 			{

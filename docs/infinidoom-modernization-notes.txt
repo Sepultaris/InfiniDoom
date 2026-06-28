@@ -107,6 +107,12 @@ Current Vulkan direction:
   software-frame draw, leaving a black clear behind GPU-owned geometry. Use it
   with `vk_draw_world 1` when judging which pixels are actually produced by the
   Vulkan world path.
+- `vk_draw_world` also emits first-pass floor and ceiling flats. Nearby
+  subsectors are triangulated as simple fans from their seg vertices and draw
+  sector floor/ceiling textures through the same temporary atlas as walls.
+  This intentionally skips sky flats and does not yet use the software
+  renderer's full visplane/opening rules, fake flats, portals, or complete
+  plane transforms; it is a visibility milestone for GPU-owned planes.
 - Live Vulkan basis calibration CVars were removed after sign changes in the
   projection path could crash the diagnostic renderer when changed in-game.
   Continue matching Doom's software-space camera basis through fixed,

@@ -1,5 +1,13 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.39 - 2026-06-27
+
+- Added first-pass Vulkan floor and ceiling flat rendering to `vk_draw_world`.
+- Nearby subsectors now emit depth-tested floor and indoor ceiling triangles
+  using their sector flat textures in the temporary Vulkan atlas.
+- Sky flats are skipped for now so outdoor ceilings stay black in
+  `vk_hide_software_frame` isolation mode until a Vulkan sky path exists.
+
 ## 3.3-alpha-vdoom.38 - 2026-06-27
 
 - Added `vk_hide_software_frame` for Vulkan renderer bring-up.
