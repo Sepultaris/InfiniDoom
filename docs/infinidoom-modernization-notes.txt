@@ -287,3 +287,11 @@ submitted from sector-owned subsector sections and special plane hacks are
 handled as distinct passes rather than inferred from a bare BSP walk. The
 fallback flat path now also keeps the GL-style fan triangulation rule so this
 diagnostic does not mix collection changes with ear-clipping behavior.
+
+The `.85` checkpoint makes active Vulkan flats use the renderer's flat
+triangle-fan pipeline instead of expanding sector-scan flats into triangle-list
+vertices and submitting them through the wall pipeline. Each visible subsector
+plane now records one fan range, and command-buffer recording emits one
+`vkCmdDraw` per fan with `VK_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN`, matching the
+legacy GL flat primitive closely enough to isolate remaining gaps to plane
+selection or special-plane hack handling.

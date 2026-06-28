@@ -1,5 +1,13 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.85 - 2026-06-28
+
+- Switched active Vulkan flat submission to dedicated triangle-fan draw ranges
+  using the flat pipeline, matching the legacy GL subsector flat draw primitive
+  more directly.
+- Stopped expanding sector-scan flats through the wall triangle-list submission
+  path for this diagnostic step.
+
 ## 3.3-alpha-vdoom.84 - 2026-06-28
 
 - Changed active Vulkan flat collection from raw BSP traversal to the existing
