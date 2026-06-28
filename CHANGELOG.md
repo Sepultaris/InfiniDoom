@@ -1,5 +1,14 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.89 - 2026-06-28
+
+- Changed the new vDoom hardware scene collector to gather flat commands from
+  a BSP front-to-back subsector walk when map nodes are available, rather than
+  scanning every sector before Vulkan submission.
+- Added scene-collector flat diagnostics to `stat renderer`, including command
+  count, visible subsector count, other-plane count, missing-texture candidate
+  count, and BSP depth skips.
+
 ## 3.3-alpha-vdoom.88 - 2026-06-28
 
 - Added the first backend-agnostic vDoom hardware scene collector under

@@ -50,6 +50,11 @@ struct FVulkanBackendStats
 	unsigned int WorldDrawFlatTextureSkipCount;
 	unsigned int WorldDrawFlatBuildSkipCount;
 	unsigned int WorldDrawFlatNonConvexCount;
+	unsigned int WorldSceneFlatCommandCount;
+	unsigned int WorldSceneVisibleSubsectorCount;
+	unsigned int WorldSceneOtherPlaneCount;
+	unsigned int WorldSceneMissingTextureCandidateCount;
+	unsigned int WorldSceneBspDepthSkipCount;
 	unsigned int WorldAtlasTileCount;
 	unsigned int WorldAtlasMaxTiles;
 	unsigned int SceneProbeVertexCount;

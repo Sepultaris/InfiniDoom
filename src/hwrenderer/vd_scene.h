@@ -26,6 +26,8 @@ namespace vdoom
 		unsigned int Flats;
 		unsigned int OtherPlanes;
 		unsigned int MissingTextureCandidates;
+		unsigned int VisibleSubsectors;
+		unsigned int BspDepthSkips;
 		unsigned int SkippedFlats;
 	};
 
@@ -49,7 +51,10 @@ namespace vdoom
 	private:
 		bool AddFlat(const subsector_t *subsector, sector_t *planeSector, sector_t *textureSector, int plane, bool otherPlane);
 		bool AddOtherPlaneFlat(const subsector_t *subsector, sector_t *planeSector, int plane);
-		void CollectSectorFlats();
+		void AddSubsectorFlats(const subsector_t *subsector);
+		void CollectBspFlats(void *node, unsigned int depth);
+		void CollectFallbackFlats();
+		void CollectVisibleFlats();
 		void CollectMissingTexturePlanes();
 
 		VdHwFlatCommand Flats[MaxFlats];

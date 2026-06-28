@@ -9,10 +9,16 @@
 
 #include "m_fixed.h"
 #include "r_state.h"
+#include "r_utility.h"
 #include "textures/textures.h"
 
 namespace vdoom
 {
+	enum
+	{
+		MaxBspDepth = 256
+	};
+
 	VdHwScene::VdHwScene()
 	{
 		Clear();
@@ -100,32 +106,131 @@ namespace vdoom
 		return texture == NULL || texture->UseType == FTexture::TEX_Null;
 	}
 
-	void VdHwScene::CollectSectorFlats()
+	void VdHwScene::AddSubsectorFlats(const subsector_t *subsector)
 	{
-		if (sectors == NULL || numsectors <= 0)
+		if (subsector == NULL || subsector->firstline == NULL || subsector->numlines < 3)
+		{
+			++Stats.SkippedFlats;
+			return;
+		}
+		if (subsector->flags & SSECF_DEGENERATE)
+		{
+			++Stats.SkippedFlats;
+			return;
+		}
+
+		sector_t *planeSector = subsector->sector;
+		sector_t *textureSector = subsector->render_sector != NULL ? subsector->render_sector : planeSector;
+		AddFlat(subsector, planeSector, textureSector, sector_t::floor, false);
+		AddFlat(subsector, planeSector, textureSector, sector_t::ceiling, false);
+		++Stats.VisibleSubsectors;
+	}
+
+	void VdHwScene::CollectBspFlats(void *node, unsigned int depth)
+	{
+		if (node == NULL || FlatCount >= MaxFlats)
+		{
+			return;
+		}
+		if (depth > MaxBspDepth)
+		{
+			++Stats.BspDepthSkips;
+			return;
+		}
+
+		while (!((size_t)node & 1))
+		{
+			const node_t *bsp = static_cast<const node_t *>(node);
+			const int side = R_PointOnSide(viewx, viewy, bsp);
+			CollectBspFlats(bsp->children[side], depth + 1);
+			if (FlatCount >= MaxFlats)
+			{
+				return;
+			}
+			node = bsp->children[side ^ 1];
+			if (node == NULL)
+			{
+				return;
+			}
+			if (++depth > MaxBspDepth)
+			{
+				++Stats.BspDepthSkips;
+				return;
+			}
+		}
+
+		const subsector_t *subsector = reinterpret_cast<const subsector_t *>(reinterpret_cast<const BYTE *>(node) - 1);
+		AddSubsectorFlats(subsector);
+	}
+
+	void VdHwScene::CollectFallbackFlats()
+	{
+		if (subsectors == NULL || numsubsectors <= 0)
 		{
 			return;
 		}
 
-		for (int i = 0; i < numsectors; ++i)
+		const double camX = FIXED2FLOAT(viewx);
+		const double camY = FIXED2FLOAT(viewy);
+		const double maxDistance = 4096.0;
+		const double maxDistanceSquared = maxDistance * maxDistance;
+
+		for (int i = 0; i < numsubsectors && FlatCount < MaxFlats; ++i)
 		{
-			sector_t *sector = &sectors[i];
-			if (sector->subsectors == NULL || sector->subsectorcount <= 0)
+			const subsector_t *subsector = &subsectors[i];
+			if (subsector->firstline == NULL || subsector->numlines < 3)
 			{
+				++Stats.SkippedFlats;
 				continue;
 			}
 
-			for (int j = 0; j < sector->subsectorcount; ++j)
+			double centerX = 0.0;
+			double centerY = 0.0;
+			unsigned int centerPoints = 0;
+			for (unsigned int j = 0; j < subsector->numlines; ++j)
 			{
-				const subsector_t *subsector = sector->subsectors[j];
-				if (subsector == NULL)
+				const vertex_t *vertex = subsector->firstline[j].v1;
+				if (vertex != NULL)
 				{
-					++Stats.SkippedFlats;
-					continue;
+					centerX += FIXED2FLOAT(vertex->x);
+					centerY += FIXED2FLOAT(vertex->y);
+					++centerPoints;
 				}
-				AddFlat(subsector, sector, sector, sector_t::floor, false);
-				AddFlat(subsector, sector, sector, sector_t::ceiling, false);
 			}
+			if (centerPoints == 0)
+			{
+				++Stats.SkippedFlats;
+				continue;
+			}
+			centerX /= (double)centerPoints;
+			centerY /= (double)centerPoints;
+
+			const double dx = centerX - camX;
+			const double dy = centerY - camY;
+			if (dx * dx + dy * dy <= maxDistanceSquared)
+			{
+				AddSubsectorFlats(subsector);
+			}
+			else
+			{
+				++Stats.SkippedFlats;
+			}
+		}
+	}
+
+	void VdHwScene::CollectVisibleFlats()
+	{
+		if (subsectors == NULL || numsubsectors <= 0)
+		{
+			return;
+		}
+		if (nodes != NULL && numnodes > 0)
+		{
+			CollectBspFlats(nodes + numnodes - 1, 0);
+		}
+		else
+		{
+			CollectFallbackFlats();
 		}
 	}
 
@@ -182,7 +287,7 @@ namespace vdoom
 	void VdHwScene::CollectWorld()
 	{
 		Clear();
-		CollectSectorFlats();
+		CollectVisibleFlats();
 		CollectMissingTexturePlanes();
 	}
 }

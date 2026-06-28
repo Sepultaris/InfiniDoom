@@ -208,6 +208,12 @@ ADD_STAT(renderer)
 						vk.WorldDrawFlatTextureSkipCount,
 						vk.WorldDrawFlatBuildSkipCount,
 						vk.WorldDrawFlatNonConvexCount);
+					out.AppendFormat("GPU scene flats: %u commands, %u visible subsectors, %u other planes, %u missing texture candidates, %u BSP depth skip\n",
+						vk.WorldSceneFlatCommandCount,
+						vk.WorldSceneVisibleSubsectorCount,
+						vk.WorldSceneOtherPlaneCount,
+						vk.WorldSceneMissingTextureCandidateCount,
+						vk.WorldSceneBspDepthSkipCount);
 					out.AppendFormat("GPU world atlas: %u/%u tiles\n",
 						vk.WorldAtlasTileCount,
 						vk.WorldAtlasMaxTiles);

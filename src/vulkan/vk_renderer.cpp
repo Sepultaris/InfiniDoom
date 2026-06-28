@@ -353,6 +353,7 @@ namespace
 			  DeviceLocalMemoryBudgetBytes(0), DeviceLocalMemoryUsageBytes(0),
 			  WorldDrawFlatCount(0), WorldDrawFlatRangeSkipCount(0), WorldDrawFlatTooLargeSkipCount(0), WorldDrawFlatBudgetSkipCount(0),
 			  WorldDrawFlatDegenerateSkipCount(0), WorldDrawFlatTextureSkipCount(0), WorldDrawFlatBuildSkipCount(0), WorldDrawFlatNonConvexCount(0),
+			  WorldSceneFlatCommandCount(0), WorldSceneVisibleSubsectorCount(0), WorldSceneOtherPlaneCount(0), WorldSceneMissingTextureCandidateCount(0), WorldSceneBspDepthSkipCount(0),
 			  PresentScaleMode(1), PresentViewportX(0), PresentViewportY(0), PresentViewportWidth(0), PresentViewportHeight(0),
 			  GraphicsQueueFamily(~0u), DeviceCount(0), SwapchainImageCount(0), SwapchainViewCount(0),
 			  SwapchainFormat(VK_FORMAT_UNDEFINED), SwapchainColorSpace(VK_COLOR_SPACE_SRGB_NONLINEAR_KHR),
@@ -688,6 +689,31 @@ namespace
 		unsigned int GetWorldDrawFlatNonConvexCount() const
 		{
 			return IsWorldDrawActive() ? WorldDrawFlatNonConvexCount : 0;
+		}
+
+		unsigned int GetWorldSceneFlatCommandCount() const
+		{
+			return IsWorldDrawActive() ? WorldSceneFlatCommandCount : 0;
+		}
+
+		unsigned int GetWorldSceneVisibleSubsectorCount() const
+		{
+			return IsWorldDrawActive() ? WorldSceneVisibleSubsectorCount : 0;
+		}
+
+		unsigned int GetWorldSceneOtherPlaneCount() const
+		{
+			return IsWorldDrawActive() ? WorldSceneOtherPlaneCount : 0;
+		}
+
+		unsigned int GetWorldSceneMissingTextureCandidateCount() const
+		{
+			return IsWorldDrawActive() ? WorldSceneMissingTextureCandidateCount : 0;
+		}
+
+		unsigned int GetWorldSceneBspDepthSkipCount() const
+		{
+			return IsWorldDrawActive() ? WorldSceneBspDepthSkipCount : 0;
 		}
 
 		unsigned int GetWorldAtlasTileCount() const
@@ -4374,6 +4400,11 @@ namespace
 			WorldDrawFlatTextureSkipCount = 0;
 			WorldDrawFlatBuildSkipCount = 0;
 			WorldDrawFlatNonConvexCount = 0;
+			WorldSceneFlatCommandCount = 0;
+			WorldSceneVisibleSubsectorCount = 0;
+			WorldSceneOtherPlaneCount = 0;
+			WorldSceneMissingTextureCandidateCount = 0;
+			WorldSceneBspDepthSkipCount = 0;
 			if (lines == NULL || numlines <= 0)
 			{
 				return;
@@ -4384,6 +4415,12 @@ namespace
 				unsigned int flats = 0;
 				vdoom::VdHwScene scene;
 				scene.CollectWorld();
+				const vdoom::VdHwSceneStats &sceneStats = scene.GetStats();
+				WorldSceneFlatCommandCount = scene.GetFlatCount();
+				WorldSceneVisibleSubsectorCount = sceneStats.VisibleSubsectors;
+				WorldSceneOtherPlaneCount = sceneStats.OtherPlanes;
+				WorldSceneMissingTextureCandidateCount = sceneStats.MissingTextureCandidates;
+				WorldSceneBspDepthSkipCount = sceneStats.BspDepthSkips;
 				AppendWorldFlatSceneCommands(vertices, count, scene, flats);
 			}
 		}
@@ -6257,6 +6294,11 @@ namespace
 		unsigned int WorldDrawFlatTextureSkipCount;
 		unsigned int WorldDrawFlatBuildSkipCount;
 		unsigned int WorldDrawFlatNonConvexCount;
+		unsigned int WorldSceneFlatCommandCount;
+		unsigned int WorldSceneVisibleSubsectorCount;
+		unsigned int WorldSceneOtherPlaneCount;
+		unsigned int WorldSceneMissingTextureCandidateCount;
+		unsigned int WorldSceneBspDepthSkipCount;
 		unsigned int PresentScaleMode;
 		unsigned int PresentViewportX;
 		unsigned int PresentViewportY;
@@ -6341,6 +6383,11 @@ namespace
 		VulkanStats.WorldDrawFlatTextureSkipCount = runtime->GetWorldDrawFlatTextureSkipCount();
 		VulkanStats.WorldDrawFlatBuildSkipCount = runtime->GetWorldDrawFlatBuildSkipCount();
 		VulkanStats.WorldDrawFlatNonConvexCount = runtime->GetWorldDrawFlatNonConvexCount();
+		VulkanStats.WorldSceneFlatCommandCount = runtime->GetWorldSceneFlatCommandCount();
+		VulkanStats.WorldSceneVisibleSubsectorCount = runtime->GetWorldSceneVisibleSubsectorCount();
+		VulkanStats.WorldSceneOtherPlaneCount = runtime->GetWorldSceneOtherPlaneCount();
+		VulkanStats.WorldSceneMissingTextureCandidateCount = runtime->GetWorldSceneMissingTextureCandidateCount();
+		VulkanStats.WorldSceneBspDepthSkipCount = runtime->GetWorldSceneBspDepthSkipCount();
 		VulkanStats.WorldAtlasTileCount = runtime->GetWorldAtlasTileCount();
 		VulkanStats.WorldAtlasMaxTiles = runtime->GetWorldAtlasMaxTiles();
 		VulkanStats.SceneProbeActive = runtime->IsSceneProbeActive();
