@@ -2702,11 +2702,11 @@ namespace
 		}
 
 		bool AppendTexturedWorldWallSection(SceneProbeVertex *vertices, unsigned int &count,
-			const line_t *line, side_t *side, int texturePart,
+			const line_t *line, const vertex_t *v1, const vertex_t *v2, sector_t *frontSector, side_t *side, int texturePart,
 			double sectionTop1, double sectionTop2, double sectionBottom1, double sectionBottom2,
 			bool allowDefaultTexture)
 		{
-			if (line == NULL || line->v1 == NULL || line->v2 == NULL || line->frontsector == NULL || side == NULL)
+			if (line == NULL || v1 == NULL || v2 == NULL || frontSector == NULL || side == NULL)
 			{
 				return false;
 			}
@@ -2738,10 +2738,10 @@ namespace
 				return false;
 			}
 
-			float x1 = FIXED2FLOAT(line->v1->x);
-			float y1 = FIXED2FLOAT(line->v1->y);
-			float x2 = FIXED2FLOAT(line->v2->x);
-			float y2 = FIXED2FLOAT(line->v2->y);
+			float x1 = FIXED2FLOAT(v1->x);
+			float y1 = FIXED2FLOAT(v1->y);
+			float x2 = FIXED2FLOAT(v2->x);
+			float y2 = FIXED2FLOAT(v2->y);
 			double top1 = sectionTop1;
 			double top2 = sectionTop2;
 			double bottom1 = sectionBottom1;
@@ -2863,7 +2863,7 @@ namespace
 			const double clippedU2 = ((x2 - originalX1) * lineDx + (y2 - originalY1) * lineDy) * invLengthSquared * originalLength;
 			const double xOffset = FIXED2FLOAT(side->GetTextureXOffset(texturePart));
 			const double yOffset = FIXED2FLOAT(side->GetTextureYOffset(texturePart));
-			const float light = line->frontsector->lightlevel <= 0 ? 0.20f : (line->frontsector->lightlevel / 255.0f);
+			const float light = frontSector->lightlevel <= 0 ? 0.20f : (frontSector->lightlevel / 255.0f);
 
 			for (int column = 0; column < WorldDrawTextureColumns; ++column)
 			{
@@ -2915,7 +2915,7 @@ namespace
 
 			if (line->backsector == NULL)
 			{
-				return AppendTexturedWorldWallSection(vertices, count, line, line->sidedef[0], side_t::mid,
+				return AppendTexturedWorldWallSection(vertices, count, line, line->v1, line->v2, line->frontsector, line->sidedef[0], side_t::mid,
 					frontCeiling1, frontCeiling2, frontFloor1, frontFloor2, true);
 			}
 
@@ -2927,12 +2927,50 @@ namespace
 
 			if (frontCeiling1 > backCeiling1 || frontCeiling2 > backCeiling2)
 			{
-				drew |= AppendTexturedWorldWallSection(vertices, count, line, line->sidedef[0], side_t::top,
+				drew |= AppendTexturedWorldWallSection(vertices, count, line, line->v1, line->v2, line->frontsector, line->sidedef[0], side_t::top,
 					frontCeiling1, frontCeiling2, backCeiling1, backCeiling2, false);
 			}
 			if (backFloor1 > frontFloor1 || backFloor2 > frontFloor2)
 			{
-				drew |= AppendTexturedWorldWallSection(vertices, count, line, line->sidedef[0], side_t::bottom,
+				drew |= AppendTexturedWorldWallSection(vertices, count, line, line->v1, line->v2, line->frontsector, line->sidedef[0], side_t::bottom,
+					backFloor1, backFloor2, frontFloor1, frontFloor2, false);
+			}
+			return drew;
+		}
+
+		bool AppendTexturedWorldSeg(SceneProbeVertex *vertices, unsigned int &count, const seg_t *seg)
+		{
+			if (seg == NULL || seg->v1 == NULL || seg->v2 == NULL || seg->linedef == NULL ||
+				seg->sidedef == NULL || seg->frontsector == NULL)
+			{
+				return false;
+			}
+
+			const double frontFloor1 = FIXED2FLOAT(seg->frontsector->floorplane.ZatPoint(seg->v1));
+			const double frontFloor2 = FIXED2FLOAT(seg->frontsector->floorplane.ZatPoint(seg->v2));
+			const double frontCeiling1 = FIXED2FLOAT(seg->frontsector->ceilingplane.ZatPoint(seg->v1));
+			const double frontCeiling2 = FIXED2FLOAT(seg->frontsector->ceilingplane.ZatPoint(seg->v2));
+
+			if (seg->backsector == NULL)
+			{
+				return AppendTexturedWorldWallSection(vertices, count, seg->linedef, seg->v1, seg->v2, seg->frontsector, seg->sidedef, side_t::mid,
+					frontCeiling1, frontCeiling2, frontFloor1, frontFloor2, true);
+			}
+
+			bool drew = false;
+			const double backFloor1 = FIXED2FLOAT(seg->backsector->floorplane.ZatPoint(seg->v1));
+			const double backFloor2 = FIXED2FLOAT(seg->backsector->floorplane.ZatPoint(seg->v2));
+			const double backCeiling1 = FIXED2FLOAT(seg->backsector->ceilingplane.ZatPoint(seg->v1));
+			const double backCeiling2 = FIXED2FLOAT(seg->backsector->ceilingplane.ZatPoint(seg->v2));
+
+			if (frontCeiling1 > backCeiling1 || frontCeiling2 > backCeiling2)
+			{
+				drew |= AppendTexturedWorldWallSection(vertices, count, seg->linedef, seg->v1, seg->v2, seg->frontsector, seg->sidedef, side_t::top,
+					frontCeiling1, frontCeiling2, backCeiling1, backCeiling2, false);
+			}
+			if (backFloor1 > frontFloor1 || backFloor2 > frontFloor2)
+			{
+				drew |= AppendTexturedWorldWallSection(vertices, count, seg->linedef, seg->v1, seg->v2, seg->frontsector, seg->sidedef, side_t::bottom,
 					backFloor1, backFloor2, frontFloor1, frontFloor2, false);
 			}
 			return drew;
@@ -3419,6 +3457,127 @@ namespace
 			}
 		}
 
+		bool AppendWorldWallSubsectorForDraw(SceneProbeVertex *vertices, unsigned int &count, const subsector_t *subsector, unsigned int &walls)
+		{
+			if (subsector == NULL || subsector->firstline == NULL)
+			{
+				return false;
+			}
+			bool drew = false;
+			for (unsigned int i = 0; i < subsector->numlines && walls < WorldDrawMaxWalls; ++i)
+			{
+				if (AppendTexturedWorldSeg(vertices, count, &subsector->firstline[i]))
+				{
+					++walls;
+					drew = true;
+				}
+			}
+			return drew;
+		}
+
+		void AppendWorldWallBspNode(SceneProbeVertex *vertices, unsigned int &count, void *node, unsigned int depth, unsigned int &walls)
+		{
+			if (node == NULL || walls >= WorldDrawMaxWalls)
+			{
+				return;
+			}
+			if (depth > WorldDrawMaxBspDepth)
+			{
+				return;
+			}
+			while (!((size_t)node & 1))
+			{
+				const node_t *bsp = static_cast<const node_t *>(node);
+				const int side = R_PointOnSide(viewx, viewy, bsp);
+				AppendWorldWallBspNode(vertices, count, bsp->children[side], depth + 1, walls);
+				if (walls >= WorldDrawMaxWalls)
+				{
+					return;
+				}
+				node = bsp->children[side ^ 1];
+				if (node == NULL)
+				{
+					return;
+				}
+				if (++depth > WorldDrawMaxBspDepth)
+				{
+					return;
+				}
+			}
+			const subsector_t *subsector = reinterpret_cast<const subsector_t *>(reinterpret_cast<const BYTE *>(node) - 1);
+			AppendWorldWallSubsectorForDraw(vertices, count, subsector, walls);
+		}
+
+		void AppendWorldWallFallbackScan(SceneProbeVertex *vertices, unsigned int &count, unsigned int &walls)
+		{
+			const double camX = FIXED2FLOAT(viewx);
+			const double camY = FIXED2FLOAT(viewy);
+			const double maxDistance = 4096.0;
+			const double maxDistanceSquared = maxDistance * maxDistance;
+			for (int i = 0; i < numsubsectors && walls < WorldDrawMaxWalls; ++i)
+			{
+				const subsector_t *subsector = &subsectors[i];
+				if (subsector->firstline == NULL)
+				{
+					continue;
+				}
+				double centerX = 0.0;
+				double centerY = 0.0;
+				unsigned int centerPoints = 0;
+				for (unsigned int j = 0; j < subsector->numlines; ++j)
+				{
+					const vertex_t *vertex = subsector->firstline[j].v1;
+					if (vertex != NULL)
+					{
+						centerX += FIXED2FLOAT(vertex->x);
+						centerY += FIXED2FLOAT(vertex->y);
+						++centerPoints;
+					}
+				}
+				if (centerPoints == 0)
+				{
+					continue;
+				}
+				centerX /= (double)centerPoints;
+				centerY /= (double)centerPoints;
+				const double dx = centerX - camX;
+				const double dy = centerY - camY;
+				if (dx * dx + dy * dy > maxDistanceSquared)
+				{
+					continue;
+				}
+				AppendWorldWallSubsectorForDraw(vertices, count, subsector, walls);
+			}
+		}
+
+		void AppendWorldWallLineFallbackScan(SceneProbeVertex *vertices, unsigned int &count, unsigned int &walls)
+		{
+			const double camX = FIXED2FLOAT(viewx);
+			const double camY = FIXED2FLOAT(viewy);
+			const double maxDistance = 4096.0;
+			const double maxDistanceSquared = maxDistance * maxDistance;
+			for (int i = 0; i < numlines && walls < WorldDrawMaxWalls; ++i)
+			{
+				const line_t *line = &lines[i];
+				if (line->v1 == NULL || line->v2 == NULL || line->frontsector == NULL)
+				{
+					continue;
+				}
+				const double midX = (FIXED2FLOAT(line->v1->x) + FIXED2FLOAT(line->v2->x)) * 0.5;
+				const double midY = (FIXED2FLOAT(line->v1->y) + FIXED2FLOAT(line->v2->y)) * 0.5;
+				const double dx = midX - camX;
+				const double dy = midY - camY;
+				if (dx * dx + dy * dy > maxDistanceSquared)
+				{
+					continue;
+				}
+				if (AppendTexturedWorldWall(vertices, count, line))
+				{
+					++walls;
+				}
+			}
+		}
+
 		void AppendWorldDrawVertices(SceneProbeVertex *vertices, unsigned int &count)
 		{
 			if (lines == NULL || numlines <= 0)
@@ -3447,30 +3606,21 @@ namespace
 
 			WorldDrawFirstVertex = count;
 			const unsigned int wallStart = count;
-			const double camX = FIXED2FLOAT(viewx);
-			const double camY = FIXED2FLOAT(viewy);
-			const double maxDistance = 4096.0;
-			const double maxDistanceSquared = maxDistance * maxDistance;
 			unsigned int walls = 0;
-			for (int i = 0; i < numlines && walls < WorldDrawMaxWalls; ++i)
+			if (subsectors != NULL && numsubsectors > 0)
 			{
-				const line_t *line = &lines[i];
-				if (line->v1 == NULL || line->v2 == NULL || line->frontsector == NULL)
+				if (nodes != NULL && numnodes > 0)
 				{
-					continue;
+					AppendWorldWallBspNode(vertices, count, nodes + numnodes - 1, 0, walls);
 				}
-				const double midX = (FIXED2FLOAT(line->v1->x) + FIXED2FLOAT(line->v2->x)) * 0.5;
-				const double midY = (FIXED2FLOAT(line->v1->y) + FIXED2FLOAT(line->v2->y)) * 0.5;
-				const double dx = midX - camX;
-				const double dy = midY - camY;
-				if (dx * dx + dy * dy > maxDistanceSquared)
+				else
 				{
-					continue;
+					AppendWorldWallFallbackScan(vertices, count, walls);
 				}
-				if (AppendTexturedWorldWall(vertices, count, line))
-				{
-					++walls;
-				}
+			}
+			else
+			{
+				AppendWorldWallLineFallbackScan(vertices, count, walls);
 			}
 			WorldDrawDrawCount = count - wallStart;
 		}

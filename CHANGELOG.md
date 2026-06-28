@@ -1,5 +1,13 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.56 - 2026-06-28
+
+- Changed the temporary Vulkan wall submission to walk BSP subsector segs
+  instead of scanning global linedefs, so wall and flat geometry now come from
+  the same map-space traversal used by the established hardware renderer shape.
+- Kept the older linedef wall scan only as a fallback for maps without
+  subsector data.
+
 ## 3.3-alpha-vdoom.55 - 2026-06-28
 
 - Changed temporary Vulkan floor/ceiling submission from per-plane
