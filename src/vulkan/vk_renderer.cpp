@@ -2414,7 +2414,7 @@ namespace
 
 		bool CreateFlatTexturePipeline()
 		{
-			return CreateWorldTexturePipeline(FlatTexturePipeline, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN, false, false, "flat texture fan");
+			return CreateWorldTexturePipeline(FlatTexturePipeline, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST, false, false, "flat texture triangles");
 		}
 
 		void DestroyProbeVertexBuffer()
@@ -3904,7 +3904,7 @@ namespace
 				++WorldDrawFlatDegenerateSkipCount;
 				return false;
 			}
-			const unsigned int maxNeeded = pointCount;
+			const unsigned int maxNeeded = (pointCount - 2) * 3;
 			if (count + maxNeeded > WorldFlatVertexMaxCount)
 			{
 				++WorldDrawFlatBudgetSkipCount;
@@ -3912,12 +3912,13 @@ namespace
 			}
 
 			const float baseLight = textureSector->lightlevel <= 0 ? 0.20f : (textureSector->lightlevel / 255.0f);
-			if (!WorldFlatIsConvex(points, pointCount))
+			const bool nonConvex = !WorldFlatIsConvex(points, pointCount);
+			if (nonConvex)
 			{
 				++WorldDrawFlatNonConvexCount;
 			}
 			const float lightScale = plane == sector_t::ceiling ? 0.80f : 1.0f;
-			const bool drew = AppendWorldFlatGpuFan(vertices, count, planeSector, textureSector, plane, points, pointCount, *tile, baseLight * lightScale);
+			const bool drew = AppendWorldFlatPolygon(vertices, count, planeSector, textureSector, plane, points, pointCount, *tile, baseLight * lightScale, true);
 			if (!drew)
 			{
 				++WorldDrawFlatBuildSkipCount;

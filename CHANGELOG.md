@@ -1,5 +1,12 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.90 - 2026-06-28
+
+- Changed Vulkan flat rendering from triangle-fan submission to triangle-list
+  submission and routed live floor/ceiling polygons through ear-clipped triangle
+  generation, targeting the large missing wedge/HOM regions on non-fan-safe
+  floors and ceilings.
+
 ## 3.3-alpha-vdoom.89 - 2026-06-28
 
 - Changed the new vDoom hardware scene collector to gather flat commands from

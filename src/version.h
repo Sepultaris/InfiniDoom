@@ -47,8 +47,8 @@ int GetRevisionNumber();
 #define GAME_MAJOR_VERSION 3
 #define GAME_MINOR_VERSION 3
 #define GAMEVER_STRING "3.3"
-#define VDOOM_DEV_VERSION 89
-#define DOTVERSIONSTR GAMEVER_STRING "-alpha-vdoom.89"
+#define VDOOM_DEV_VERSION 90
+#define DOTVERSIONSTR GAMEVER_STRING "-alpha-vdoom.90"
 #define VERSIONSTR DOTVERSIONSTR
 
 // [BB] The version string that includes revision / compatibility data.
