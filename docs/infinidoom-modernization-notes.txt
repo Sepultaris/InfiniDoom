@@ -170,6 +170,11 @@ geometry path first: the active Vulkan flat builder now uses
 `subsector->firstline[k].v1` in order, matching the old GL triangle-fan source
 and UZDoom's non-hole subsector vertex builder, instead of reconstructing a
 separate loop or choosing ear clipping from our own convexity tests.
+Flat-specific CPU near-plane clipping has also been removed from the active
+path. The GL/UZDoom model submits the flat fan and lets the hardware projection
+clip it, so the temporary Vulkan flat path now emits direct fan triangles and
+uses the shared Vulkan projection instead of generating clipped replacement
+polygons on the CPU.
 The ordered-loop checkpoint improved coverage but still left wedges, so the
 next pass accepts reversed seg links during loop reconstruction and uses
 ear-clipping for ordered non-convex loops before falling back to the center fan.

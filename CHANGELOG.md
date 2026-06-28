@@ -1,5 +1,12 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.72 - 2026-06-28
+
+- Removed the temporary CPU near-plane clipping from Vulkan flat triangles.
+- Restored flat triangle emission to direct three-vertex fan conversion so
+  floor/ceiling geometry reaches Vulkan like the established GL/UZDoom flat
+  path, leaving clipping to the GPU projection.
+
 ## 3.3-alpha-vdoom.71 - 2026-06-28
 
 - Returned the temporary Vulkan flat polygon source to the proven
