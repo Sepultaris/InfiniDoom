@@ -273,7 +273,8 @@ namespace
 		WorldDrawMaxBspDepth = 256,
 		WorldDrawFlatMaxSegs = 128,
 		WorldDrawFlatVerticesPerSubsector = WorldDrawFlatMaxSegs * 3 * 2,
-		ProbeVertexMaxCount = SceneProbeVertexCount + WorldProbeMaxWalls * 6 + WorldDrawMaxWalls * WorldDrawTextureVerticesPerWall + WorldDrawMaxFlats * WorldDrawFlatVerticesPerSubsector,
+		WorldFlatVertexMaxCount = WorldDrawMaxFlats * WorldDrawFlatVerticesPerSubsector,
+		ProbeVertexMaxCount = SceneProbeVertexCount + WorldProbeMaxWalls * 6 + WorldDrawMaxWalls * WorldDrawTextureVerticesPerWall,
 		WorldAtlasTileSize = 128,
 		WorldAtlasTilesPerRow = 16,
 		WorldAtlasMaxTiles = 256,
@@ -328,6 +329,7 @@ namespace
 			  ImageAvailableSemaphore(VK_NULL_HANDLE), RenderFinishedSemaphore(VK_NULL_HANDLE), RenderFence(VK_NULL_HANDLE),
 			  UploadBuffer(VK_NULL_HANDLE), UploadMemory(VK_NULL_HANDLE), UploadPtr(NULL), UploadSize(0),
 			  ProbeVertexBuffer(VK_NULL_HANDLE), ProbeVertexMemory(VK_NULL_HANDLE), ProbeVertexPtr(NULL), ProbeVertexBufferSize(0),
+			  WorldFlatVertexBuffer(VK_NULL_HANDLE), WorldFlatVertexMemory(VK_NULL_HANDLE), WorldFlatVertexPtr(NULL), WorldFlatVertexBufferSize(0),
 			  WorldFlatIndexBuffer(VK_NULL_HANDLE), WorldFlatIndexMemory(VK_NULL_HANDLE), WorldFlatIndexPtr(NULL), WorldFlatIndexBufferSize(0), WorldFlatIndexCount(0),
 			  ProbeVertexDrawCount(0), WorldFlatFirstVertex(0), WorldFlatDrawCount(0), WorldFlatFanCount(0), WorldDrawFirstVertex(0), WorldDrawDrawCount(0), SceneProbeFirstVertex(0), SceneProbeDrawCount(0), WorldProbeFirstVertex(0), WorldProbeDrawCount(0),
 			  SourceImage(VK_NULL_HANDLE), SourceImageMemory(VK_NULL_HANDLE), SourceImageView(VK_NULL_HANDLE),
@@ -463,6 +465,7 @@ namespace
 				CommandPool = VK_NULL_HANDLE;
 				CommandBuffer = VK_NULL_HANDLE;
 				DestroyPresentationResources();
+				DestroyWorldFlatVertexBuffer();
 				DestroyProbeVertexBuffer();
 				DestroyUploadBuffer();
 				DestroySwapchainResources();
@@ -632,7 +635,8 @@ namespace
 		bool IsWorldDrawActive() const
 		{
 			return vk_draw_world && WallTexturePipeline != VK_NULL_HANDLE &&
-				ProbeVertexBuffer != VK_NULL_HANDLE && (WorldDrawDrawCount > 0 || WorldFlatDrawCount > 0);
+				((ProbeVertexBuffer != VK_NULL_HANDLE && WorldDrawDrawCount > 0) ||
+				(WorldFlatVertexBuffer != VK_NULL_HANDLE && WorldFlatDrawCount > 0));
 		}
 
 		unsigned int GetWorldDrawVertexCount() const
@@ -2388,7 +2392,6 @@ namespace
 
 		void DestroyProbeVertexBuffer()
 		{
-			DestroyWorldFlatIndexBuffer();
 			if (Device == NULL)
 			{
 				ProbeVertexBuffer = VK_NULL_HANDLE;
@@ -2441,6 +2444,37 @@ namespace
 			SceneProbeDrawCount = 0;
 			WorldProbeFirstVertex = 0;
 			WorldProbeDrawCount = 0;
+		}
+
+		void DestroyWorldFlatVertexBuffer()
+		{
+			DestroyWorldFlatIndexBuffer();
+			if (Device == NULL)
+			{
+				WorldFlatVertexBuffer = VK_NULL_HANDLE;
+				WorldFlatVertexMemory = VK_NULL_HANDLE;
+				WorldFlatVertexPtr = NULL;
+				WorldFlatVertexBufferSize = 0;
+				WorldFlatDrawCount = 0;
+				return;
+			}
+			if (WorldFlatVertexMemory != VK_NULL_HANDLE && WorldFlatVertexPtr != NULL && Vk.UnmapMemory != NULL)
+			{
+				Vk.UnmapMemory(Device, WorldFlatVertexMemory);
+			}
+			WorldFlatVertexPtr = NULL;
+			if (WorldFlatVertexBuffer != VK_NULL_HANDLE && Vk.DestroyBuffer != NULL)
+			{
+				Vk.DestroyBuffer(Device, WorldFlatVertexBuffer, NULL);
+			}
+			WorldFlatVertexBuffer = VK_NULL_HANDLE;
+			if (WorldFlatVertexMemory != VK_NULL_HANDLE && Vk.FreeMemory != NULL)
+			{
+				Vk.FreeMemory(Device, WorldFlatVertexMemory, NULL);
+			}
+			WorldFlatVertexMemory = VK_NULL_HANDLE;
+			WorldFlatVertexBufferSize = 0;
+			WorldFlatDrawCount = 0;
 		}
 
 		void DestroyWorldFlatIndexBuffer()
@@ -2661,7 +2695,7 @@ namespace
 			const WorldAtlasTile &tile,
 			float light)
 		{
-			if (count + 6 > ProbeVertexMaxCount)
+			if (count + 6 > WorldFlatVertexMaxCount)
 			{
 				return;
 			}
@@ -3218,7 +3252,7 @@ namespace
 			double ax, double ay, double bx, double by, double cx, double cy,
 			const WorldAtlasTile &tile, float light)
 		{
-			if (count + 6 > ProbeVertexMaxCount)
+			if (count + 6 > WorldFlatVertexMaxCount)
 			{
 				return false;
 			}
@@ -3632,7 +3666,7 @@ namespace
 			{
 				return false;
 			}
-			if (count + range.TriangleCount * 6 > ProbeVertexMaxCount)
+			if (count + range.TriangleCount * 6 > WorldFlatVertexMaxCount)
 			{
 				++WorldDrawFlatBudgetSkipCount;
 				return false;
@@ -3670,7 +3704,7 @@ namespace
 			sector_t *planeSector, sector_t *textureSector, int plane, const WorldFlatPoint *points, unsigned int pointCount,
 			const WorldAtlasTile &tile, float light)
 		{
-			if (pointCount < 3 || count + pointCount * 3 > ProbeVertexMaxCount)
+			if (pointCount < 3 || count + pointCount * 3 > WorldFlatVertexMaxCount)
 			{
 				return false;
 			}
@@ -3712,7 +3746,7 @@ namespace
 				return AppendWorldFlatPolygonFan(vertices, count, planeSector, textureSector, plane, points, pointCount, tile, light);
 			}
 
-			if (pointCount < 3 || count + (pointCount - 2) * 3 > ProbeVertexMaxCount)
+			if (pointCount < 3 || count + (pointCount - 2) * 3 > WorldFlatVertexMaxCount)
 			{
 				return false;
 			}
@@ -3801,7 +3835,7 @@ namespace
 			sector_t *planeSector, sector_t *textureSector, int plane, const WorldFlatPoint *points, unsigned int pointCount,
 			const WorldAtlasTile &tile, float light)
 		{
-			if (pointCount < 3 || count + (pointCount - 2) * 3 > ProbeVertexMaxCount)
+			if (pointCount < 3 || count + (pointCount - 2) * 3 > WorldFlatVertexMaxCount)
 			{
 				return false;
 			}
@@ -3818,7 +3852,7 @@ namespace
 			sector_t *planeSector, sector_t *textureSector, int plane, const WorldFlatPoint *points, unsigned int pointCount,
 			const WorldAtlasTile &tile, float light)
 		{
-			if (pointCount < 3 || count + pointCount > ProbeVertexMaxCount || WorldFlatFanCount >= WorldDrawMaxFlatFans)
+			if (pointCount < 3 || count + pointCount > WorldFlatVertexMaxCount || WorldFlatFanCount >= WorldDrawMaxFlatFans)
 			{
 				return false;
 			}
@@ -3871,7 +3905,7 @@ namespace
 				return false;
 			}
 			const unsigned int maxNeeded = (pointCount - 2) * 6;
-			if (count + maxNeeded > ProbeVertexMaxCount)
+			if (count + maxNeeded > WorldFlatVertexMaxCount)
 			{
 				++WorldDrawFlatBudgetSkipCount;
 				return false;
@@ -4232,14 +4266,8 @@ namespace
 			}
 		}
 
-		void AppendWorldDrawVertices(SceneProbeVertex *vertices, unsigned int &count)
+		void AppendWorldFlatDrawVertices(SceneProbeVertex *vertices, unsigned int &count)
 		{
-			if (lines == NULL || numlines <= 0)
-			{
-				return;
-			}
-			WorldFlatFirstVertex = count;
-			WorldFlatDrawCount = 0;
 			WorldFlatFanCount = 0;
 			WorldDrawFlatCount = 0;
 			WorldDrawFlatRangeSkipCount = 0;
@@ -4249,6 +4277,10 @@ namespace
 			WorldDrawFlatTextureSkipCount = 0;
 			WorldDrawFlatBuildSkipCount = 0;
 			WorldDrawFlatNonConvexCount = 0;
+			if (lines == NULL || numlines <= 0)
+			{
+				return;
+			}
 			if (subsectors != NULL && numsubsectors > 0)
 			{
 				BuildWorldFlatMesh();
@@ -4262,8 +4294,14 @@ namespace
 					AppendWorldFlatFallbackScan(vertices, count, flats);
 				}
 			}
-			WorldFlatDrawCount = count - WorldFlatFirstVertex;
+		}
 
+		void AppendWorldDrawVertices(SceneProbeVertex *vertices, unsigned int &count)
+		{
+			if (lines == NULL || numlines <= 0)
+			{
+				return;
+			}
 			WorldDrawFirstVertex = count;
 			const unsigned int wallStart = count;
 			unsigned int walls = 0;
@@ -4362,7 +4400,13 @@ namespace
 			if (vk_draw_world)
 			{
 				ResetWorldAtlas();
+				UpdateWorldFlatVertices();
 				AppendWorldDrawVertices(vertices, count);
+			}
+			else
+			{
+				WorldFlatDrawCount = 0;
+				WorldFlatIndexCount = 0;
 			}
 			if (vk_world_probe)
 			{
@@ -4377,7 +4421,6 @@ namespace
 				SceneProbeDrawCount = count - SceneProbeFirstVertex;
 			}
 			ProbeVertexDrawCount = count;
-			UpdateWorldFlatIndexBuffer();
 		}
 
 		bool EnsureWorldFlatIndexBuffer(unsigned int indexCount)
@@ -4448,6 +4491,93 @@ namespace
 			}
 			WorldFlatIndexBufferSize = needed;
 			return true;
+		}
+
+		bool EnsureWorldFlatVertexBuffer()
+		{
+			const VkDeviceSize needed = sizeof(SceneProbeVertex) * (VkDeviceSize)WorldFlatVertexMaxCount;
+			if (WorldFlatVertexBuffer != VK_NULL_HANDLE && WorldFlatVertexPtr != NULL && WorldFlatVertexBufferSize >= needed)
+			{
+				return true;
+			}
+
+			DestroyWorldFlatVertexBuffer();
+
+			VkBufferCreateInfo bufferInfo;
+			memset(&bufferInfo, 0, sizeof(bufferInfo));
+			bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+			bufferInfo.size = needed;
+			bufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+			bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+			VkResult result = Vk.CreateBuffer(Device, &bufferInfo, NULL, &WorldFlatVertexBuffer);
+			if (result != VK_SUCCESS)
+			{
+				Printf(TEXTCOLOR_RED "Vulkan: flat vertex vkCreateBuffer failed (%d).\n", (int)result);
+				return false;
+			}
+
+			VkMemoryRequirements requirements;
+			Vk.GetBufferMemoryRequirements(Device, WorldFlatVertexBuffer, &requirements);
+			unsigned int memoryType = FindMemoryType(requirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+			if (memoryType == ~0u)
+			{
+				Printf(TEXTCOLOR_RED "Vulkan: no host-visible flat vertex memory type found.\n");
+				DestroyWorldFlatVertexBuffer();
+				return false;
+			}
+
+			VkMemoryAllocateInfo allocInfo;
+			memset(&allocInfo, 0, sizeof(allocInfo));
+			allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+			allocInfo.allocationSize = requirements.size;
+			allocInfo.memoryTypeIndex = memoryType;
+
+			result = Vk.AllocateMemory(Device, &allocInfo, NULL, &WorldFlatVertexMemory);
+			if (result != VK_SUCCESS)
+			{
+				Printf(TEXTCOLOR_RED "Vulkan: flat vertex vkAllocateMemory failed (%d).\n", (int)result);
+				DestroyWorldFlatVertexBuffer();
+				return false;
+			}
+			result = Vk.BindBufferMemory(Device, WorldFlatVertexBuffer, WorldFlatVertexMemory, 0);
+			if (result != VK_SUCCESS)
+			{
+				Printf(TEXTCOLOR_RED "Vulkan: flat vertex vkBindBufferMemory failed (%d).\n", (int)result);
+				DestroyWorldFlatVertexBuffer();
+				return false;
+			}
+			result = Vk.MapMemory(Device, WorldFlatVertexMemory, 0, needed, 0, &WorldFlatVertexPtr);
+			if (result != VK_SUCCESS)
+			{
+				Printf(TEXTCOLOR_RED "Vulkan: flat vertex vkMapMemory failed (%d).\n", (int)result);
+				DestroyWorldFlatVertexBuffer();
+				return false;
+			}
+			WorldFlatVertexBufferSize = needed;
+			return true;
+		}
+
+		void UpdateWorldFlatVertices()
+		{
+			WorldFlatFirstVertex = 0;
+			WorldFlatDrawCount = 0;
+			WorldFlatFanCount = 0;
+			if (!vk_draw_world)
+			{
+				WorldFlatIndexCount = 0;
+				return;
+			}
+			if (!EnsureWorldFlatVertexBuffer() || WorldFlatVertexPtr == NULL)
+			{
+				WorldFlatIndexCount = 0;
+				return;
+			}
+			SceneProbeVertex *vertices = static_cast<SceneProbeVertex *>(WorldFlatVertexPtr);
+			unsigned int count = 0;
+			AppendWorldFlatDrawVertices(vertices, count);
+			WorldFlatDrawCount = count;
+			UpdateWorldFlatIndexBuffer();
 		}
 
 		void UpdateWorldFlatIndexBuffer()
@@ -4610,6 +4740,7 @@ namespace
 
 		void DestroyPresentationResources()
 		{
+			DestroyWorldFlatVertexBuffer();
 			DestroySourceImages();
 			DestroyWallTextureResources();
 			for (unsigned int i = 0; i < MaxSwapchainImages; ++i)
@@ -5585,20 +5716,21 @@ namespace
 			{
 				VkDeviceSize vertexOffsets[1] = { 0 };
 				SceneProbePushConstants probeConstants = BuildSceneProbePushConstants();
-				if (vk_draw_world && WallTexturePipeline != VK_NULL_HANDLE && WallTextureDescriptorSet != VK_NULL_HANDLE && WorldFlatDrawCount > 0)
+				if (vk_draw_world && WallTexturePipeline != VK_NULL_HANDLE && WallTextureDescriptorSet != VK_NULL_HANDLE &&
+					WorldFlatVertexBuffer != VK_NULL_HANDLE && WorldFlatDrawCount > 0)
 				{
 					Vk.CmdBindPipeline(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, WallTexturePipeline);
 					Vk.CmdBindDescriptorSets(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, WallTexturePipelineLayout, 0, 1, &WallTextureDescriptorSet, 0, NULL);
 					Vk.CmdPushConstants(CommandBuffer, WallTexturePipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(probeConstants), &probeConstants);
-					Vk.CmdBindVertexBuffers(CommandBuffer, 0, 1, &ProbeVertexBuffer, vertexOffsets);
+					Vk.CmdBindVertexBuffers(CommandBuffer, 0, 1, &WorldFlatVertexBuffer, vertexOffsets);
 					if (WorldFlatIndexBuffer != VK_NULL_HANDLE && WorldFlatIndexCount == WorldFlatDrawCount)
 					{
 						Vk.CmdBindIndexBuffer(CommandBuffer, WorldFlatIndexBuffer, 0, VK_INDEX_TYPE_UINT32);
-						Vk.CmdDrawIndexed(CommandBuffer, WorldFlatIndexCount, 1, 0, (int)WorldFlatFirstVertex, 0);
+						Vk.CmdDrawIndexed(CommandBuffer, WorldFlatIndexCount, 1, 0, 0, 0);
 					}
 					else
 					{
-						Vk.CmdDraw(CommandBuffer, WorldFlatDrawCount, 1, WorldFlatFirstVertex, 0);
+						Vk.CmdDraw(CommandBuffer, WorldFlatDrawCount, 1, 0, 0);
 					}
 				}
 				if (vk_draw_world && WallTexturePipeline != VK_NULL_HANDLE && WallTextureDescriptorSet != VK_NULL_HANDLE && WorldDrawDrawCount > 0)
@@ -5943,6 +6075,10 @@ namespace
 		VkDeviceMemory ProbeVertexMemory;
 		void *ProbeVertexPtr;
 		VkDeviceSize ProbeVertexBufferSize;
+		VkBuffer WorldFlatVertexBuffer;
+		VkDeviceMemory WorldFlatVertexMemory;
+		void *WorldFlatVertexPtr;
+		VkDeviceSize WorldFlatVertexBufferSize;
 		VkBuffer WorldFlatIndexBuffer;
 		VkDeviceMemory WorldFlatIndexMemory;
 		void *WorldFlatIndexPtr;

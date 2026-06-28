@@ -263,3 +263,11 @@ uses indexed flat submission when the buffer is valid. This intentionally keeps
 the current flat vertices in the temporary stream for one checkpoint so the
 submission path can be validated separately from the coming mesh-storage
 change.
+
+The `.82` checkpoint splits Vulkan flat vertices into their own host-visible
+vertex buffer. The cached flat ranges are still refreshed into renderer-owned
+vertices each frame because the world texture atlas is also refreshed each
+frame, but flat submission no longer depends on the shared probe/wall vertex
+buffer. This matches the intended UZDoom-style direction more closely: flats
+now have their own vertex/index batch, while wall geometry can be separated and
+cached independently later.

@@ -1,5 +1,16 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.82 - 2026-06-28
+
+- Split native Vulkan flat geometry out of the shared probe/world vertex
+  buffer into a dedicated host-visible flat vertex buffer.
+- Flat submission now binds the flat vertex buffer together with the flat index
+  buffer added in `.81`; walls and diagnostic probes continue using the
+  existing probe/world buffer.
+- This keeps the UZDoom-style cached flat mesh path moving toward dedicated
+  renderer-owned vertex/index batches while preserving the current per-frame
+  atlas refresh.
+
 ## 3.3-alpha-vdoom.81 - 2026-06-28
 
 - Added Vulkan index-buffer plumbing for native world flats: vDoom now loads
