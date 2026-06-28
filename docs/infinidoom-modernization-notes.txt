@@ -235,3 +235,8 @@ Release discipline:
   verification targets are:
   - cmake --build build\vs2022-vcpkg-openal-fluid --config Debug --target zdoom -- /m
   - cmake --build build\vs2022-vcpkg-openal-fluid --config Debug --target pk3 -- /m
+
+The `.78` Vulkan flat diagnostic changes the active world draw order to submit
+floor and ceiling flats before walls. This preserves `.77` triangle-list flat
+geometry and `.76` masked-texel discard while testing whether early wall depth
+writes are contributing to the remaining black floor/ceiling wedges.

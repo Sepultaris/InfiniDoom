@@ -1,5 +1,12 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.78 - 2026-06-28
+
+- Changed the temporary Vulkan world pass to submit floor and ceiling flats
+  before textured walls, so early wall quads cannot pre-fill depth over flat
+  coverage while the native geometry path is still being brought up.
+- Keeps `.77` triangle-list flat submission and the `.76` masked-texel discard.
+
 ## 3.3-alpha-vdoom.77 - 2026-06-28
 
 - Changed active Vulkan floor/ceiling submission back to triangle-list drawing
