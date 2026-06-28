@@ -1,5 +1,13 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.68 - 2026-06-28
+
+- Extended temporary Vulkan flat loop reconstruction so subsector edge chains
+  can continue through reversed segs when a stored seg points back toward the
+  current vertex.
+- Restored ear-clipping triangulation for ordered non-convex flat loops, with
+  a center-fan fallback if the diagnostic triangulator cannot find a valid ear.
+
 ## 3.3-alpha-vdoom.67 - 2026-06-28
 
 - Rebuilt the temporary Vulkan flat polygon source so subsector vertices are

@@ -156,6 +156,9 @@ The center-fan diagnostic changed the wedge pattern, confirming flat holes are
 coming from polygon construction. The next checkpoint reconstructs a continuous
 subsector edge loop before building a boundary fan, mirroring the GL flat
 vertex buffer's reliance on subsector boundary order.
+The ordered-loop checkpoint improved coverage but still left wedges, so the
+next pass accepts reversed seg links during loop reconstruction and uses
+ear-clipping for ordered non-convex loops before falling back to the center fan.
 - `vk_hide_software_frame` no longer hides the software frame while menus are
   active or when no Vulkan world draw was produced, so the title/main menus
   remain navigable during isolation-mode testing.
