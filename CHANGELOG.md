@@ -1,5 +1,10 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.60 - 2026-06-28
+
+- Raised the temporary Vulkan flat subsector submission cap from 1024 to 4096
+  so dense maps do not leave later BSP floor and ceiling leaves unsubmitted.
+
 ## 3.3-alpha-vdoom.59 - 2026-06-28
 
 - Removed the temporary camera-position floor/ceiling eligibility test from

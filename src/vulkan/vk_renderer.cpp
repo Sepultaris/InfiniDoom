@@ -266,7 +266,7 @@ namespace
 		WorldDrawTextureSectionsPerWall = 2,
 		WorldDrawTextureVerticesPerSection = WorldDrawTextureColumns * WorldDrawTextureRows * 6,
 		WorldDrawTextureVerticesPerWall = WorldDrawTextureSectionsPerWall * WorldDrawTextureVerticesPerSection,
-		WorldDrawMaxFlats = 1024,
+		WorldDrawMaxFlats = 4096,
 		WorldDrawMaxBspDepth = 256,
 		WorldDrawFlatMaxSegs = 128,
 		WorldDrawFlatVerticesPerSubsector = WorldDrawFlatMaxSegs * 3 * 2,
