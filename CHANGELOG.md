@@ -1,5 +1,14 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.65 - 2026-06-28
+
+- Restored the temporary Vulkan flat submission path to BSP-visible subsector
+  order after the sector sweep checkpoint suppressed floors and ceilings
+  completely on test maps.
+- Kept the sector-scan helper code available for comparison, but removed it
+  from the active draw path so flat bring-up returns to the last visible
+  baseline before rebuilding the clipping/triangulation step.
+
 ## 3.3-alpha-vdoom.64 - 2026-06-28
 
 - Loosened the temporary Vulkan sector-flat checkpoint so sector floors and
