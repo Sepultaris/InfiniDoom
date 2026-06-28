@@ -272,8 +272,8 @@ namespace
 		WorldDrawFlatVerticesPerSubsector = WorldDrawFlatMaxSegs * 3 * 2,
 		ProbeVertexMaxCount = SceneProbeVertexCount + WorldProbeMaxWalls * 6 + WorldDrawMaxWalls * WorldDrawTextureVerticesPerWall + WorldDrawMaxFlats * WorldDrawFlatVerticesPerSubsector,
 		WorldAtlasTileSize = 128,
-		WorldAtlasTilesPerRow = 8,
-		WorldAtlasMaxTiles = 64,
+		WorldAtlasTilesPerRow = 16,
+		WorldAtlasMaxTiles = 256,
 		WorldAtlasSize = WorldAtlasTileSize * WorldAtlasTilesPerRow,
 		WorldAtlasBytes = WorldAtlasSize * WorldAtlasSize * 4
 	};
@@ -653,6 +653,16 @@ namespace
 		unsigned int GetWorldDrawFlatNonConvexCount() const
 		{
 			return IsWorldDrawActive() ? WorldDrawFlatNonConvexCount : 0;
+		}
+
+		unsigned int GetWorldAtlasTileCount() const
+		{
+			return IsWorldDrawActive() ? WallAtlasTileCount : 0;
+		}
+
+		unsigned int GetWorldAtlasMaxTiles() const
+		{
+			return WorldAtlasMaxTiles;
 		}
 
 		bool WantsProbeDraw() const
@@ -5395,6 +5405,8 @@ namespace
 		VulkanStats.WorldDrawFlatTextureSkipCount = runtime->GetWorldDrawFlatTextureSkipCount();
 		VulkanStats.WorldDrawFlatBuildSkipCount = runtime->GetWorldDrawFlatBuildSkipCount();
 		VulkanStats.WorldDrawFlatNonConvexCount = runtime->GetWorldDrawFlatNonConvexCount();
+		VulkanStats.WorldAtlasTileCount = runtime->GetWorldAtlasTileCount();
+		VulkanStats.WorldAtlasMaxTiles = runtime->GetWorldAtlasMaxTiles();
 		VulkanStats.SceneProbeActive = runtime->IsSceneProbeActive();
 		VulkanStats.SceneProbeVertexCount = runtime->GetSceneProbeVertexCount();
 		VulkanStats.WorldProbeActive = runtime->IsWorldProbeActive();

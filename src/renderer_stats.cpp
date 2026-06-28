@@ -207,6 +207,9 @@ ADD_STAT(renderer)
 						vk.WorldDrawFlatTextureSkipCount,
 						vk.WorldDrawFlatBuildSkipCount,
 						vk.WorldDrawFlatNonConvexCount);
+					out.AppendFormat("GPU world atlas: %u/%u tiles\n",
+						vk.WorldAtlasTileCount,
+						vk.WorldAtlasMaxTiles);
 					out.AppendFormat("GPU flat texture mode: %s\n", vk.DebugSolidFlats ? "solid diagnostic" : "atlas textured");
 					if (vk.DebugFlatColors)
 					{

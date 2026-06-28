@@ -134,6 +134,9 @@ Current Vulkan direction:
   visual metadata: subsector vertices are placed against the real subsector
   sector plane, while render-sector texture selection, offsets, scales, and
   lighting are still used for the first-pass material look.
+  The temporary shared world atlas has been expanded to 256 slots and reports
+  tile occupancy through `stat renderer`; this keeps atlas pressure visible
+  while floor/ceiling gaps are separated from texture upload failures.
 - `vk_hide_software_frame` no longer hides the software frame while menus are
   active or when no Vulkan world draw was produced, so the title/main menus
   remain navigable during isolation-mode testing.

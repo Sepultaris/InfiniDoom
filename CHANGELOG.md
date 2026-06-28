@@ -1,5 +1,13 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.62 - 2026-06-28
+
+- Expanded the temporary Vulkan world texture atlas from 64 to 256 slots so
+  the combined wall, floor, and ceiling bring-up path has enough room for
+  larger visible texture sets.
+- Added world-atlas occupancy to `stat renderer` so black or missing Vulkan
+  world regions can be checked against atlas pressure during testing.
+
 ## 3.3-alpha-vdoom.61 - 2026-06-28
 
 - Changed temporary Vulkan flat placement to use the subsector's real sector
