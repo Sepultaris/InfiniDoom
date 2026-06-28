@@ -3045,16 +3045,9 @@ namespace
 				{
 					continue;
 				}
-				WorldFlatPoint point = { FIXED2FLOAT(vertex->x), FIXED2FLOAT(vertex->y) };
-				if (pointCount > 0 && WorldFlatSamePoint(points[pointCount - 1], point))
-				{
-					continue;
-				}
-				points[pointCount++] = point;
-			}
-			if (pointCount > 2 && WorldFlatSamePoint(points[0], points[pointCount - 1]))
-			{
-				--pointCount;
+				points[pointCount].X = FIXED2FLOAT(vertex->x);
+				points[pointCount].Y = FIXED2FLOAT(vertex->y);
+				++pointCount;
 			}
 			return pointCount;
 		}

@@ -110,8 +110,9 @@ Current Vulkan direction:
 - `vk_draw_world` also emits first-pass floor and ceiling flats. Nearby
   subsectors are triangulated from their ordered `firstline[].v1` vertices,
   matching the model used by the established OpenGL path and UZDoom's hardware
-  vertex builder. Normal subsectors draw as triangle fans, with the local
-  ear-clipping helper kept all-or-nothing for future hole-subsector support.
+  vertex builder. Normal subsectors draw as triangle fans, and the temporary
+  Vulkan builder now preserves that subsector vertex stream exactly instead of
+  removing duplicate vertices before fan emission.
   The pass intentionally skips sky flats and does not yet use the software
   renderer's full visplane/opening rules, fake flats, portals, or complete
   plane transforms; it is a visibility milestone for GPU-owned planes. The

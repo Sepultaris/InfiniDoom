@@ -1,5 +1,15 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.49 - 2026-06-28
+
+- Changed the temporary Vulkan flat builder to preserve each subsector's
+  ordered `firstline[].v1` vertex stream exactly, matching the established
+  OpenGL/UZDoom normal-subsector triangle-fan path instead of removing
+  duplicate points before fan emission.
+- Kept this as a focused geometry submission change so remaining flat holes can
+  be tested against the renderer's real subsector data rather than a cleaned-up
+  polygon approximation.
+
 ## 3.3-alpha-vdoom.48 - 2026-06-28
 
 - Replaced the temporary Vulkan flat pass's map-array-order subsector scan with
