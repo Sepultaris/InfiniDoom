@@ -1,5 +1,14 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.43 - 2026-06-27
+
+- Expanded the temporary Vulkan flat draw coverage from 256 nearby subsectors
+  to 1024 subsectors, allowed larger subsector polygons, and widened the
+  debug pass range so floors and ceilings are less likely to be omitted by the
+  bring-up sampling limits.
+- Added `stat renderer` flat diagnostics for drawn flats plus range, large
+  polygon, and vertex-budget skips.
+
 ## 3.3-alpha-vdoom.42 - 2026-06-27
 
 - Fixed the Vulkan flat triangulator leaving partial floor/ceiling polygons

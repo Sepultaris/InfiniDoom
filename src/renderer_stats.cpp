@@ -197,6 +197,11 @@ ADD_STAT(renderer)
 				if (vk.WorldDrawActive)
 				{
 					out.AppendFormat("GPU world draw: active, %u vertices\n", vk.WorldDrawVertexCount);
+					out.AppendFormat("GPU flats: %u drawn, %u range skip, %u large skip, %u budget skip\n",
+						vk.WorldDrawFlatCount,
+						vk.WorldDrawFlatRangeSkipCount,
+						vk.WorldDrawFlatTooLargeSkipCount,
+						vk.WorldDrawFlatBudgetSkipCount);
 				}
 				else
 				{

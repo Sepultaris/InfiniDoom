@@ -264,8 +264,8 @@ namespace
 		WorldDrawTextureSectionsPerWall = 2,
 		WorldDrawTextureVerticesPerSection = WorldDrawTextureColumns * WorldDrawTextureRows * 6,
 		WorldDrawTextureVerticesPerWall = WorldDrawTextureSectionsPerWall * WorldDrawTextureVerticesPerSection,
-		WorldDrawMaxFlats = 256,
-		WorldDrawFlatMaxSegs = 64,
+		WorldDrawMaxFlats = 1024,
+		WorldDrawFlatMaxSegs = 128,
 		WorldDrawFlatVerticesPerSubsector = WorldDrawFlatMaxSegs * 3 * 2,
 		ProbeVertexMaxCount = SceneProbeVertexCount + WorldProbeMaxWalls * 6 + WorldDrawMaxWalls * WorldDrawTextureVerticesPerWall + WorldDrawMaxFlats * WorldDrawFlatVerticesPerSubsector,
 		WorldAtlasTileSize = 128,
@@ -326,6 +326,7 @@ namespace
 			  PresentFilterMode(-1), TimestampQueryPool(VK_NULL_HANDLE), TimestampQueriesSupported(false),
 			  TimestampQueryPending(false), TimestampPeriod(0.0), LastGpuFrameMS(0.0), MemoryBudgetSupported(false),
 			  DeviceLocalMemoryBudgetBytes(0), DeviceLocalMemoryUsageBytes(0),
+			  WorldDrawFlatCount(0), WorldDrawFlatRangeSkipCount(0), WorldDrawFlatTooLargeSkipCount(0), WorldDrawFlatBudgetSkipCount(0),
 			  PresentScaleMode(1), PresentViewportX(0), PresentViewportY(0), PresentViewportWidth(0), PresentViewportHeight(0),
 			  GraphicsQueueFamily(~0u), DeviceCount(0), SwapchainImageCount(0), SwapchainViewCount(0),
 			  SwapchainFormat(VK_FORMAT_UNDEFINED), SwapchainColorSpace(VK_COLOR_SPACE_SRGB_NONLINEAR_KHR),
@@ -597,6 +598,26 @@ namespace
 		unsigned int GetWorldDrawVertexCount() const
 		{
 			return IsWorldDrawActive() ? WorldDrawDrawCount : 0;
+		}
+
+		unsigned int GetWorldDrawFlatCount() const
+		{
+			return IsWorldDrawActive() ? WorldDrawFlatCount : 0;
+		}
+
+		unsigned int GetWorldDrawFlatRangeSkipCount() const
+		{
+			return IsWorldDrawActive() ? WorldDrawFlatRangeSkipCount : 0;
+		}
+
+		unsigned int GetWorldDrawFlatTooLargeSkipCount() const
+		{
+			return IsWorldDrawActive() ? WorldDrawFlatTooLargeSkipCount : 0;
+		}
+
+		unsigned int GetWorldDrawFlatBudgetSkipCount() const
+		{
+			return IsWorldDrawActive() ? WorldDrawFlatBudgetSkipCount : 0;
 		}
 
 		bool WantsProbeDraw() const
@@ -2283,6 +2304,10 @@ namespace
 				ProbeVertexDrawCount = 0;
 				WorldDrawFirstVertex = 0;
 				WorldDrawDrawCount = 0;
+				WorldDrawFlatCount = 0;
+				WorldDrawFlatRangeSkipCount = 0;
+				WorldDrawFlatTooLargeSkipCount = 0;
+				WorldDrawFlatBudgetSkipCount = 0;
 				SceneProbeFirstVertex = 0;
 				SceneProbeDrawCount = 0;
 				WorldProbeFirstVertex = 0;
@@ -3166,20 +3191,30 @@ namespace
 			}
 			const double camX = FIXED2FLOAT(viewx);
 			const double camY = FIXED2FLOAT(viewy);
-			const double maxDistance = 1024.0;
+			const double maxDistance = 4096.0;
 			const double maxDistanceSquared = maxDistance * maxDistance;
+			WorldDrawFlatCount = 0;
+			WorldDrawFlatRangeSkipCount = 0;
+			WorldDrawFlatTooLargeSkipCount = 0;
+			WorldDrawFlatBudgetSkipCount = 0;
 			if (subsectors != NULL && numsubsectors > 0)
 			{
 				unsigned int flats = 0;
 				for (int i = 0; i < numsubsectors && flats < WorldDrawMaxFlats; ++i)
 				{
 					const subsector_t *subsector = &subsectors[i];
-					if (subsector->firstline == NULL || subsector->numlines < 3 || subsector->numlines > WorldDrawFlatMaxSegs)
+					if (subsector->firstline == NULL || subsector->numlines < 3)
 					{
+						continue;
+					}
+					if (subsector->numlines > WorldDrawFlatMaxSegs)
+					{
+						++WorldDrawFlatTooLargeSkipCount;
 						continue;
 					}
 					double centerX = 0.0;
 					double centerY = 0.0;
+					unsigned int centerPoints = 0;
 					for (unsigned int j = 0; j < subsector->numlines; ++j)
 					{
 						const vertex_t *vertex = subsector->firstline[j].v1;
@@ -3187,19 +3222,30 @@ namespace
 						{
 							centerX += FIXED2FLOAT(vertex->x);
 							centerY += FIXED2FLOAT(vertex->y);
+							++centerPoints;
 						}
 					}
-					centerX /= (double)subsector->numlines;
-					centerY /= (double)subsector->numlines;
+					if (centerPoints == 0)
+					{
+						continue;
+					}
+					centerX /= (double)centerPoints;
+					centerY /= (double)centerPoints;
 					const double dx = centerX - camX;
 					const double dy = centerY - camY;
 					if (dx * dx + dy * dy > maxDistanceSquared)
 					{
+						++WorldDrawFlatRangeSkipCount;
 						continue;
 					}
 					if (AppendWorldFlatSubsector(vertices, count, subsector))
 					{
 						++flats;
+						++WorldDrawFlatCount;
+					}
+					else
+					{
+						++WorldDrawFlatBudgetSkipCount;
 					}
 				}
 			}
@@ -3277,6 +3323,10 @@ namespace
 			unsigned int count = 0;
 			WorldDrawFirstVertex = 0;
 			WorldDrawDrawCount = 0;
+			WorldDrawFlatCount = 0;
+			WorldDrawFlatRangeSkipCount = 0;
+			WorldDrawFlatTooLargeSkipCount = 0;
+			WorldDrawFlatBudgetSkipCount = 0;
 			SceneProbeFirstVertex = 0;
 			SceneProbeDrawCount = 0;
 			WorldProbeFirstVertex = 0;
@@ -4802,6 +4852,10 @@ namespace
 		bool MemoryBudgetSupported;
 		unsigned long long DeviceLocalMemoryBudgetBytes;
 		unsigned long long DeviceLocalMemoryUsageBytes;
+		unsigned int WorldDrawFlatCount;
+		unsigned int WorldDrawFlatRangeSkipCount;
+		unsigned int WorldDrawFlatTooLargeSkipCount;
+		unsigned int WorldDrawFlatBudgetSkipCount;
 		unsigned int PresentScaleMode;
 		unsigned int PresentViewportX;
 		unsigned int PresentViewportY;
@@ -4875,6 +4929,10 @@ namespace
 		VulkanStats.PresentAspect = runtime->GetPresentAspect();
 		VulkanStats.WorldDrawActive = runtime->IsWorldDrawActive();
 		VulkanStats.WorldDrawVertexCount = runtime->GetWorldDrawVertexCount();
+		VulkanStats.WorldDrawFlatCount = runtime->GetWorldDrawFlatCount();
+		VulkanStats.WorldDrawFlatRangeSkipCount = runtime->GetWorldDrawFlatRangeSkipCount();
+		VulkanStats.WorldDrawFlatTooLargeSkipCount = runtime->GetWorldDrawFlatTooLargeSkipCount();
+		VulkanStats.WorldDrawFlatBudgetSkipCount = runtime->GetWorldDrawFlatBudgetSkipCount();
 		VulkanStats.SceneProbeActive = runtime->IsSceneProbeActive();
 		VulkanStats.SceneProbeVertexCount = runtime->GetSceneProbeVertexCount();
 		VulkanStats.WorldProbeActive = runtime->IsWorldProbeActive();

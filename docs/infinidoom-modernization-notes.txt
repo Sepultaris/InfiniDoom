@@ -114,7 +114,11 @@ Current Vulkan direction:
   ear-clipping helper kept all-or-nothing for future hole-subsector support.
   The pass intentionally skips sky flats and does not yet use the software
   renderer's full visplane/opening rules, fake flats, portals, or complete
-  plane transforms; it is a visibility milestone for GPU-owned planes.
+  plane transforms; it is a visibility milestone for GPU-owned planes. The
+  temporary flat pass now draws a much wider 4096-unit range with up to 1024
+  subsectors and reports drawn/range/large/budget counts through
+  `stat renderer`, but the long-term path should replace this broad sampling
+  with UZDoom-style indexed visible flat batches.
 - `vk_hide_software_frame` no longer hides the software frame while menus are
   active or when no Vulkan world draw was produced, so the title/main menus
   remain navigable during isolation-mode testing.
