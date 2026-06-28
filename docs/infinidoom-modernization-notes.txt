@@ -183,6 +183,10 @@ The active Vulkan flat path now records one triangle-fan draw range per
 subsector plane and uses a dedicated `VK_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN`
 pipeline. This removes CPU fan expansion from the diagnosis and lines the
 temporary path up with the established GL flat primitive shape.
+Flat collection now uses the sector-owned subsector lists instead of the
+temporary BSP-leaf flat walk. The old GL path draws flats as sector work after
+visibility has been established, so this moves the diagnostic Vulkan path
+closer to that ownership model while retaining the per-subsector fan draws.
 The ordered-loop checkpoint improved coverage but still left wedges, so the
 next pass accepts reversed seg links during loop reconstruction and uses
 ear-clipping for ordered non-convex loops before falling back to the center fan.

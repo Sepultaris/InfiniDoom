@@ -1,5 +1,12 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.75 - 2026-06-28
+
+- Changed the temporary Vulkan flat collector to gather floor and ceiling fans
+  from sector-owned subsector lists instead of the bespoke BSP leaf walk.
+- This follows the established GL flat pass more closely while keeping the
+  Vulkan fan pipeline from `.74`.
+
 ## 3.3-alpha-vdoom.74 - 2026-06-28
 
 - Added a dedicated Vulkan flat texture pipeline using `VK_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN`.

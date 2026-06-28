@@ -3822,14 +3822,7 @@ namespace
 			if (subsectors != NULL && numsubsectors > 0)
 			{
 				unsigned int flats = 0;
-				if (nodes != NULL && numnodes > 0)
-				{
-					AppendWorldFlatBspNode(vertices, count, nodes + numnodes - 1, 0, flats);
-				}
-				else
-				{
-					AppendWorldFlatFallbackScan(vertices, count, flats);
-				}
+				AppendWorldFlatSectorScan(vertices, count, flats);
 			}
 			WorldFlatDrawCount = count - WorldFlatFirstVertex;
 
