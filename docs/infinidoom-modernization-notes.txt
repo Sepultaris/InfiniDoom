@@ -149,6 +149,9 @@ After testing showed the broad sector sweep could suppress flats entirely, the
 active Vulkan flat path was moved back to BSP-visible subsector submission for
 the recovery checkpoint; sector helpers remain only as reference while the
 proper visible flat clipping path is rebuilt.
+Flat triangulation is temporarily using a center fan per subsector instead of
+anchoring the fan at the first boundary vertex. This is a diagnostic coverage
+step to separate polygon construction holes from texture/visibility failures.
 - `vk_hide_software_frame` no longer hides the software frame while menus are
   active or when no Vulkan world draw was produced, so the title/main menus
   remain navigable during isolation-mode testing.

@@ -1,5 +1,13 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.66 - 2026-06-28
+
+- Changed the temporary Vulkan flat triangulation from a boundary-vertex fan
+  to a center fan per BSP subsector so every subsector edge contributes a
+  triangle during floor and ceiling coverage testing.
+- Raised the flat vertex budget check to match the center-fan triangle count,
+  avoiding accidental under-budgeting while diagnosing missing flat wedges.
+
 ## 3.3-alpha-vdoom.65 - 2026-06-28
 
 - Restored the temporary Vulkan flat submission path to BSP-visible subsector

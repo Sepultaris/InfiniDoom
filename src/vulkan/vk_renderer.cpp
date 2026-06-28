@@ -3212,97 +3212,49 @@ namespace
 			return drew;
 		}
 
+		bool AppendWorldFlatPolygonCenterFan(SceneProbeVertex *vertices, unsigned int &count,
+			sector_t *planeSector, sector_t *textureSector, int plane, const WorldFlatPoint *points, unsigned int pointCount,
+			const WorldAtlasTile &tile, float light)
+		{
+			if (pointCount < 3 || count + pointCount * 3 > ProbeVertexMaxCount)
+			{
+				return false;
+			}
+
+			double centerX = 0.0;
+			double centerY = 0.0;
+			for (unsigned int i = 0; i < pointCount; ++i)
+			{
+				centerX += points[i].X;
+				centerY += points[i].Y;
+			}
+			centerX /= (double)pointCount;
+			centerY /= (double)pointCount;
+
+			bool drew = false;
+			for (unsigned int i = 0; i < pointCount; ++i)
+			{
+				const WorldFlatPoint &a = points[i];
+				const WorldFlatPoint &b = points[(i + 1) % pointCount];
+				if (WorldFlatSamePoint(a, b))
+				{
+					continue;
+				}
+				drew = AppendWorldFlatTriangle(vertices, count, planeSector, textureSector, plane,
+					centerX, centerY,
+					a.X, a.Y,
+					b.X, b.Y,
+					tile, light) || drew;
+			}
+			return drew;
+		}
+
 		bool AppendWorldFlatPolygon(SceneProbeVertex *vertices, unsigned int &count,
 			sector_t *planeSector, sector_t *textureSector, int plane, const WorldFlatPoint *points, unsigned int pointCount,
 			const WorldAtlasTile &tile, float light, bool useEarClipping)
 		{
-			if (pointCount < 3 || count + (pointCount - 2) * 3 > ProbeVertexMaxCount)
-			{
-				return false;
-			}
-			if (!useEarClipping)
-			{
-				return AppendWorldFlatPolygonFan(vertices, count, planeSector, textureSector, plane, points, pointCount, tile, light);
-			}
-
-			const double area = WorldFlatArea(points, pointCount);
-			if (fabs(area) < 0.001)
-			{
-				return false;
-			}
-
-			unsigned int indices[WorldDrawFlatMaxSegs];
-			for (unsigned int i = 0; i < pointCount; ++i)
-			{
-				indices[i] = i;
-			}
-
-			bool drew = false;
-			const unsigned int startCount = count;
-			unsigned int remaining = pointCount;
-			const bool counterClockwise = area > 0.0;
-			unsigned int guard = 0;
-			while (remaining > 2 && guard++ < pointCount * pointCount)
-			{
-				bool clipped = false;
-				for (unsigned int i = 0; i < remaining; ++i)
-				{
-					const unsigned int prevIndex = indices[(i + remaining - 1) % remaining];
-					const unsigned int currIndex = indices[i];
-					const unsigned int nextIndex = indices[(i + 1) % remaining];
-					const WorldFlatPoint &prev = points[prevIndex];
-					const WorldFlatPoint &curr = points[currIndex];
-					const WorldFlatPoint &next = points[nextIndex];
-					const double cross = WorldFlatCross(prev, curr, next);
-					if ((counterClockwise && cross <= 0.001) || (!counterClockwise && cross >= -0.001))
-					{
-						continue;
-					}
-
-					bool containsPoint = false;
-					for (unsigned int j = 0; j < remaining; ++j)
-					{
-						const unsigned int testIndex = indices[j];
-						if (testIndex == prevIndex || testIndex == currIndex || testIndex == nextIndex)
-						{
-							continue;
-						}
-						if (WorldFlatPointInTriangle(points[testIndex], prev, curr, next))
-						{
-							containsPoint = true;
-							break;
-						}
-					}
-					if (containsPoint)
-					{
-						continue;
-					}
-
-					if (!AppendWorldFlatTriangle(vertices, count, planeSector, textureSector, plane,
-						prev.X, prev.Y,
-						curr.X, curr.Y,
-						next.X, next.Y,
-						tile, light))
-					{
-						count = startCount;
-						return false;
-					}
-					drew = true;
-					for (unsigned int j = i; j + 1 < remaining; ++j)
-					{
-						indices[j] = indices[j + 1];
-					}
-					--remaining;
-					clipped = true;
-					break;
-				}
-				if (!clipped)
-				{
-					count = startCount;
-					return AppendWorldFlatPolygonFan(vertices, count, planeSector, textureSector, plane, points, pointCount, tile, light);
-				}
-			}
-			return drew;
+			(void)useEarClipping;
+			return AppendWorldFlatPolygonCenterFan(vertices, count, planeSector, textureSector, plane, points, pointCount, tile, light);
 		}
 
 		bool AppendWorldFlatIndexedFan(SceneProbeVertex *vertices, unsigned int &count,
@@ -3339,7 +3291,7 @@ namespace
 				++WorldDrawFlatBuildSkipCount;
 				return false;
 			}
-			const unsigned int maxNeeded = (subsector->numlines - 2) * 3;
+			const unsigned int maxNeeded = subsector->numlines * 3;
 			if (count + maxNeeded > ProbeVertexMaxCount)
 			{
 				++WorldDrawFlatBudgetSkipCount;
