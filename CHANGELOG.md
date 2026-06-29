@@ -1,5 +1,11 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.97 - 2026-06-28
+
+- Added `vk_draw_flats` and `vk_draw_walls` diagnostic switches so the Vulkan
+  world renderer can isolate floor/ceiling geometry from wall geometry while
+  debugging HOM-style black regions.
+
 ## 3.3-alpha-vdoom.96 - 2026-06-28
 
 - Reverted normal Vulkan flat scene commands to draw their collected visible

@@ -118,6 +118,8 @@ CUSTOM_CVAR(Float, vk_present_aspect, 0.f, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CV
 
 CVAR(Bool, vk_present_force_aspect, false, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINITCALL)
 CVAR(Bool, vk_draw_world, false, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINITCALL)
+CVAR(Bool, vk_draw_flats, true, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINITCALL)
+CVAR(Bool, vk_draw_walls, true, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINITCALL)
 CVAR(Bool, vk_hide_software_frame, false, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINITCALL)
 CVAR(Bool, vk_debug_solid_flats, false, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINITCALL)
 CVAR(Bool, vk_debug_flat_colors, false, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINITCALL)
@@ -4604,8 +4606,19 @@ namespace
 			if (vk_draw_world)
 			{
 				ResetWorldAtlas();
-				UpdateWorldFlatVertices();
-				AppendWorldDrawVertices(vertices, count);
+				if (vk_draw_flats)
+				{
+					UpdateWorldFlatVertices();
+				}
+				else
+				{
+					WorldFlatDrawCount = 0;
+					WorldFlatIndexCount = 0;
+				}
+				if (vk_draw_walls)
+				{
+					AppendWorldDrawVertices(vertices, count);
+				}
 			}
 			else
 			{
