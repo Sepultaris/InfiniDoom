@@ -20,12 +20,25 @@ namespace vdoom
 	};
 
 	VdHwScene::VdHwScene()
+		: SubsectorRenderFlags(NULL), SubsectorRenderFlagCount(0),
+		  SectorRenderFlags(NULL), SectorRenderFlagCount(0)
+	{
+		Clear();
+	}
+
+	VdHwScene::~VdHwScene()
 	{
 		Clear();
 	}
 
 	void VdHwScene::Clear()
 	{
+		delete[] SubsectorRenderFlags;
+		SubsectorRenderFlags = NULL;
+		SubsectorRenderFlagCount = 0;
+		delete[] SectorRenderFlags;
+		SectorRenderFlags = NULL;
+		SectorRenderFlagCount = 0;
 		memset(Flats, 0, sizeof(Flats));
 		memset(&Stats, 0, sizeof(Stats));
 		FlatCount = 0;
@@ -44,6 +57,63 @@ namespace vdoom
 	const VdHwSceneStats &VdHwScene::GetStats() const
 	{
 		return Stats;
+	}
+
+	unsigned char VdHwScene::GetSubsectorRenderFlags(const subsector_t *subsector) const
+	{
+		if (subsector == NULL || SubsectorRenderFlags == NULL ||
+			subsector < subsectors || subsector >= subsectors + SubsectorRenderFlagCount)
+		{
+			return 0;
+		}
+		return SubsectorRenderFlags[subsector - subsectors];
+	}
+
+	bool VdHwScene::EnsureFlagBuffers()
+	{
+		if (numsubsectors > 0 && SubsectorRenderFlags == NULL)
+		{
+			SubsectorRenderFlagCount = (unsigned int)numsubsectors;
+			SubsectorRenderFlags = new unsigned char[SubsectorRenderFlagCount];
+			memset(SubsectorRenderFlags, 0, SubsectorRenderFlagCount);
+		}
+		if (numsectors > 0 && SectorRenderFlags == NULL)
+		{
+			SectorRenderFlagCount = (unsigned int)numsectors;
+			SectorRenderFlags = new unsigned char[SectorRenderFlagCount];
+			memset(SectorRenderFlags, 0, SectorRenderFlagCount);
+		}
+		return true;
+	}
+
+	void VdHwScene::SetSubsectorRenderFlags(const subsector_t *subsector, unsigned char flags)
+	{
+		if (subsector == NULL || SubsectorRenderFlags == NULL ||
+			subsector < subsectors || subsector >= subsectors + SubsectorRenderFlagCount)
+		{
+			return;
+		}
+		SubsectorRenderFlags[subsector - subsectors] |= flags;
+	}
+
+	unsigned char VdHwScene::GetSectorRenderFlags(sector_t *sector) const
+	{
+		if (sector == NULL || SectorRenderFlags == NULL ||
+			sector < sectors || sector >= sectors + SectorRenderFlagCount)
+		{
+			return 0;
+		}
+		return SectorRenderFlags[sector - sectors];
+	}
+
+	void VdHwScene::SetSectorRenderFlags(sector_t *sector, unsigned char flags)
+	{
+		if (sector == NULL || SectorRenderFlags == NULL ||
+			sector < sectors || sector >= sectors + SectorRenderFlagCount)
+		{
+			return;
+		}
+		SectorRenderFlags[sector - sectors] |= flags;
 	}
 
 	bool VdHwScene::AddFlat(const subsector_t *subsector, sector_t *planeSector, sector_t *textureSector, int plane, bool otherPlane)
@@ -95,6 +165,37 @@ namespace vdoom
 		return AddFlat(subsector, planeSector, planeSector, plane, true);
 	}
 
+	bool VdHwScene::AddSectorFlat(sector_t *planeSector, sector_t *textureSector, int plane)
+	{
+		if (planeSector == NULL || textureSector == NULL)
+		{
+			++Stats.SkippedFlats;
+			return false;
+		}
+
+		const unsigned char renderFlag = plane == sector_t::floor ? VDHW_RENDERFLOOR : VDHW_RENDERCEILING;
+		if (GetSectorRenderFlags(textureSector) & renderFlag)
+		{
+			return false;
+		}
+		SetSectorRenderFlags(textureSector, renderFlag);
+
+		if (FlatCount >= MaxFlats)
+		{
+			++Stats.SkippedFlats;
+			return false;
+		}
+
+		VdHwFlatCommand &command = Flats[FlatCount++];
+		command.Subsector = NULL;
+		command.PlaneSector = planeSector;
+		command.TextureSector = textureSector;
+		command.Plane = plane;
+		command.OtherPlane = false;
+		++Stats.Flats;
+		return true;
+	}
+
 	static bool SideTextureMissing(side_t *side, int texturePart)
 	{
 		if (side == NULL)
@@ -124,13 +225,14 @@ namespace vdoom
 		const double viewX = FIXED2FLOAT(viewx);
 		const double viewY = FIXED2FLOAT(viewy);
 		const double viewZ = FIXED2FLOAT(viewz);
+		SetSubsectorRenderFlags(subsector, VDHW_PROCESSED | VDHW_RENDERALL);
 		if (planeSector->floorplane.ZatPoint(viewX, viewY) <= viewZ)
 		{
-			AddFlat(subsector, planeSector, textureSector, sector_t::floor, false);
+			AddSectorFlat(planeSector, textureSector, sector_t::floor);
 		}
 		if (planeSector->ceilingplane.ZatPoint(viewX, viewY) >= viewZ)
 		{
-			AddFlat(subsector, planeSector, textureSector, sector_t::ceiling, false);
+			AddSectorFlat(planeSector, textureSector, sector_t::ceiling);
 		}
 		++Stats.VisibleSubsectors;
 	}
@@ -296,6 +398,7 @@ namespace vdoom
 	void VdHwScene::CollectWorld()
 	{
 		Clear();
+		EnsureFlagBuffers();
 		CollectVisibleFlats();
 		CollectMissingTexturePlanes();
 	}

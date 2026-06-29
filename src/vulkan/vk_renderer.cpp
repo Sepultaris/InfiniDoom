@@ -4325,15 +4325,47 @@ namespace
 			for (unsigned int i = 0; i < commandCount && flats < WorldDrawMaxFlats; ++i)
 			{
 				const vdoom::VdHwFlatCommand &command = commands[i];
-				if (command.Subsector != NULL && command.Subsector->numlines > WorldDrawFlatMaxSegs)
+				if (command.OtherPlane)
 				{
-					++WorldDrawFlatTooLargeSkipCount;
+					if (command.Subsector != NULL && command.Subsector->numlines > WorldDrawFlatMaxSegs)
+					{
+						++WorldDrawFlatTooLargeSkipCount;
+						continue;
+					}
+					if (AppendWorldFlatSubsectorPlane(vertices, count, command.Subsector, command.PlaneSector, command.TextureSector, command.Plane))
+					{
+						++flats;
+						++WorldDrawFlatCount;
+					}
 					continue;
 				}
-				if (AppendWorldFlatSubsectorPlane(vertices, count, command.Subsector, command.PlaneSector, command.TextureSector, command.Plane))
+
+				sector_t *drawSector = command.TextureSector != NULL ? command.TextureSector : command.PlaneSector;
+				if (drawSector == NULL || drawSector->subsectors == NULL || drawSector->subsectorcount <= 0)
 				{
-					++flats;
-					++WorldDrawFlatCount;
+					++WorldDrawFlatBuildSkipCount;
+					continue;
+				}
+
+				const unsigned char renderFlag = command.Plane == sector_t::floor ?
+					vdoom::VDHW_RENDERFLOOR : vdoom::VDHW_RENDERCEILING;
+				for (int subIndex = 0; subIndex < drawSector->subsectorcount && flats < WorldDrawMaxFlats; ++subIndex)
+				{
+					const subsector_t *subsector = drawSector->subsectors[subIndex];
+					if ((scene.GetSubsectorRenderFlags(subsector) & renderFlag) == 0)
+					{
+						continue;
+					}
+					if (subsector != NULL && subsector->numlines > WorldDrawFlatMaxSegs)
+					{
+						++WorldDrawFlatTooLargeSkipCount;
+						continue;
+					}
+					if (AppendWorldFlatSubsectorPlane(vertices, count, subsector, command.PlaneSector, command.TextureSector, command.Plane))
+					{
+						++flats;
+						++WorldDrawFlatCount;
+					}
 				}
 			}
 			if (commandCount > WorldDrawMaxFlats)
@@ -4498,8 +4530,7 @@ namespace
 				WorldSceneOtherPlaneCount = sceneStats.OtherPlanes;
 				WorldSceneMissingTextureCandidateCount = sceneStats.MissingTextureCandidates;
 				WorldSceneBspDepthSkipCount = sceneStats.BspDepthSkips;
-				AppendWorldFlatFallbackScan(vertices, count, flats);
-				AppendWorldFlatMissingTexturePlanes(vertices, count, flats);
+				AppendWorldFlatSceneCommands(vertices, count, scene, flats);
 			}
 		}
 

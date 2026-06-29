@@ -1,5 +1,12 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.102 - 2026-06-28
+
+- Started replacing the experimental Vulkan flat feed with a GL/UZDoom-style
+  hardware scene contract: visible subsectors now carry render flags, normal
+  floor and ceiling commands are sector-plane commands, and Vulkan expands those
+  commands through the scene's visible subsector mask.
+
 ## 3.3-alpha-vdoom.101 - 2026-06-28
 
 - Changed active Vulkan flat submission to draw full nearby subsector floor and
