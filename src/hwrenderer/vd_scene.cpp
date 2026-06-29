@@ -121,8 +121,17 @@ namespace vdoom
 
 		sector_t *planeSector = subsector->sector;
 		sector_t *textureSector = subsector->render_sector != NULL ? subsector->render_sector : planeSector;
-		AddFlat(subsector, planeSector, textureSector, sector_t::floor, false);
-		AddFlat(subsector, planeSector, textureSector, sector_t::ceiling, false);
+		const double viewX = FIXED2FLOAT(viewx);
+		const double viewY = FIXED2FLOAT(viewy);
+		const double viewZ = FIXED2FLOAT(viewz);
+		if (planeSector->floorplane.ZatPoint(viewX, viewY) <= viewZ)
+		{
+			AddFlat(subsector, planeSector, textureSector, sector_t::floor, false);
+		}
+		if (planeSector->ceilingplane.ZatPoint(viewX, viewY) >= viewZ)
+		{
+			AddFlat(subsector, planeSector, textureSector, sector_t::ceiling, false);
+		}
 		++Stats.VisibleSubsectors;
 	}
 

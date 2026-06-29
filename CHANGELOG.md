@@ -1,5 +1,11 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.100 - 2026-06-28
+
+- Updated hardware flat collection to match the legacy GL plane visibility
+  rule: only collect floors below the camera and ceilings above the camera,
+  instead of drawing both planes for every visible subsector.
+
 ## 3.3-alpha-vdoom.99 - 2026-06-28
 
 - Changed normal Vulkan flat triangulation to match the legacy GL renderer's
