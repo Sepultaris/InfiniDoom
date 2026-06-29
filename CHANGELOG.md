@@ -1,5 +1,11 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.108 - 2026-06-29
+
+- Added an explicit Vulkan world-scene snapshot so `RenderView` builds the
+  current frame's draw ranges and presentation consumes that snapshot instead
+  of the older probe/debug counters directly.
+
 ## 3.3-alpha-vdoom.107 - 2026-06-29
 
 - Moved Vulkan world-frame building out of the presentation path and into the

@@ -305,6 +305,21 @@ namespace
 		unsigned int VertexCount;
 	};
 
+	struct VulkanWorldScene
+	{
+		bool Valid;
+		unsigned int FlatVertexCount;
+		unsigned int FlatFanCount;
+		WorldDrawRange FlatFans[WorldDrawMaxFlatFans];
+		unsigned int WallFirstVertex;
+		unsigned int WallVertexCount;
+		unsigned int ProbeVertexCount;
+		unsigned int WorldProbeFirstVertex;
+		unsigned int WorldProbeVertexCount;
+		unsigned int SceneProbeFirstVertex;
+		unsigned int SceneProbeVertexCount;
+	};
+
 	struct WorldFlatMeshRange
 	{
 		unsigned int FirstTriangle;
@@ -390,6 +405,7 @@ namespace
 				WorldFlatFans[i].FirstVertex = 0;
 				WorldFlatFans[i].VertexCount = 0;
 			}
+			ResetWorldScene();
 		}
 
 		~VulkanRuntime()
@@ -1030,18 +1046,22 @@ namespace
 		{
 			if (!Ready || !WantsProbeDraw())
 			{
+				ResetWorldScene();
 				return false;
 			}
 			if (RenderPass == VK_NULL_HANDLE && !CreateRenderPass())
 			{
+				ResetWorldScene();
 				return false;
 			}
 			if (vk_draw_world && !EnsureWallTextureResources())
 			{
+				ResetWorldScene();
 				return false;
 			}
 			if (!EnsureProbeVertexBuffer())
 			{
+				ResetWorldScene();
 				return false;
 			}
 			UpdateProbeVertices();
@@ -4639,6 +4659,7 @@ namespace
 				SceneProbeDrawCount = 0;
 				WorldProbeFirstVertex = 0;
 				WorldProbeDrawCount = 0;
+				ResetWorldScene();
 				return;
 			}
 
@@ -4695,6 +4716,31 @@ namespace
 				SceneProbeDrawCount = count - SceneProbeFirstVertex;
 			}
 			ProbeVertexDrawCount = count;
+			CaptureWorldScene();
+		}
+
+		void ResetWorldScene()
+		{
+			memset(&WorldScene, 0, sizeof(WorldScene));
+		}
+
+		void CaptureWorldScene()
+		{
+			ResetWorldScene();
+			WorldScene.Valid = true;
+			WorldScene.FlatVertexCount = WorldFlatDrawCount;
+			WorldScene.FlatFanCount = WorldFlatFanCount < WorldDrawMaxFlatFans ? WorldFlatFanCount : WorldDrawMaxFlatFans;
+			for (unsigned int i = 0; i < WorldScene.FlatFanCount; ++i)
+			{
+				WorldScene.FlatFans[i] = WorldFlatFans[i];
+			}
+			WorldScene.WallFirstVertex = WorldDrawFirstVertex;
+			WorldScene.WallVertexCount = WorldDrawDrawCount;
+			WorldScene.ProbeVertexCount = ProbeVertexDrawCount;
+			WorldScene.WorldProbeFirstVertex = WorldProbeFirstVertex;
+			WorldScene.WorldProbeVertexCount = WorldProbeDrawCount;
+			WorldScene.SceneProbeFirstVertex = SceneProbeFirstVertex;
+			WorldScene.SceneProbeVertexCount = SceneProbeDrawCount;
 		}
 
 		bool EnsureWorldFlatIndexBuffer(unsigned int indexCount)
@@ -5015,6 +5061,7 @@ namespace
 		void DestroyPresentationResources()
 		{
 			DestroyWorldFlatVertexBuffer();
+			ResetWorldScene();
 			DestroySourceImages();
 			DestroyWallTextureResources();
 			for (unsigned int i = 0; i < MaxSwapchainImages; ++i)
@@ -5976,7 +6023,7 @@ namespace
 			scissor.extent = SwapchainExtent;
 			Vk.CmdSetViewport(CommandBuffer, 0, 1, &viewport);
 			Vk.CmdSetScissor(CommandBuffer, 0, 1, &scissor);
-			const bool hasVulkanWorld = WorldFlatDrawCount > 0 || WorldDrawDrawCount > 0;
+			const bool hasVulkanWorld = WorldScene.Valid && (WorldScene.FlatVertexCount > 0 || WorldScene.WallVertexCount > 0);
 			const bool hideSoftwareFrame = vk_force_hide_software_frame || (vk_hide_software_frame && hasVulkanWorld);
 			const bool drawSoftwareFrame = !hideSoftwareFrame;
 			if (drawSoftwareFrame)
@@ -5989,53 +6036,53 @@ namespace
 			}
 			VkDeviceSize vertexOffsets[1] = { 0 };
 			SceneProbePushConstants probeConstants = BuildSceneProbePushConstants();
-			if (vk_draw_world && FlatTexturePipeline != VK_NULL_HANDLE && WallTextureDescriptorSet != VK_NULL_HANDLE &&
-				WorldFlatVertexBuffer != VK_NULL_HANDLE && WorldFlatDrawCount > 0)
+			if (WorldScene.Valid && vk_draw_world && FlatTexturePipeline != VK_NULL_HANDLE && WallTextureDescriptorSet != VK_NULL_HANDLE &&
+				WorldFlatVertexBuffer != VK_NULL_HANDLE && WorldScene.FlatVertexCount > 0)
 			{
 				Vk.CmdBindPipeline(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, FlatTexturePipeline);
 				Vk.CmdBindDescriptorSets(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, WallTexturePipelineLayout, 0, 1, &WallTextureDescriptorSet, 0, NULL);
 				Vk.CmdPushConstants(CommandBuffer, WallTexturePipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(probeConstants), &probeConstants);
 				Vk.CmdBindVertexBuffers(CommandBuffer, 0, 1, &WorldFlatVertexBuffer, vertexOffsets);
-				if (WorldFlatFanCount > 0)
+				if (WorldScene.FlatFanCount > 0)
 				{
-					for (unsigned int i = 0; i < WorldFlatFanCount; ++i)
+					for (unsigned int i = 0; i < WorldScene.FlatFanCount; ++i)
 					{
-						Vk.CmdDraw(CommandBuffer, WorldFlatFans[i].VertexCount, 1, WorldFlatFans[i].FirstVertex, 0);
+						Vk.CmdDraw(CommandBuffer, WorldScene.FlatFans[i].VertexCount, 1, WorldScene.FlatFans[i].FirstVertex, 0);
 					}
 				}
-				else if (WorldFlatIndexBuffer != VK_NULL_HANDLE && WorldFlatIndexCount == WorldFlatDrawCount)
+				else if (WorldFlatIndexBuffer != VK_NULL_HANDLE && WorldFlatIndexCount == WorldScene.FlatVertexCount)
 				{
 					Vk.CmdBindIndexBuffer(CommandBuffer, WorldFlatIndexBuffer, 0, VK_INDEX_TYPE_UINT32);
 					Vk.CmdDrawIndexed(CommandBuffer, WorldFlatIndexCount, 1, 0, 0, 0);
 				}
 				else
 				{
-					Vk.CmdDraw(CommandBuffer, WorldFlatDrawCount, 1, 0, 0);
+					Vk.CmdDraw(CommandBuffer, WorldScene.FlatVertexCount, 1, 0, 0);
 				}
 			}
-			if (ProbeVertexBuffer != VK_NULL_HANDLE && ProbeVertexDrawCount > 0)
+			if (WorldScene.Valid && ProbeVertexBuffer != VK_NULL_HANDLE && WorldScene.ProbeVertexCount > 0)
 			{
-				if (vk_draw_world && WallTexturePipeline != VK_NULL_HANDLE && WallTextureDescriptorSet != VK_NULL_HANDLE && WorldDrawDrawCount > 0)
+				if (vk_draw_world && WallTexturePipeline != VK_NULL_HANDLE && WallTextureDescriptorSet != VK_NULL_HANDLE && WorldScene.WallVertexCount > 0)
 				{
 					Vk.CmdBindPipeline(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, WallTexturePipeline);
 					Vk.CmdBindDescriptorSets(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, WallTexturePipelineLayout, 0, 1, &WallTextureDescriptorSet, 0, NULL);
 					Vk.CmdPushConstants(CommandBuffer, WallTexturePipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(probeConstants), &probeConstants);
 					Vk.CmdBindVertexBuffers(CommandBuffer, 0, 1, &ProbeVertexBuffer, vertexOffsets);
-					Vk.CmdDraw(CommandBuffer, WorldDrawDrawCount, 1, WorldDrawFirstVertex, 0);
+					Vk.CmdDraw(CommandBuffer, WorldScene.WallVertexCount, 1, WorldScene.WallFirstVertex, 0);
 				}
-				if (vk_world_probe && WorldProbePipeline != VK_NULL_HANDLE && WorldProbeDrawCount > 0)
+				if (vk_world_probe && WorldProbePipeline != VK_NULL_HANDLE && WorldScene.WorldProbeVertexCount > 0)
 				{
 					Vk.CmdBindPipeline(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, WorldProbePipeline);
 					Vk.CmdPushConstants(CommandBuffer, WorldProbePipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(probeConstants), &probeConstants);
 					Vk.CmdBindVertexBuffers(CommandBuffer, 0, 1, &ProbeVertexBuffer, vertexOffsets);
-					Vk.CmdDraw(CommandBuffer, WorldProbeDrawCount, 1, WorldProbeFirstVertex, 0);
+					Vk.CmdDraw(CommandBuffer, WorldScene.WorldProbeVertexCount, 1, WorldScene.WorldProbeFirstVertex, 0);
 				}
-				if (vk_scene_probe && ProbePipeline != VK_NULL_HANDLE && SceneProbeDrawCount > 0)
+				if (vk_scene_probe && ProbePipeline != VK_NULL_HANDLE && WorldScene.SceneProbeVertexCount > 0)
 				{
 					Vk.CmdBindPipeline(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, ProbePipeline);
 					Vk.CmdPushConstants(CommandBuffer, ProbePipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(probeConstants), &probeConstants);
 					Vk.CmdBindVertexBuffers(CommandBuffer, 0, 1, &ProbeVertexBuffer, vertexOffsets);
-					Vk.CmdDraw(CommandBuffer, SceneProbeDrawCount, 1, SceneProbeFirstVertex, 0);
+					Vk.CmdDraw(CommandBuffer, WorldScene.SceneProbeVertexCount, 1, WorldScene.SceneProbeFirstVertex, 0);
 				}
 			}
 			Vk.CmdEndRenderPass(CommandBuffer);
@@ -6371,6 +6418,7 @@ namespace
 		unsigned int WorldFlatDrawCount;
 		unsigned int WorldFlatFanCount;
 		WorldDrawRange WorldFlatFans[WorldDrawMaxFlatFans];
+		VulkanWorldScene WorldScene;
 		unsigned int WorldDrawFirstVertex;
 		unsigned int WorldDrawDrawCount;
 		unsigned int SceneProbeFirstVertex;
