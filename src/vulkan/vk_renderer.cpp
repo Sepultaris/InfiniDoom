@@ -879,6 +879,11 @@ namespace
 			}
 
 			bool useGpuPresentation = EnsureGpuPresentationResources(width, height);
+			if (useGpuPresentation && WantsProbeDraw())
+			{
+				UpdateProbeVertices();
+				PublishVulkanStats(this);
+			}
 			VkDeviceSize uploadNeeded = useGpuPresentation ?
 				((VkDeviceSize)width * (VkDeviceSize)height + 256 * 4) :
 				((VkDeviceSize)presentWidth * (VkDeviceSize)presentHeight * 4);

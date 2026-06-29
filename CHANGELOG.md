@@ -1,5 +1,11 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.106 - 2026-06-29
+
+- Rebuilt Vulkan world/probe vertex buffers every GPU presentation frame so
+  the owned Vulkan `RenderView` path has current camera geometry instead of
+  relying on one-time buffer creation side effects.
+
 ## 3.3-alpha-vdoom.105 - 2026-06-29
 
 - Made the Vulkan renderer own the main level `RenderView` path instead of
