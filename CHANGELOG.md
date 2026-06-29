@@ -1,5 +1,11 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.95 - 2026-06-28
+
+- Changed the Vulkan flat texture pipeline to depth-test and write depth like
+  wall geometry, preventing later wall draws from overwriting floor and ceiling
+  pixels that should already occupy the depth buffer.
+
 ## 3.3-alpha-vdoom.94 - 2026-06-28
 
 - Fixed Vulkan sector-plane flat expansion to use the render/texture sector

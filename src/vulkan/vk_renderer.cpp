@@ -2415,7 +2415,7 @@ namespace
 
 		bool CreateFlatTexturePipeline()
 		{
-			return CreateWorldTexturePipeline(FlatTexturePipeline, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST, false, false, "flat texture triangles");
+			return CreateWorldTexturePipeline(FlatTexturePipeline, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST, true, true, "flat texture triangles");
 		}
 
 		void DestroyProbeVertexBuffer()
