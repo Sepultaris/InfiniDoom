@@ -3,9 +3,8 @@
 ** Vulkan renderer bootstrap interface.
 **
 ** This backend is intentionally InfiniDoom-shaped: it proves Vulkan runtime,
-** instance, physical device, and graphics queue availability while continuing
-** to use the existing software renderer until the swapchain/render path is
-** built in small steps.
+** instance, physical device, graphics queue, and an owned world render path
+** while the Vulkan scene contract grows toward full Doom rendering.
 */
 
 #include <math.h>
@@ -117,7 +116,7 @@ CUSTOM_CVAR(Float, vk_present_aspect, 0.f, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CV
 }
 
 CVAR(Bool, vk_present_force_aspect, false, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINITCALL)
-CVAR(Bool, vk_draw_world, false, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINITCALL)
+CVAR(Bool, vk_draw_world, true, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINITCALL)
 CVAR(Bool, vk_draw_flats, true, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINITCALL)
 CVAR(Bool, vk_draw_walls, true, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINITCALL)
 CVAR(Bool, vk_hide_software_frame, true, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINITCALL)
@@ -6956,8 +6955,21 @@ public:
 
 	void Init()
 	{
-		Printf("%s Vulkan renderer active; software draw path will present through Vulkan when Vulkan video is active.\n", GAMENAME);
 		FSoftwareRenderer::Init();
+		vk_draw_world = true;
+		Printf("%s Vulkan renderer active; level views are routed through the Vulkan world path.\n", GAMENAME);
+	}
+
+	void RenderView(player_t *player)
+	{
+		if (player == NULL)
+		{
+			return;
+		}
+
+		FSoftwareRenderer::SetupFrame(player);
+		ClearBuffer(0);
+		FCanvasTextureInfo::UpdateAll();
 	}
 
 	bool IsVulkanReady() const

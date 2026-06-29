@@ -1,5 +1,12 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.105 - 2026-06-29
+
+- Made the Vulkan renderer own the main level `RenderView` path instead of
+  inheriting the software renderer's `R_RenderActorView` call. Vulkan now sets
+  frame state, clears the software canvas, updates camera textures, and routes
+  level presentation through the Vulkan world path by default.
+
 ## 3.3-alpha-vdoom.104 - 2026-06-29
 
 - Changed Vulkan software-frame hiding into an automatic policy: the software
