@@ -5929,34 +5929,34 @@ namespace
 				Vk.CmdPushConstants(CommandBuffer, PipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(constants), &constants);
 				Vk.CmdDraw(CommandBuffer, 3, 1, 0, 0);
 			}
-			if (ProbeVertexBuffer != VK_NULL_HANDLE && ProbeVertexDrawCount > 0)
+			VkDeviceSize vertexOffsets[1] = { 0 };
+			SceneProbePushConstants probeConstants = BuildSceneProbePushConstants();
+			if (vk_draw_world && FlatTexturePipeline != VK_NULL_HANDLE && WallTextureDescriptorSet != VK_NULL_HANDLE &&
+				WorldFlatVertexBuffer != VK_NULL_HANDLE && WorldFlatDrawCount > 0)
 			{
-				VkDeviceSize vertexOffsets[1] = { 0 };
-				SceneProbePushConstants probeConstants = BuildSceneProbePushConstants();
-				if (vk_draw_world && FlatTexturePipeline != VK_NULL_HANDLE && WallTextureDescriptorSet != VK_NULL_HANDLE &&
-					WorldFlatVertexBuffer != VK_NULL_HANDLE && WorldFlatDrawCount > 0)
+				Vk.CmdBindPipeline(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, FlatTexturePipeline);
+				Vk.CmdBindDescriptorSets(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, WallTexturePipelineLayout, 0, 1, &WallTextureDescriptorSet, 0, NULL);
+				Vk.CmdPushConstants(CommandBuffer, WallTexturePipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(probeConstants), &probeConstants);
+				Vk.CmdBindVertexBuffers(CommandBuffer, 0, 1, &WorldFlatVertexBuffer, vertexOffsets);
+				if (WorldFlatFanCount > 0)
 				{
-					Vk.CmdBindPipeline(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, FlatTexturePipeline);
-					Vk.CmdBindDescriptorSets(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, WallTexturePipelineLayout, 0, 1, &WallTextureDescriptorSet, 0, NULL);
-					Vk.CmdPushConstants(CommandBuffer, WallTexturePipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(probeConstants), &probeConstants);
-					Vk.CmdBindVertexBuffers(CommandBuffer, 0, 1, &WorldFlatVertexBuffer, vertexOffsets);
-					if (WorldFlatFanCount > 0)
+					for (unsigned int i = 0; i < WorldFlatFanCount; ++i)
 					{
-						for (unsigned int i = 0; i < WorldFlatFanCount; ++i)
-						{
-							Vk.CmdDraw(CommandBuffer, WorldFlatFans[i].VertexCount, 1, WorldFlatFans[i].FirstVertex, 0);
-						}
-					}
-					else if (WorldFlatIndexBuffer != VK_NULL_HANDLE && WorldFlatIndexCount == WorldFlatDrawCount)
-					{
-						Vk.CmdBindIndexBuffer(CommandBuffer, WorldFlatIndexBuffer, 0, VK_INDEX_TYPE_UINT32);
-						Vk.CmdDrawIndexed(CommandBuffer, WorldFlatIndexCount, 1, 0, 0, 0);
-					}
-					else
-					{
-						Vk.CmdDraw(CommandBuffer, WorldFlatDrawCount, 1, 0, 0);
+						Vk.CmdDraw(CommandBuffer, WorldFlatFans[i].VertexCount, 1, WorldFlatFans[i].FirstVertex, 0);
 					}
 				}
+				else if (WorldFlatIndexBuffer != VK_NULL_HANDLE && WorldFlatIndexCount == WorldFlatDrawCount)
+				{
+					Vk.CmdBindIndexBuffer(CommandBuffer, WorldFlatIndexBuffer, 0, VK_INDEX_TYPE_UINT32);
+					Vk.CmdDrawIndexed(CommandBuffer, WorldFlatIndexCount, 1, 0, 0, 0);
+				}
+				else
+				{
+					Vk.CmdDraw(CommandBuffer, WorldFlatDrawCount, 1, 0, 0);
+				}
+			}
+			if (ProbeVertexBuffer != VK_NULL_HANDLE && ProbeVertexDrawCount > 0)
+			{
 				if (vk_draw_world && WallTexturePipeline != VK_NULL_HANDLE && WallTextureDescriptorSet != VK_NULL_HANDLE && WorldDrawDrawCount > 0)
 				{
 					Vk.CmdBindPipeline(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, WallTexturePipeline);

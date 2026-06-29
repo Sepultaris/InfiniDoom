@@ -1,5 +1,11 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.98 - 2026-06-28
+
+- Fixed Vulkan flat drawing so floor and ceiling submissions no longer depend
+  on the shared probe/wall vertex buffer having drawable vertices. This makes
+  `vk_draw_walls 0` a real flats-only diagnostic path.
+
 ## 3.3-alpha-vdoom.97 - 2026-06-28
 
 - Added `vk_draw_flats` and `vk_draw_walls` diagnostic switches so the Vulkan
