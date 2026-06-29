@@ -1,5 +1,11 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.99 - 2026-06-28
+
+- Changed normal Vulkan flat triangulation to match the legacy GL renderer's
+  subsector triangle-fan shape, emitted as triangle-list geometry for the
+  existing Vulkan flat pipeline.
+
 ## 3.3-alpha-vdoom.98 - 2026-06-28
 
 - Fixed Vulkan flat drawing so floor and ceiling submissions no longer depend
