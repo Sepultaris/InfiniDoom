@@ -4019,7 +4019,7 @@ namespace
 				++WorldDrawFlatNonConvexCount;
 			}
 			const float lightScale = plane == sector_t::ceiling ? 0.80f : 1.0f;
-			const bool drew = AppendWorldFlatPolygon(vertices, count, planeSector, textureSector, plane, points, pointCount, *tile, baseLight * lightScale, true);
+			const bool drew = AppendWorldFlatPolygon(vertices, count, planeSector, textureSector, plane, points, pointCount, *tile, baseLight * lightScale, nonConvex);
 			if (!drew)
 			{
 				++WorldDrawFlatBuildSkipCount;

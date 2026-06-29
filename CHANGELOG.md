@@ -1,5 +1,10 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.110 - 2026-06-29
+
+- Restored visible Vulkan flat output by using triangle-list fan expansion for
+  convex subsectors and reserving ear clipping for non-convex flat polygons.
+
 ## 3.3-alpha-vdoom.109 - 2026-06-29
 
 - Forced Vulkan flats onto the triangle-list presentation path and enabled
