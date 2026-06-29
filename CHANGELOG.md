@@ -1,5 +1,11 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.103 - 2026-06-29
+
+- Made Vulkan world mode present without the software framebuffer fallback by
+  default. `vk_hide_software_frame` now defaults on, and active `vk_draw_world`
+  frames stay Vulkan-only even when the new renderer has missing geometry.
+
 ## 3.3-alpha-vdoom.102 - 2026-06-28
 
 - Started replacing the experimental Vulkan flat feed with a GL/UZDoom-style
