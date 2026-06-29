@@ -4498,7 +4498,8 @@ namespace
 				WorldSceneOtherPlaneCount = sceneStats.OtherPlanes;
 				WorldSceneMissingTextureCandidateCount = sceneStats.MissingTextureCandidates;
 				WorldSceneBspDepthSkipCount = sceneStats.BspDepthSkips;
-				AppendWorldFlatSceneCommands(vertices, count, scene, flats);
+				AppendWorldFlatFallbackScan(vertices, count, flats);
+				AppendWorldFlatMissingTexturePlanes(vertices, count, flats);
 			}
 		}
 

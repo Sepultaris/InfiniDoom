@@ -1,5 +1,12 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.101 - 2026-06-28
+
+- Changed active Vulkan flat submission to draw full nearby subsector floor and
+  ceiling coverage instead of relying on the experimental scene-command flat
+  collector. This gives the new renderer a cleaner baseline where depth testing
+  resolves world visibility while the proper Doom clipper/portal path is built.
+
 ## 3.3-alpha-vdoom.100 - 2026-06-28
 
 - Updated hardware flat collection to match the legacy GL plane visibility
