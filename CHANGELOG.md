@@ -1,5 +1,10 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.109 - 2026-06-29
+
+- Forced Vulkan flats onto the triangle-list presentation path and enabled
+  ear-clipped subsector triangulation for floor and ceiling geometry.
+
 ## 3.3-alpha-vdoom.108 - 2026-06-29
 
 - Added an explicit Vulkan world-scene snapshot so `RenderView` builds the

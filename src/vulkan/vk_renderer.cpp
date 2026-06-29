@@ -4019,7 +4019,7 @@ namespace
 				++WorldDrawFlatNonConvexCount;
 			}
 			const float lightScale = plane == sector_t::ceiling ? 0.80f : 1.0f;
-			const bool drew = AppendWorldFlatPolygon(vertices, count, planeSector, textureSector, plane, points, pointCount, *tile, baseLight * lightScale, false);
+			const bool drew = AppendWorldFlatPolygon(vertices, count, planeSector, textureSector, plane, points, pointCount, *tile, baseLight * lightScale, true);
 			if (!drew)
 			{
 				++WorldDrawFlatBuildSkipCount;
@@ -4729,11 +4729,7 @@ namespace
 			ResetWorldScene();
 			WorldScene.Valid = true;
 			WorldScene.FlatVertexCount = WorldFlatDrawCount;
-			WorldScene.FlatFanCount = WorldFlatFanCount < WorldDrawMaxFlatFans ? WorldFlatFanCount : WorldDrawMaxFlatFans;
-			for (unsigned int i = 0; i < WorldScene.FlatFanCount; ++i)
-			{
-				WorldScene.FlatFans[i] = WorldFlatFans[i];
-			}
+			WorldScene.FlatFanCount = 0;
 			WorldScene.WallFirstVertex = WorldDrawFirstVertex;
 			WorldScene.WallVertexCount = WorldDrawDrawCount;
 			WorldScene.ProbeVertexCount = ProbeVertexDrawCount;
@@ -6043,14 +6039,7 @@ namespace
 				Vk.CmdBindDescriptorSets(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, WallTexturePipelineLayout, 0, 1, &WallTextureDescriptorSet, 0, NULL);
 				Vk.CmdPushConstants(CommandBuffer, WallTexturePipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(probeConstants), &probeConstants);
 				Vk.CmdBindVertexBuffers(CommandBuffer, 0, 1, &WorldFlatVertexBuffer, vertexOffsets);
-				if (WorldScene.FlatFanCount > 0)
-				{
-					for (unsigned int i = 0; i < WorldScene.FlatFanCount; ++i)
-					{
-						Vk.CmdDraw(CommandBuffer, WorldScene.FlatFans[i].VertexCount, 1, WorldScene.FlatFans[i].FirstVertex, 0);
-					}
-				}
-				else if (WorldFlatIndexBuffer != VK_NULL_HANDLE && WorldFlatIndexCount == WorldScene.FlatVertexCount)
+				if (WorldFlatIndexBuffer != VK_NULL_HANDLE && WorldFlatIndexCount == WorldScene.FlatVertexCount)
 				{
 					Vk.CmdBindIndexBuffer(CommandBuffer, WorldFlatIndexBuffer, 0, VK_INDEX_TYPE_UINT32);
 					Vk.CmdDrawIndexed(CommandBuffer, WorldFlatIndexCount, 1, 0, 0, 0);
