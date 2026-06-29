@@ -121,6 +121,7 @@ CVAR(Bool, vk_draw_world, false, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINITC
 CVAR(Bool, vk_draw_flats, true, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINITCALL)
 CVAR(Bool, vk_draw_walls, true, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINITCALL)
 CVAR(Bool, vk_hide_software_frame, true, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINITCALL)
+CVAR(Bool, vk_force_hide_software_frame, false, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINITCALL)
 CVAR(Bool, vk_debug_solid_flats, false, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINITCALL)
 CVAR(Bool, vk_debug_flat_colors, false, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINITCALL)
 CVAR(Bool, vk_cache_flat_mesh, false, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINITCALL)
@@ -604,7 +605,7 @@ namespace
 
 		bool IsSoftwareFrameHidden() const
 		{
-			return vk_hide_software_frame;
+			return vk_force_hide_software_frame || (vk_hide_software_frame && IsWorldDrawActive());
 		}
 
 		bool IsDebugSolidFlats() const
@@ -5952,7 +5953,8 @@ namespace
 			Vk.CmdSetViewport(CommandBuffer, 0, 1, &viewport);
 			Vk.CmdSetScissor(CommandBuffer, 0, 1, &scissor);
 			const bool hasVulkanWorld = WorldFlatDrawCount > 0 || WorldDrawDrawCount > 0;
-			const bool drawSoftwareFrame = !vk_hide_software_frame || (!vk_draw_world && !hasVulkanWorld);
+			const bool hideSoftwareFrame = vk_force_hide_software_frame || (vk_hide_software_frame && hasVulkanWorld);
+			const bool drawSoftwareFrame = !hideSoftwareFrame;
 			if (drawSoftwareFrame)
 			{
 				Vk.CmdBindPipeline(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, GraphicsPipeline);

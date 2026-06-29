@@ -1,5 +1,11 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.104 - 2026-06-29
+
+- Changed Vulkan software-frame hiding into an automatic policy: the software
+  frame is hidden only when Vulkan has world geometry to present. Added
+  `vk_force_hide_software_frame` for hard black-background diagnostics.
+
 ## 3.3-alpha-vdoom.103 - 2026-06-29
 
 - Made Vulkan world mode present without the software framebuffer fallback by
