@@ -1,5 +1,12 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.96 - 2026-06-28
+
+- Reverted normal Vulkan flat scene commands to draw their collected visible
+  subsector directly instead of expanding through `sector->subsectors`, because
+  this fork groups that list by render sector and it can drop real plane-sector
+  coverage.
+
 ## 3.3-alpha-vdoom.95 - 2026-06-28
 
 - Changed the Vulkan flat texture pipeline to depth-test and write depth like

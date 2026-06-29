@@ -4320,49 +4320,19 @@ namespace
 		{
 			const vdoom::VdHwFlatCommand *commands = scene.GetFlats();
 			const unsigned int commandCount = scene.GetFlatCount();
-			WorldFlatSectorKey sectorKeys[WorldDrawMaxFlats];
-			unsigned int sectorKeyCount = 0;
 			for (unsigned int i = 0; i < commandCount && flats < WorldDrawMaxFlats; ++i)
 			{
 				const vdoom::VdHwFlatCommand &command = commands[i];
-				if (command.OtherPlane)
+				if (command.Subsector != NULL && command.Subsector->numlines > WorldDrawFlatMaxSegs)
 				{
-					if (command.Subsector != NULL && command.Subsector->numlines > WorldDrawFlatMaxSegs)
-					{
-						++WorldDrawFlatTooLargeSkipCount;
-						continue;
-					}
-					if (AppendWorldFlatSubsectorPlane(vertices, count, command.Subsector, command.PlaneSector, command.TextureSector, command.Plane))
-					{
-						++flats;
-						++WorldDrawFlatCount;
-					}
+					++WorldDrawFlatTooLargeSkipCount;
 					continue;
 				}
-
-				bool alreadyAdded = false;
-				for (unsigned int j = 0; j < sectorKeyCount; ++j)
+				if (AppendWorldFlatSubsectorPlane(vertices, count, command.Subsector, command.PlaneSector, command.TextureSector, command.Plane))
 				{
-					if (sectorKeys[j].PlaneSector == command.PlaneSector &&
-						sectorKeys[j].TextureSector == command.TextureSector &&
-						sectorKeys[j].Plane == command.Plane)
-					{
-						alreadyAdded = true;
-						break;
-					}
+					++flats;
+					++WorldDrawFlatCount;
 				}
-				if (alreadyAdded)
-				{
-					continue;
-				}
-				if (sectorKeyCount < WorldDrawMaxFlats)
-				{
-					sectorKeys[sectorKeyCount].PlaneSector = command.PlaneSector;
-					sectorKeys[sectorKeyCount].TextureSector = command.TextureSector;
-					sectorKeys[sectorKeyCount].Plane = command.Plane;
-					++sectorKeyCount;
-				}
-				AppendWorldFlatSectorSubsectors(vertices, count, command.PlaneSector, command.TextureSector, command.Plane, flats);
 			}
 			if (commandCount > WorldDrawMaxFlats)
 			{
