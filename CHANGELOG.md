@@ -1,5 +1,11 @@
 # vDoom Changelog
 
+## 3.3-alpha-vdoom.107 - 2026-06-29
+
+- Moved Vulkan world-frame building out of the presentation path and into the
+  Vulkan renderer's `RenderView` ownership path via the active framebuffer
+  runtime.
+
 ## 3.3-alpha-vdoom.106 - 2026-06-29
 
 - Rebuilt Vulkan world/probe vertex buffers every GPU presentation frame so

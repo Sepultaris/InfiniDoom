@@ -129,6 +129,9 @@ CVAR(Bool, vk_world_probe, false, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINIT
 
 namespace
 {
+	class VulkanRuntime;
+	static VulkanRuntime *ActiveVulkanRuntime = NULL;
+
 #ifdef _WIN32
 	typedef HMODULE VulkanLoaderModule;
 #else
@@ -230,7 +233,6 @@ namespace
 #endif
 	};
 
-	class VulkanRuntime;
 	static FVulkanBackendStats VulkanStats;
 	static void ResetVulkanStats();
 	static void PublishVulkanStats(const VulkanRuntime *runtime);
@@ -879,11 +881,6 @@ namespace
 			}
 
 			bool useGpuPresentation = EnsureGpuPresentationResources(width, height);
-			if (useGpuPresentation && WantsProbeDraw())
-			{
-				UpdateProbeVertices();
-				PublishVulkanStats(this);
-			}
 			VkDeviceSize uploadNeeded = useGpuPresentation ?
 				((VkDeviceSize)width * (VkDeviceSize)height + 256 * 4) :
 				((VkDeviceSize)presentWidth * (VkDeviceSize)presentHeight * 4);
@@ -1027,6 +1024,29 @@ namespace
 				RecreateSwapchainForWindow();
 			}
 			return VulkanStats.LastPresentSucceeded;
+		}
+
+		bool BuildWorldFrame()
+		{
+			if (!Ready || !WantsProbeDraw())
+			{
+				return false;
+			}
+			if (RenderPass == VK_NULL_HANDLE && !CreateRenderPass())
+			{
+				return false;
+			}
+			if (vk_draw_world && !EnsureWallTextureResources())
+			{
+				return false;
+			}
+			if (!EnsureProbeVertexBuffer())
+			{
+				return false;
+			}
+			UpdateProbeVertices();
+			PublishVulkanStats(this);
+			return true;
 		}
 
 	private:
@@ -6631,6 +6651,7 @@ public:
 		}
 		else
 		{
+			ActiveVulkanRuntime = Runtime;
 			VkExtent2D extent = Runtime->GetSwapchainExtent();
 			Printf("%s Vulkan framebuffer active: %u swapchain images, format %d, %ux%u.\n",
 				GAMENAME,
@@ -6643,6 +6664,10 @@ public:
 
 	~VulkanFrameBuffer()
 	{
+		if (ActiveVulkanRuntime == Runtime)
+		{
+			ActiveVulkanRuntime = NULL;
+		}
 		delete Runtime;
 		Runtime = NULL;
 		delete[] PresentBuffer;
@@ -6973,6 +6998,10 @@ public:
 		}
 
 		FSoftwareRenderer::SetupFrame(player);
+		if (ActiveVulkanRuntime != NULL)
+		{
+			ActiveVulkanRuntime->BuildWorldFrame();
+		}
 		ClearBuffer(0);
 		FCanvasTextureInfo::UpdateAll();
 	}
